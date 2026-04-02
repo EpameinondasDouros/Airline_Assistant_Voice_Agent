@@ -36,6 +36,7 @@ def search_flights(
     seat_class: SeatClass | None = None,
     sort_by: str = Query(default="departure_time", pattern="^(departure_time|price)$"),
     only_available: bool = True,
+    limit: int = Query(default=100, ge=1, le=100),
     session: Session = Depends(get_db_session),
 ) -> list[FlightRead]:
     service = FlightService(session)
@@ -47,6 +48,7 @@ def search_flights(
         seat_class=seat_class,
         sort_by=sort_by,
         only_available=only_available,
+        limit=limit,
     )
     return [_to_flight_read(flight) for flight in flights]
 

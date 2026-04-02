@@ -38,12 +38,15 @@ const state = {
   activeScreen: "dashboard",
   flights: [],
   selectedFlight: null,
+  flightQuickFilter: "",
   bookings: [],
   selectedBooking: null,
+  bookingQuickFilter: "",
   knowledgeTopics: [],
   knowledgeArticles: [],
   selectedArticle: null,
   lastMutation: null,
+  requestHistory: [],
 };
 
 const elements = {
@@ -57,6 +60,8 @@ const elements = {
   apiResetButton: document.querySelector("#api-reset-button"),
   feedbackBanner: document.querySelector("#feedback-banner"),
   requestMeta: document.querySelector("#request-meta"),
+  requestHistory: document.querySelector("#request-history"),
+  clearRequestHistory: document.querySelector("#clear-request-history"),
   apiStatusDot: document.querySelector("#api-status-dot"),
   apiStatusText: document.querySelector("#api-status-text"),
   healthSummary: document.querySelector("#health-summary"),
@@ -77,6 +82,7 @@ const elements = {
   resetFlightFilters: document.querySelector("#reset-flight-filters"),
   refreshFlights: document.querySelector("#refresh-flights"),
   flightsTableContainer: document.querySelector("#flights-table-container"),
+  flightQuickFilter: document.querySelector("#flight-quick-filter"),
   flightResultsSummary: document.querySelector("#flight-results-summary"),
   flightDetail: document.querySelector("#flight-detail"),
   bookingLimitInput: document.querySelector("#booking-limit-input"),
@@ -85,6 +91,7 @@ const elements = {
   refreshBookings: document.querySelector("#refresh-bookings"),
   resetBookingDetail: document.querySelector("#reset-booking-detail"),
   bookingsTableContainer: document.querySelector("#bookings-table-container"),
+  bookingQuickFilter: document.querySelector("#booking-quick-filter"),
   bookingResultsSummary: document.querySelector("#booking-results-summary"),
   bookingDetail: document.querySelector("#booking-detail"),
   passengerList: document.querySelector("#passenger-list"),
@@ -116,7 +123,7 @@ function initialize() {
   hydrateSelects();
   bindGlobalEvents();
   initializeRepeaters();
-  switchScreen("dashboard");
+  syncScreenFromHash();
   refreshDashboard();
   loadFlights();
   loadBookings();
@@ -125,7 +132,7 @@ function initialize() {
 
 function hydrateApiBase() {
   elements.apiBaseInput.value = apiClient.getBaseUrl();
-  renderRequestMeta(apiClient.getLastRequestMeta());
+  renderRequestMeta(apiClient.getLastRequestMeta(), { track: false });
 }
 
 function hydrateSelects() {
@@ -153,7 +160,7 @@ function bindGlobalEvents() {
     const baseUrl = elements.apiBaseInput.value.trim() || EMPTY_API_BASE;
     apiClient.setBaseUrl(baseUrl);
     showFeedback(`API base saved: ${baseUrl}`, "success");
-    renderRequestMeta(apiClient.getLastRequestMeta());
+    renderRequestMeta(apiClient.getLastRequestMeta(), { track: false });
     refreshDashboard();
   });
 
@@ -162,6 +169,11 @@ function bindGlobalEvents() {
     apiClient.setBaseUrl(EMPTY_API_BASE);
     showFeedback(`API base reset to ${EMPTY_API_BASE}`, "success");
     refreshDashboard();
+  });
+
+  elements.clearRequestHistory.addEventListener("click", () => {
+    state.requestHistory = [];
+    renderRequestHistory();
   });
 
   elements.refreshHealth.addEventListener("click", () => loadHealth());
@@ -176,8 +188,16 @@ function bindGlobalEvents() {
     loadFlights();
   });
   elements.refreshFlights.addEventListener("click", () => loadFlights({ useFilters: hasActiveFlightFilters() }));
+  elements.flightQuickFilter.addEventListener("input", (event) => {
+    state.flightQuickFilter = event.target.value.trim().toLowerCase();
+    renderFlightsTable();
+  });
 
   elements.refreshBookings.addEventListener("click", () => loadBookings());
+  elements.bookingQuickFilter.addEventListener("input", (event) => {
+    state.bookingQuickFilter = event.target.value.trim().toLowerCase();
+    renderBookingsTable();
+  });
   elements.lookupBooking.addEventListener("click", () => {
     const reference = elements.bookingReferenceInput.value.trim();
     if (!reference) {
@@ -211,6 +231,8 @@ function bindGlobalEvents() {
     renderKnowledgeDetail();
     setText(elements.knowledgeResultsSummary, "No topic selected.");
   });
+
+  window.addEventListener("hashchange", () => syncScreenFromHash());
 }
 
 function initializeRepeaters() {
@@ -227,7 +249,8 @@ function initializeRepeaters() {
   elements.extrasList.addEventListener("click", handleRepeaterRemove);
 }
 
-function switchScreen(screen) {
+function switchScreen(screen, options = {}) {
+  const { syncHash = true } = options;
   state.activeScreen = screen;
 
   elements.screens.forEach((section) => {
@@ -241,6 +264,15 @@ function switchScreen(screen) {
   setText(elements.pageTitle, SCREEN_TITLES[screen] ?? "Operations Console");
   elements.sidebar.classList.remove("is-open");
   elements.sidebarToggle.setAttribute("aria-expanded", "false");
+  if (syncHash) {
+    window.location.hash = screen;
+  }
+}
+
+function syncScreenFromHash() {
+  const hash = window.location.hash.replace("#", "");
+  const screen = SCREEN_TITLES[hash] ? hash : "dashboard";
+  switchScreen(screen, { syncHash: false });
 }
 
 function showFeedback(message, tone = "info") {
@@ -254,7 +286,8 @@ function clearFeedback() {
   elements.feedbackBanner.textContent = "";
 }
 
-function renderRequestMeta(meta) {
+function renderRequestMeta(meta, options = {}) {
+  const { track = true } = options;
   if (!meta) {
     elements.requestMeta.textContent = "No requests yet.";
     return;
@@ -266,6 +299,46 @@ function renderRequestMeta(meta) {
     meta.durationMs != null ? `${meta.durationMs} ms` : null,
   ].filter(Boolean);
   elements.requestMeta.innerHTML = parts.map((part) => `<div>${escapeHtml(String(part))}</div>`).join("");
+  if (track) {
+    pushRequestHistory(meta);
+  }
+}
+
+function pushRequestHistory(meta) {
+  if (!meta) {
+    return;
+  }
+
+  const record = {
+    ...meta,
+    timestamp: new Date().toISOString(),
+  };
+  state.requestHistory = [record, ...state.requestHistory].slice(0, 8);
+  renderRequestHistory();
+}
+
+function renderRequestHistory() {
+  if (!state.requestHistory.length) {
+    elements.requestHistory.className = "request-history empty-panel";
+    elements.requestHistory.innerHTML = "Request history will appear here.";
+    return;
+  }
+
+  elements.requestHistory.className = "request-history";
+  elements.requestHistory.innerHTML = state.requestHistory
+    .map(
+      (item) => `
+        <div class="history-item">
+          <div class="history-topline">
+            ${createStatusBadge(item.status ? "ok" : "error", item.status ? String(item.status) : "failed")}
+            <span>${escapeHtml(formatDateTime(item.timestamp))}</span>
+          </div>
+          <strong>${escapeHtml(item.method)} ${escapeHtml(item.path)}</strong>
+          <div class="history-meta">${escapeHtml(item.durationMs != null ? `${item.durationMs} ms` : "No duration")}</div>
+        </div>
+      `,
+    )
+    .join("");
 }
 
 function updateApiStatus(ok, message) {
@@ -394,13 +467,22 @@ async function loadFlights(options = {}) {
 }
 
 function renderFlightsTable() {
-  if (!state.flights.length) {
+  const visibleFlights = getVisibleFlights();
+  if (!visibleFlights.length) {
     elements.flightsTableContainer.innerHTML = createEmptyState("No flights found for the current query.");
-    setText(elements.flightResultsSummary, "0 flights");
+    setText(
+      elements.flightResultsSummary,
+      state.flights.length ? "0 matching loaded flights" : "0 flights",
+    );
     return;
   }
 
-  setText(elements.flightResultsSummary, `${state.flights.length} flights loaded`);
+  setText(
+    elements.flightResultsSummary,
+    visibleFlights.length === state.flights.length
+      ? `${state.flights.length} flights loaded`
+      : `${visibleFlights.length} of ${state.flights.length} loaded flights`,
+  );
   renderTable(elements.flightsTableContainer, {
     columns: [
       { label: "Flight", render: (flight) => escapeHtml(flight.flight_number) },
@@ -411,7 +493,7 @@ function renderFlightsTable() {
       { label: "Availability", render: (flight) => `${escapeHtml(String(flight.available_seats))} / ${escapeHtml(String(flight.capacity))}` },
       { label: "Status", render: (flight) => createStatusBadge(flight.status, flight.status) },
     ],
-    rows: state.flights,
+    rows: visibleFlights,
     getRowId: (flight) => String(flight.id),
     isSelected: (flight) => state.selectedFlight?.id === flight.id,
     onRowClick: (flight) => {
@@ -439,6 +521,11 @@ function renderFlightDetail() {
       </div>
       ${createStatusBadge(flight.status, flight.status)}
     </div>
+    <div class="inline-actions">
+      <button class="button button-secondary detail-action" type="button" data-detail-action="prefill-create-booking">
+        Use in create booking
+      </button>
+    </div>
     ${createMetaGrid([
       ["Flight ID", flight.id],
       ["Seat class", titleCase(flight.seat_class)],
@@ -460,6 +547,7 @@ function renderFlightDetail() {
       ${createJsonBlock(flight)}
     </div>
   `;
+  bindDetailActionButtons(elements.flightDetail);
 }
 
 async function loadBookings() {
@@ -477,13 +565,22 @@ async function loadBookings() {
 }
 
 function renderBookingsTable() {
-  if (!state.bookings.length) {
+  const visibleBookings = getVisibleBookings();
+  if (!visibleBookings.length) {
     elements.bookingsTableContainer.innerHTML = createEmptyState("No booking summaries loaded.");
-    setText(elements.bookingResultsSummary, "0 bookings");
+    setText(
+      elements.bookingResultsSummary,
+      state.bookings.length ? "0 matching loaded bookings" : "0 bookings",
+    );
     return;
   }
 
-  setText(elements.bookingResultsSummary, `${state.bookings.length} bookings loaded`);
+  setText(
+    elements.bookingResultsSummary,
+    visibleBookings.length === state.bookings.length
+      ? `${state.bookings.length} bookings loaded`
+      : `${visibleBookings.length} of ${state.bookings.length} loaded bookings`,
+  );
   renderTable(elements.bookingsTableContainer, {
     columns: [
       { label: "Reference", render: (booking) => escapeHtml(booking.booking_reference) },
@@ -494,7 +591,7 @@ function renderBookingsTable() {
       { label: "Created", render: (booking) => escapeHtml(formatDateTime(booking.created_at)) },
       { label: "Updated", render: (booking) => escapeHtml(formatDateTime(booking.updated_at)) },
     ],
-    rows: state.bookings,
+    rows: visibleBookings,
     getRowId: (booking) => booking.booking_reference,
     isSelected: (booking) => state.selectedBooking?.booking_reference === booking.booking_reference,
     onRowClick: (booking) => loadBookingDetail(booking.booking_reference),
@@ -581,6 +678,17 @@ function renderBookingDetail() {
       </div>
       ${createStatusBadge(booking.status, booking.status)}
     </div>
+    <div class="inline-actions">
+      <button class="button button-secondary detail-action" type="button" data-detail-action="prefill-add-extras">
+        Add extras
+      </button>
+      <button class="button button-secondary detail-action" type="button" data-detail-action="prefill-cancel-booking">
+        Cancel
+      </button>
+      <button class="button button-secondary detail-action" type="button" data-detail-action="prefill-reschedule-booking">
+        Reschedule
+      </button>
+    </div>
     ${createMetaGrid([
       ["Booking ID", booking.id],
       ["Flight ID", booking.flight_id],
@@ -611,6 +719,7 @@ function renderBookingDetail() {
       ${createJsonBlock(booking)}
     </div>
   `;
+  bindDetailActionButtons(elements.bookingDetail);
 }
 
 function handleCreateBooking(event) {
@@ -722,6 +831,51 @@ async function submitMutation({ loadingMessage, request, successMessage, onSucce
 function renderMutationResult(payload) {
   elements.mutationResult.className = "detail-panel";
   elements.mutationResult.innerHTML = createJsonBlock(payload);
+}
+
+function bindDetailActionButtons(container) {
+  container.querySelectorAll(".detail-action").forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = button.dataset.detailAction;
+      if (action) {
+        prefillAction(action);
+      }
+    });
+  });
+}
+
+function prefillAction(action) {
+  switchScreen("actions");
+
+  if (action === "prefill-create-booking" && state.selectedFlight) {
+    elements.createBookingForm.elements.flight_id.value = state.selectedFlight.id;
+    scrollToActionCard("action-create-booking");
+    showFeedback(`Prefilled create booking with flight ${state.selectedFlight.flight_number}.`, "success");
+    return;
+  }
+
+  if (!state.selectedBooking) {
+    return;
+  }
+
+  const reference = state.selectedBooking.booking_reference;
+  if (action === "prefill-add-extras") {
+    elements.addExtrasForm.elements.booking_reference.value = reference;
+    scrollToActionCard("action-add-extras");
+    showFeedback(`Prefilled add extras for ${reference}.`, "success");
+  } else if (action === "prefill-cancel-booking") {
+    elements.cancelBookingForm.elements.booking_reference.value = reference;
+    scrollToActionCard("action-cancel-booking");
+    showFeedback(`Prefilled cancel booking for ${reference}.`, "success");
+  } else if (action === "prefill-reschedule-booking") {
+    elements.rescheduleBookingForm.elements.booking_reference.value = reference;
+    scrollToActionCard("action-reschedule-booking");
+    showFeedback(`Prefilled reschedule booking for ${reference}.`, "success");
+  }
+}
+
+function scrollToActionCard(id) {
+  document.querySelector(`#${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function loadKnowledgeTopics() {
@@ -1013,6 +1167,48 @@ function summarizeBookingDataset(bookings) {
     return `${count} ${status.label.toLowerCase()}`;
   });
   return byStatus.join(", ");
+}
+
+function getVisibleFlights() {
+  if (!state.flightQuickFilter) {
+    return state.flights;
+  }
+
+  return state.flights.filter((flight) =>
+    [
+      flight.flight_number,
+      flight.origin_airport,
+      flight.destination_airport,
+      flight.seat_class,
+      flight.status,
+      flight.terminal,
+      flight.departure_gate,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(state.flightQuickFilter),
+  );
+}
+
+function getVisibleBookings() {
+  if (!state.bookingQuickFilter) {
+    return state.bookings;
+  }
+
+  return state.bookings.filter((booking) =>
+    [
+      booking.booking_reference,
+      booking.contact_name,
+      booking.contact_email,
+      booking.status,
+      booking.flight_id,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(state.bookingQuickFilter),
+  );
 }
 
 initialize();

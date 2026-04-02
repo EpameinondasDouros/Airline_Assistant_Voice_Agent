@@ -29,6 +29,7 @@ class FlightService:
         seat_class: SeatClass | None = None,
         sort_by: str = "departure_time",
         only_available: bool = True,
+        limit: int = 100,
     ) -> list[Flight]:
         statement: Select[tuple[Flight]] = select(Flight).where(Flight.status == FlightStatus.SCHEDULED)
 
@@ -52,4 +53,5 @@ class FlightService:
         else:
             statement = statement.order_by(Flight.departure_time, Flight.price)
 
+        statement = statement.limit(limit)
         return list(self.session.scalars(statement))

@@ -56,9 +56,15 @@
         </section>
 
         <section class="sidebar-panel">
-          <p class="sidebar-panel-label">Last Request</p>
-          <div id="request-meta" class="request-meta">
-            No requests yet.
+          <div class="card-header sidebar-panel-header">
+            <p class="sidebar-panel-label">Request Activity</p>
+            <button class="button button-secondary button-small" id="clear-request-history" type="button">
+              Clear
+            </button>
+          </div>
+          <div id="request-meta" class="request-meta">No requests yet.</div>
+          <div id="request-history" class="request-history empty-panel">
+            Request history will appear here.
           </div>
         </section>
       </aside>
@@ -227,6 +233,13 @@
                   <div class="card-header">
                     <h3>Flight results</h3>
                     <div class="table-tools">
+                      <input
+                        id="flight-quick-filter"
+                        class="table-filter-input"
+                        type="search"
+                        placeholder="Filter loaded flights"
+                        autocomplete="off"
+                      />
                       <span id="flight-results-summary" class="subtle-text">No data loaded.</span>
                       <button class="button button-secondary" id="refresh-flights" type="button">
                         Reload
@@ -297,7 +310,16 @@
                 <article class="card">
                   <div class="card-header">
                     <h3>Booking summaries</h3>
-                    <span id="booking-results-summary" class="subtle-text">No data loaded.</span>
+                    <div class="table-tools">
+                      <input
+                        id="booking-quick-filter"
+                        class="table-filter-input"
+                        type="search"
+                        placeholder="Filter loaded bookings"
+                        autocomplete="off"
+                      />
+                      <span id="booking-results-summary" class="subtle-text">No data loaded.</span>
+                    </div>
                   </div>
                   <div id="bookings-table-container" class="table-container"></div>
                 </article>
@@ -324,7 +346,7 @@
             </div>
 
             <div class="card-grid card-grid-actions">
-              <article class="card action-form-card">
+              <article class="card action-form-card" id="action-create-booking">
                 <div class="card-header">
                   <h3>Create booking</h3>
                   <button class="button button-secondary" id="add-passenger-button" type="button">
@@ -378,7 +400,7 @@
                 </form>
               </article>
 
-              <article class="card action-form-card">
+              <article class="card action-form-card" id="action-add-extras">
                 <div class="card-header">
                   <h3>Add extras</h3>
                   <button class="button button-secondary" id="add-extra-button" type="button">
@@ -401,7 +423,7 @@
                 </form>
               </article>
 
-              <article class="card action-form-card">
+              <article class="card action-form-card" id="action-cancel-booking">
                 <div class="card-header">
                   <h3>Cancel booking</h3>
                 </div>
@@ -434,7 +456,7 @@
                 </form>
               </article>
 
-              <article class="card action-form-card">
+              <article class="card action-form-card" id="action-reschedule-booking">
                 <div class="card-header">
                   <h3>Reschedule booking</h3>
                 </div>

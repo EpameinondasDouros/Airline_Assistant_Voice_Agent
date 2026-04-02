@@ -7,6 +7,7 @@ class AgentSettings(BaseSettings):
     elevenlabs_api_key: str = ""
     elevenlabs_agent_id: str = ""
     elevenlabs_requires_auth: bool = False
+    backend_public_url: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
