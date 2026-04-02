@@ -112,9 +112,27 @@ ROUTES = [
 ]
 
 CLASS_CONFIG = {
-    SeatClass.ECONOMY: {"capacity": 120, "price_multiplier": Decimal("1.00")},
-    SeatClass.PREMIUM_ECONOMY: {"capacity": 36, "price_multiplier": Decimal("1.55")},
-    SeatClass.BUSINESS: {"capacity": 18, "price_multiplier": Decimal("2.40")},
+    SeatClass.ECONOMY: {
+        "capacity": 120,
+        "price_multiplier": Decimal("1.00"),
+        "window_seat_capacity": 40,
+        "aisle_seat_capacity": 40,
+        "extra_legroom_capacity": 12,
+    },
+    SeatClass.PREMIUM_ECONOMY: {
+        "capacity": 36,
+        "price_multiplier": Decimal("1.55"),
+        "window_seat_capacity": 12,
+        "aisle_seat_capacity": 12,
+        "extra_legroom_capacity": 6,
+    },
+    SeatClass.BUSINESS: {
+        "capacity": 18,
+        "price_multiplier": Decimal("2.40"),
+        "window_seat_capacity": 8,
+        "aisle_seat_capacity": 8,
+        "extra_legroom_capacity": 4,
+    },
 }
 
 
@@ -156,6 +174,12 @@ def build_seed_flights() -> Iterable[Flight]:
                     price=(route["base_price"] * config["price_multiplier"]).quantize(Decimal("0.01")),
                     capacity=config["capacity"],
                     booked_seats=0,
+                    window_seat_capacity=config["window_seat_capacity"],
+                    window_seat_booked=0,
+                    aisle_seat_capacity=config["aisle_seat_capacity"],
+                    aisle_seat_booked=0,
+                    extra_legroom_capacity=config["extra_legroom_capacity"],
+                    extra_legroom_booked=0,
                     status=FlightStatus.SCHEDULED,
                 )
 

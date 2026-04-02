@@ -13,7 +13,7 @@ from app.models.booking import Booking, BookingStatus, RefundStatus
 from app.models.booking_event import BookingEvent, BookingEventType
 from app.models.booking_extra import BookingExtra
 from app.models.booking_passenger import BookingPassenger
-from app.models.flight import Flight, FlightStatus
+from app.models.flight import Flight, FlightStatus, SeatPreference
 from app.schemas.booking import (
     BookingAddExtrasRequest,
     BookingCancelRequest,
@@ -58,6 +58,7 @@ class BookingService:
         flight = self._get_flight_or_404(payload.flight_id)
         passenger_count = len(payload.passengers)
         self._ensure_flight_bookable(flight, passenger_count)
+        self._ensure_preferences_available(flight, payload.passengers)
 
         booking = Booking(
             booking_reference=self._generate_booking_reference(),
@@ -110,6 +111,7 @@ class BookingService:
 
         booking.total_price = total_price.quantize(Decimal("0.01"))
         flight.booked_seats += passenger_count
+        self._apply_preference_counts(flight, payload.passengers, delta=1)
         self._add_event(booking.id, BookingEventType.CREATED, "Booking created", "Booking created via API.")
 
         self.session.commit()
@@ -123,6 +125,7 @@ class BookingService:
         passenger_count = len(booking.passengers)
         if booking.status != BookingStatus.CANCELLED:
             booking.flight.booked_seats = max(0, booking.flight.booked_seats - passenger_count)
+            self._apply_preference_counts(booking.flight, booking.passengers, delta=-1)
 
         booking.status = BookingStatus.CANCELLED
         booking.cancelled_at = datetime.now(UTC)
@@ -177,8 +180,10 @@ class BookingService:
         new_flight = self._get_flight_or_404(payload.new_flight_id)
         passenger_count = len(current_booking.passengers)
         self._ensure_flight_bookable(new_flight, passenger_count)
+        self._ensure_preferences_available(new_flight, current_booking.passengers)
 
         current_booking.flight.booked_seats = max(0, current_booking.flight.booked_seats - passenger_count)
+        self._apply_preference_counts(current_booking.flight, current_booking.passengers, delta=-1)
         current_booking.status = BookingStatus.RESCHEDULED
         self._add_event(
             current_booking.id,
@@ -233,6 +238,7 @@ class BookingService:
 
         new_booking.total_price = new_total.quantize(Decimal("0.01"))
         new_flight.booked_seats += passenger_count
+        self._apply_preference_counts(new_flight, current_booking.passengers, delta=1)
         self._add_event(
             new_booking.id,
             BookingEventType.CREATED,
@@ -260,6 +266,50 @@ class BookingService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Flight is not available for booking.")
         if flight.booked_seats + passenger_count > flight.capacity:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Flight does not have enough available seats.")
+
+    def _ensure_preferences_available(self, flight: Flight, passengers: list[BookingPassenger] | list) -> None:
+        requested = {
+            SeatPreference.WINDOW: 0,
+            SeatPreference.AISLE: 0,
+            SeatPreference.EXTRA_LEGROOM: 0,
+        }
+        for passenger in passengers:
+            preference = self._normalize_preference(getattr(passenger, "seat_preference", None))
+            if preference is not None:
+                requested[preference] += 1
+
+        availability = {
+            SeatPreference.WINDOW: flight.window_seat_capacity - flight.window_seat_booked,
+            SeatPreference.AISLE: flight.aisle_seat_capacity - flight.aisle_seat_booked,
+            SeatPreference.EXTRA_LEGROOM: flight.extra_legroom_capacity - flight.extra_legroom_booked,
+        }
+
+        for preference, count in requested.items():
+            if count > availability[preference]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Flight does not have enough {preference.value} seats available.",
+                )
+
+    def _apply_preference_counts(self, flight: Flight, passengers: list[BookingPassenger] | list, *, delta: int) -> None:
+        for passenger in passengers:
+            preference = self._normalize_preference(getattr(passenger, "seat_preference", None))
+            if preference == SeatPreference.WINDOW:
+                flight.window_seat_booked = max(0, flight.window_seat_booked + delta)
+            elif preference == SeatPreference.AISLE:
+                flight.aisle_seat_booked = max(0, flight.aisle_seat_booked + delta)
+            elif preference == SeatPreference.EXTRA_LEGROOM:
+                flight.extra_legroom_booked = max(0, flight.extra_legroom_booked + delta)
+
+    def _normalize_preference(self, preference: object) -> SeatPreference | None:
+        if preference is None:
+            return None
+        if isinstance(preference, SeatPreference):
+            return preference
+        try:
+            return SeatPreference(str(preference))
+        except ValueError:
+            return None
 
     def _generate_booking_reference(self) -> str:
         alphabet = string.ascii_uppercase + string.digits

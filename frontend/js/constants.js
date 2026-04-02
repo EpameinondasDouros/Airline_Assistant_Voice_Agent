@@ -1,12 +1,21 @@
 export const EMPTY_API_BASE = "http://localhost:8000";
 
 export const SCREEN_TITLES = {
+  concierge: "Concierge",
   dashboard: "Dashboard",
   flights: "Flights",
   bookings: "Bookings",
   actions: "Booking Actions",
   knowledge: "Knowledge",
 };
+
+export const CHAT_SUGGESTIONS = [
+  "Find me the cheapest flight this week",
+  "Change my booking",
+  "Add a ski bag",
+  "What time does check-in open?",
+  "Request wheelchair assistance",
+];
 
 export const SEAT_CLASS_OPTIONS = [
   { value: "economy", label: "Economy" },

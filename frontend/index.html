@@ -15,6 +15,9 @@
         </div>
 
         <nav class="sidebar-nav" aria-label="Primary navigation">
+          <button class="nav-item" data-nav="concierge" type="button">
+            Concierge
+          </button>
           <button class="nav-item active" data-nav="dashboard" type="button">
             Dashboard
           </button>
@@ -95,6 +98,40 @@
         <div id="feedback-banner" class="feedback-banner hidden" role="status"></div>
 
         <main class="content">
+          <section class="screen" id="screen-concierge" data-screen="concierge">
+            <div class="concierge-screen">
+              <div class="concierge-hero">
+                <div class="concierge-badge">AI</div>
+                <h2>Good afternoon, Julian.</h2>
+                <p>
+                  I’m your AeroMellon Concierge. How may I elevate your journey today?
+                </p>
+              </div>
+
+              <div id="chat-thread" class="chat-thread" aria-live="polite"></div>
+
+              <div class="chat-composer-wrap">
+                <div id="chat-suggestions" class="chat-suggestions"></div>
+                <form id="chat-form" class="chat-composer">
+                  <div class="chat-composer-icon">...</div>
+                  <input
+                    id="chat-input"
+                    name="message"
+                    type="text"
+                    placeholder="Tell me where you want to go..."
+                    autocomplete="off"
+                  />
+                  <button class="chat-send" type="submit" aria-label="Send message">
+                    <span>Send</span>
+                  </button>
+                </form>
+                <p class="chat-footnote">
+                  AeroMellon AI Concierge • Powered by high-hospitality aviation
+                </p>
+              </div>
+            </div>
+          </section>
+
           <section class="screen is-visible" id="screen-dashboard" data-screen="dashboard">
             <div class="screen-intro">
               <h2>System overview</h2>

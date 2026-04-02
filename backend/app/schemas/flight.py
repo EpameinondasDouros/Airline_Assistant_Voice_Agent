@@ -26,6 +26,15 @@ class FlightRead(BaseModel):
     capacity: int
     booked_seats: int
     available_seats: int
+    window_seat_capacity: int
+    window_seat_booked: int
+    window_seat_available: int
+    aisle_seat_capacity: int
+    aisle_seat_booked: int
+    aisle_seat_available: int
+    extra_legroom_capacity: int
+    extra_legroom_booked: int
+    extra_legroom_available: int
     status: FlightStatus
 
     model_config = {"from_attributes": True}

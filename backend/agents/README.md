@@ -17,6 +17,7 @@ This package contains the backend-side ElevenLabs integration layer for the Tech
 - `tool_definitions.py`: central source of truth for the ElevenLabs webhook tool configurations
 - `sync_tools.py`: creates or updates the webhook tools in ElevenLabs using the Python SDK
 - `sync_agent.py`: updates the configured ElevenLabs agent with the local prompt and synced tool ids
+- `publish_agent.py`: deploys the current agent branch through the ElevenLabs SDK
 - `prompts/flight_booking_agent.md`: working prompt draft for the airline assistant
 
 ## Setup
@@ -54,6 +55,12 @@ To attach the synced tools and local prompt to the configured ElevenLabs agent:
 
 ```bash
 python -m agents.sync_agent
+```
+
+To publish the current configured branch of the agent:
+
+```bash
+python -m agents.publish_agent
 ```
 
 ## Next step

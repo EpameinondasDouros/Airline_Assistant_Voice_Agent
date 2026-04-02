@@ -67,6 +67,7 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
             description=(
                 "Use this tool when the caller wants the next available flight between two airports. "
                 "Ask for both origin and destination airport codes before calling. "
+                "If the caller asks for a seat class or a seat preference like window, aisle, or extra_legroom, include it. "
                 "It returns up to 3 available flights sorted by earliest departure."
             ),
             url=f"{api_base}/api/flights/search",
@@ -78,6 +79,14 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
                     ),
                     "destination": _llm_string(
                         "Destination airport code such as ATH, LHR, JFK, FCO, CDG, AMS, MAD, FRA, or DXB."
+                    ),
+                    "seat_class": _llm_string(
+                        "Optional cabin class filter.",
+                        enum=["economy", "premium_economy", "business"],
+                    ),
+                    "seat_preference": _llm_string(
+                        "Optional seat preference filter.",
+                        enum=["window", "aisle", "extra_legroom"],
                     ),
                     "sort_by": _constant_string("departure_time"),
                     "only_available": _constant_string("true"),
@@ -91,6 +100,7 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
             description=(
                 "Use this tool when the caller asks for the cheapest available tickets between two airports in the currently "
                 "available week of inventory. Ask for both origin and destination airport codes before calling. "
+                "If the caller asks for a seat class or a seat preference like window, aisle, or extra_legroom, include it. "
                 "It returns up to 3 available flights sorted by lowest price."
             ),
             url=f"{api_base}/api/flights/search",
@@ -99,11 +109,48 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
                 properties={
                     "origin": _llm_string("Departure airport code."),
                     "destination": _llm_string("Destination airport code."),
+                    "seat_class": _llm_string(
+                        "Optional cabin class filter.",
+                        enum=["economy", "premium_economy", "business"],
+                    ),
+                    "seat_preference": _llm_string(
+                        "Optional seat preference filter.",
+                        enum=["window", "aisle", "extra_legroom"],
+                    ),
                     "sort_by": _constant_string("price"),
                     "only_available": _constant_string("true"),
                     "limit": _constant_string("3"),
                 },
                 required=["origin", "destination"],
+            ),
+        ),
+        _tool(
+            name="find_flights_with_seat_preference",
+            description=(
+                "Use this tool when the caller explicitly wants flights that support a specific seat preference such as "
+                "window, aisle, or extra_legroom. Ask for origin, destination, and the requested seat preference before calling. "
+                "Include seat_class if the caller specifies economy, premium_economy, or business. "
+                "It returns up to 3 available flights sorted by earliest departure."
+            ),
+            url=f"{api_base}/api/flights/search",
+            method="GET",
+            query_params_schema=_query_schema(
+                properties={
+                    "origin": _llm_string("Departure airport code."),
+                    "destination": _llm_string("Destination airport code."),
+                    "seat_preference": _llm_string(
+                        "Requested seat preference.",
+                        enum=["window", "aisle", "extra_legroom"],
+                    ),
+                    "seat_class": _llm_string(
+                        "Optional cabin class filter.",
+                        enum=["economy", "premium_economy", "business"],
+                    ),
+                    "sort_by": _constant_string("departure_time"),
+                    "only_available": _constant_string("true"),
+                    "limit": _constant_string("3"),
+                },
+                required=["origin", "destination", "seat_preference"],
             ),
         ),
         _tool(

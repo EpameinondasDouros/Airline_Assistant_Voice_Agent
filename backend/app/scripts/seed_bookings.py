@@ -12,7 +12,7 @@ from app.models.booking import Booking, BookingStatus, RefundStatus
 from app.models.booking_event import BookingEvent, BookingEventType
 from app.models.booking_extra import BookingExtra, ExtraType
 from app.models.booking_passenger import BookingPassenger
-from app.models.flight import Flight, SeatClass
+from app.models.flight import Flight, SeatClass, SeatPreference
 
 
 @dataclass(frozen=True)
@@ -204,6 +204,15 @@ def build_total_price(seed: BookingSeed, flight: Flight) -> Decimal:
     return (passengers_total + extras_total).quantize(Decimal("0.01"))
 
 
+def apply_preference_booking(flight: Flight, seat_preference: str | None) -> None:
+    if seat_preference == SeatPreference.WINDOW.value:
+        flight.window_seat_booked += 1
+    elif seat_preference == SeatPreference.AISLE.value:
+        flight.aisle_seat_booked += 1
+    elif seat_preference == SeatPreference.EXTRA_LEGROOM.value:
+        flight.extra_legroom_booked += 1
+
+
 def build_booking_events(seed: BookingSeed, booking_id: int) -> list[BookingEvent]:
     events = [
         BookingEvent(
@@ -336,6 +345,8 @@ def main() -> None:
 
             if seed.status != BookingStatus.CANCELLED:
                 flight.booked_seats += passenger_count
+                for passenger in seed.passengers:
+                    apply_preference_booking(flight, passenger.seat_preference)
 
             existing_refs.add(seed.booking_reference)
             booking_ids_by_reference[seed.booking_reference] = booking.id

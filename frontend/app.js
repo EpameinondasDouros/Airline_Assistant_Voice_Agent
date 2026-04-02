@@ -1,5 +1,6 @@
 import {
   BOOKING_STATUS_OPTIONS,
+  CHAT_SUGGESTIONS,
   EMPTY_API_BASE,
   EXTRA_TYPE_OPTIONS,
   REFUND_STATUS_OPTIONS,
@@ -35,7 +36,7 @@ import {
 const apiClient = createApiClient();
 
 const state = {
-  activeScreen: "dashboard",
+  activeScreen: "concierge",
   flights: [],
   selectedFlight: null,
   flightQuickFilter: "",
@@ -47,6 +48,27 @@ const state = {
   selectedArticle: null,
   lastMutation: null,
   requestHistory: [],
+  chatMessages: [
+    {
+      id: "m1",
+      role: "assistant",
+      text: "Your upcoming flight to Reykjavik (KEF) is scheduled for this Friday. Would you like me to arrange a lounge pass or pre-order your preferred Nordic breakfast?",
+    },
+    {
+      id: "m2",
+      role: "user",
+      text: "Can I bring my pet on this flight? I'm traveling with a small French Bulldog.",
+    },
+    {
+      id: "m3",
+      role: "assistant",
+      text: "AeroMellon loves welcoming furry companions. For flights to Iceland, small pets under 8kg can travel in the cabin. Your French Bulldog qualifies.",
+      actions: [
+        { type: "prefill-pet-extra", label: "Add Pet to Booking", tone: "primary" },
+        { type: "open-pet-policy", label: "View Pet Policy", tone: "secondary" },
+      ],
+    },
+  ],
 };
 
 const elements = {
@@ -55,6 +77,10 @@ const elements = {
   navItems: document.querySelectorAll("[data-nav]"),
   screens: document.querySelectorAll(".screen"),
   pageTitle: document.querySelector("#page-title"),
+  chatThread: document.querySelector("#chat-thread"),
+  chatForm: document.querySelector("#chat-form"),
+  chatInput: document.querySelector("#chat-input"),
+  chatSuggestions: document.querySelector("#chat-suggestions"),
   apiBaseForm: document.querySelector("#api-config-form"),
   apiBaseInput: document.querySelector("#api-base-input"),
   apiResetButton: document.querySelector("#api-reset-button"),
@@ -123,6 +149,8 @@ function initialize() {
   hydrateSelects();
   bindGlobalEvents();
   initializeRepeaters();
+  renderChatSuggestions();
+  renderChatThread();
   syncScreenFromHash();
   refreshDashboard();
   loadFlights();
@@ -154,6 +182,10 @@ function bindGlobalEvents() {
     const isOpen = elements.sidebar.classList.toggle("is-open");
     elements.sidebarToggle.setAttribute("aria-expanded", String(isOpen));
   });
+
+  elements.chatForm.addEventListener("submit", handleChatSubmit);
+  elements.chatSuggestions.addEventListener("click", handleChatSuggestionClick);
+  elements.chatThread.addEventListener("click", handleChatActionClick);
 
   elements.apiBaseForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -271,7 +303,7 @@ function switchScreen(screen, options = {}) {
 
 function syncScreenFromHash() {
   const hash = window.location.hash.replace("#", "");
-  const screen = SCREEN_TITLES[hash] ? hash : "dashboard";
+  const screen = SCREEN_TITLES[hash] ? hash : "concierge";
   switchScreen(screen, { syncHash: false });
 }
 
@@ -831,6 +863,156 @@ async function submitMutation({ loadingMessage, request, successMessage, onSucce
 function renderMutationResult(payload) {
   elements.mutationResult.className = "detail-panel";
   elements.mutationResult.innerHTML = createJsonBlock(payload);
+}
+
+function renderChatSuggestions() {
+  elements.chatSuggestions.innerHTML = CHAT_SUGGESTIONS.map(
+    (suggestion) => `
+      <button class="chat-suggestion" type="button" data-suggestion="${escapeHtml(suggestion)}">
+        ${escapeHtml(suggestion)}
+      </button>
+    `,
+  ).join("");
+}
+
+function renderChatThread() {
+  elements.chatThread.innerHTML = state.chatMessages
+    .map((message) => {
+      const actions = message.actions?.length
+        ? `
+            <div class="chat-actions">
+              ${message.actions
+                .map(
+                  (action) => `
+                    <button
+                      class="chat-action-button ${action.tone === "primary" ? "primary" : "secondary"}"
+                      type="button"
+                      data-chat-action="${escapeHtml(action.type)}"
+                    >
+                      ${escapeHtml(action.label)}
+                    </button>
+                  `,
+                )
+                .join("")}
+            </div>
+          `
+        : "";
+
+      return `
+        <div class="chat-row ${message.role === "user" ? "user" : "assistant"}">
+          <div class="chat-avatar ${message.role === "user" ? "user" : "assistant"}">
+            ${message.role === "user" ? "JV" : "AI"}
+          </div>
+          <div class="chat-bubble ${message.role === "user" ? "user" : "assistant"}">
+            <p>${escapeHtml(message.text)}</p>
+            ${actions}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  elements.chatThread.scrollTop = elements.chatThread.scrollHeight;
+}
+
+function handleChatSubmit(event) {
+  event.preventDefault();
+  const value = elements.chatInput.value.trim();
+  if (!value) {
+    return;
+  }
+
+  appendChatMessage({
+    id: `m${Date.now()}`,
+    role: "user",
+    text: value,
+  });
+  elements.chatInput.value = "";
+
+  const response = buildChatResponse(value);
+  window.setTimeout(() => {
+    appendChatMessage(response);
+  }, 220);
+}
+
+function handleChatSuggestionClick(event) {
+  const button = event.target.closest("[data-suggestion]");
+  if (!button) {
+    return;
+  }
+
+  elements.chatInput.value = button.dataset.suggestion || "";
+  elements.chatInput.focus();
+}
+
+function handleChatActionClick(event) {
+  const button = event.target.closest("[data-chat-action]");
+  if (!button) {
+    return;
+  }
+
+  const action = button.dataset.chatAction;
+  if (action === "prefill-pet-extra") {
+    switchScreen("actions");
+    elements.addExtrasForm.elements.booking_reference.value =
+      state.selectedBooking?.booking_reference || "TMX4A92K";
+
+    const firstExtra = elements.extrasList.querySelector(".repeater-item");
+    if (firstExtra) {
+      firstExtra.querySelector('[data-name="extra_type"]').value = "pet";
+      firstExtra.querySelector('[data-name="description"]').value = "Cabin pet request";
+      firstExtra.querySelector('[data-name="price"]').value = "0";
+    }
+
+    scrollToActionCard("action-add-extras");
+    showFeedback("Prefilled add extras with a pet request.", "success");
+  } else if (action === "open-pet-policy") {
+    switchScreen("knowledge");
+    elements.knowledgeSearchForm.elements.q.value = "pets";
+    handleKnowledgeSearch(new Event("submit"));
+  }
+}
+
+function appendChatMessage(message) {
+  state.chatMessages = [...state.chatMessages, message];
+  renderChatThread();
+}
+
+function buildChatResponse(input) {
+  const text = input.toLowerCase();
+  if (text.includes("pet")) {
+    return {
+      id: `m${Date.now()}-assistant`,
+      role: "assistant",
+      text: "Small pets under 8kg can travel in the cabin on eligible routes. I can help add a pet request to your booking or pull up the pet policy for review.",
+      actions: [
+        { type: "prefill-pet-extra", label: "Add Pet to Booking", tone: "primary" },
+        { type: "open-pet-policy", label: "View Pet Policy", tone: "secondary" },
+      ],
+    };
+  }
+
+  if (text.includes("cheapest") || text.includes("flight")) {
+    return {
+      id: `m${Date.now()}-assistant`,
+      role: "assistant",
+      text: "I can help you compare routes and fares. For now, the fastest next step is to open the Flights browser and inspect the live schedule and seat-class pricing.",
+    };
+  }
+
+  if (text.includes("change") || text.includes("booking")) {
+    return {
+      id: `m${Date.now()}-assistant`,
+      role: "assistant",
+      text: "If you want to modify an itinerary, jump into Booking Actions. Reschedule, cancellation, and extras are already wired to the backend APIs there.",
+    };
+  }
+
+  return {
+    id: `m${Date.now()}-assistant`,
+    role: "assistant",
+    text: "I can help with bookings, baggage, pets, policy questions, and operational details. Try asking about pets, check-in windows, booking changes, or the cheapest flight this week.",
+  };
 }
 
 function bindDetailActionButtons(container) {

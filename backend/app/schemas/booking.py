@@ -8,7 +8,7 @@ from pydantic import BaseModel, EmailStr, Field
 from app.models.booking import BookingStatus, RefundStatus
 from app.models.booking_event import BookingEventType
 from app.models.booking_extra import ExtraType
-from app.models.flight import SeatClass
+from app.models.flight import SeatClass, SeatPreference
 
 
 class PassengerCreate(BaseModel):
@@ -16,7 +16,7 @@ class PassengerCreate(BaseModel):
     last_name: str
     date_of_birth: date | None = None
     passenger_type: str = "adult"
-    seat_preference: str | None = None
+    seat_preference: SeatPreference | None = None
     seat_number: str | None = None
     assistance_type: str | None = None
     assistance_notes: str | None = None
@@ -59,7 +59,7 @@ class BookingPassengerRead(BaseModel):
     last_name: str
     date_of_birth: date | None
     passenger_type: str
-    seat_preference: str | None
+    seat_preference: SeatPreference | None
     seat_number: str | None
     assistance_type: str | None
     assistance_notes: str | None
@@ -141,4 +141,3 @@ class FlightSelectionRead(BaseModel):
     arrival_time: datetime
     seat_class: SeatClass
     price: Decimal
-

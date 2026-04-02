@@ -21,6 +21,12 @@ class SeatClass(str, enum.Enum):
     BUSINESS = "business"
 
 
+class SeatPreference(str, enum.Enum):
+    WINDOW = "window"
+    AISLE = "aisle"
+    EXTRA_LEGROOM = "extra_legroom"
+
+
 class Flight(Base):
     __tablename__ = "flights"
     __table_args__ = (
@@ -48,6 +54,12 @@ class Flight(Base):
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     capacity: Mapped[int] = mapped_column(Integer, nullable=False)
     booked_seats: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    window_seat_capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    window_seat_booked: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    aisle_seat_capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    aisle_seat_booked: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    extra_legroom_capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    extra_legroom_booked: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     status: Mapped[FlightStatus] = mapped_column(
         Enum(FlightStatus),
         nullable=False,

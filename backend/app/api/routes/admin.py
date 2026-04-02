@@ -12,7 +12,15 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 def _to_flight_read(flight) -> FlightRead:
-    return FlightRead.model_validate({**flight.__dict__, "available_seats": flight.capacity - flight.booked_seats})
+    return FlightRead.model_validate(
+        {
+            **flight.__dict__,
+            "available_seats": flight.capacity - flight.booked_seats,
+            "window_seat_available": flight.window_seat_capacity - flight.window_seat_booked,
+            "aisle_seat_available": flight.aisle_seat_capacity - flight.aisle_seat_booked,
+            "extra_legroom_available": flight.extra_legroom_capacity - flight.extra_legroom_booked,
+        }
+    )
 
 
 @router.get("/flights", response_model=list[FlightRead])
