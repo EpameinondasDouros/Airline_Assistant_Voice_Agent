@@ -1,0 +1,77 @@
+<svg width="820" height="1080" viewBox="0 0 820 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="room" x1="410" y1="72" x2="410" y2="1040" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1F1A15"/>
+      <stop offset="0.28" stop-color="#33261D"/>
+      <stop offset="0.55" stop-color="#3C2E24"/>
+      <stop offset="0.88" stop-color="#AE8048"/>
+      <stop offset="1" stop-color="#D7B277"/>
+    </linearGradient>
+    <linearGradient id="floor" x1="183" y1="930" x2="649" y2="742" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#CC9A58"/>
+      <stop offset="1" stop-color="#7A5A34"/>
+    </linearGradient>
+    <filter id="blur" x="0" y="0" width="820" height="1080" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+  </defs>
+
+  <rect width="820" height="1080" rx="60" fill="url(#room)"/>
+  <rect x="74" y="0" width="12" height="1080" fill="#4B3727" fill-opacity="0.68"/>
+  <rect x="124" y="0" width="8" height="1080" fill="#715236" fill-opacity="0.64"/>
+  <rect x="160" y="0" width="10" height="1080" fill="#4B3727" fill-opacity="0.68"/>
+  <rect x="206" y="0" width="8" height="1080" fill="#715236" fill-opacity="0.64"/>
+  <rect x="254" y="0" width="12" height="1080" fill="#4B3727" fill-opacity="0.68"/>
+  <rect x="304" y="0" width="8" height="1080" fill="#715236" fill-opacity="0.64"/>
+  <rect x="350" y="0" width="12" height="1080" fill="#4B3727" fill-opacity="0.68"/>
+  <rect x="402" y="0" width="8" height="1080" fill="#715236" fill-opacity="0.64"/>
+  <rect x="448" y="0" width="12" height="1080" fill="#4B3727" fill-opacity="0.68"/>
+  <rect x="498" y="0" width="8" height="1080" fill="#715236" fill-opacity="0.64"/>
+  <rect x="544" y="0" width="12" height="1080" fill="#4B3727" fill-opacity="0.68"/>
+  <rect x="594" y="0" width="8" height="1080" fill="#715236" fill-opacity="0.64"/>
+  <rect x="640" y="0" width="12" height="1080" fill="#4B3727" fill-opacity="0.68"/>
+  <rect x="690" y="0" width="8" height="1080" fill="#715236" fill-opacity="0.64"/>
+
+  <ellipse cx="410" cy="70" rx="284" ry="74" fill="#000000" fill-opacity="0.28"/>
+  <g filter="url(#blur)" opacity="0.62">
+    <ellipse cx="426" cy="364" rx="150" ry="64" fill="#FFD791"/>
+  </g>
+
+  <path d="M0 871L820 712V1080H0V871Z" fill="url(#floor)"/>
+  <path d="M0 849L820 690V749L0 908V849Z" fill="#E1B77B" fill-opacity="0.42"/>
+
+  <text x="410" y="378" fill="#FFF1C9" font-family="Avenir Next, Segoe UI, sans-serif" font-size="52" font-weight="700" letter-spacing="2">
+    Premium Lounge
+  </text>
+
+  <g opacity="0.95">
+    <rect x="111" y="655" width="235" height="180" rx="90" fill="#26211E"/>
+    <rect x="297" y="678" width="252" height="154" rx="77" fill="#322B27"/>
+    <rect x="485" y="650" width="220" height="178" rx="89" fill="#403631"/>
+    <rect x="110" y="810" width="294" height="120" rx="60" fill="#171412" fill-opacity="0.22"/>
+    <rect x="468" y="796" width="248" height="108" rx="54" fill="#171412" fill-opacity="0.22"/>
+  </g>
+
+  <g opacity="0.88">
+    <rect x="160" y="706" width="72" height="72" rx="28" fill="#74665A"/>
+    <rect x="256" y="724" width="84" height="78" rx="28" fill="#87786B"/>
+    <rect x="360" y="728" width="88" height="82" rx="30" fill="#726559"/>
+    <rect x="516" y="704" width="82" height="76" rx="28" fill="#8A796A"/>
+    <rect x="610" y="714" width="72" height="74" rx="26" fill="#726257"/>
+  </g>
+
+  <g fill="#FFF0BE">
+    <circle cx="208" cy="128" r="6"/>
+    <circle cx="308" cy="120" r="7"/>
+    <circle cx="398" cy="110" r="5.5"/>
+    <circle cx="480" cy="122" r="6.5"/>
+    <circle cx="586" cy="132" r="6"/>
+  </g>
+
+  <g fill="#FFDA86">
+    <rect x="248" y="168" width="5" height="172" rx="2.5"/>
+    <rect x="342" y="156" width="5" height="184" rx="2.5"/>
+    <rect x="432" y="150" width="5" height="190" rx="2.5"/>
+    <rect x="522" y="160" width="5" height="180" rx="2.5"/>
+  </g>
+</svg>

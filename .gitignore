@@ -1,0 +1,52 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Databases and local data
+*.db
+*.sqlite
+*.sqlite3
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# Frontend / Node
+node_modules/
+dist/
+build/
+.parcel-cache/
+.next/
+.nuxt/
+.svelte-kit/
+coverage/
+vite.svg
+*.tsbuildinfo
+
+# IDEs
+.vscode/
+.idea/
