@@ -161,7 +161,7 @@ BOOKING_SEEDS = (
         contact_name="Omar Al Mansoori",
         contact_email="omar.almansoori@example.com",
         contact_phone="+971-50-777-2201",
-        status=BookingStatus.RESCHEDULED,
+        status=BookingStatus.CONFIRMED,
         rescheduled_from_reference="TMR6K2S1",
         passengers=(
             PassengerSeed("Omar", "Al Mansoori", date(1988, 6, 17), seat_preference="extra_legroom", seat_number="8A"),
