@@ -22,7 +22,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from agents.config import get_agent_settings  # noqa: E402
-from agents.elevenlabs_chat import ElevenLabsChatAgent  # noqa: E402
+from agents.chat.elevenlabs import ElevenLabsChatAgent  # noqa: E402
 from testing.scenarios import SCENARIOS, Scenario, get_scenario  # noqa: E402
 
 

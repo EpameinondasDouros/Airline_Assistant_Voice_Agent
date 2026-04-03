@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
 from .models import CritiqueVerdict
 
 try:
@@ -13,6 +15,9 @@ except ImportError as exc:  # pragma: no cover - import guard for local setup
     _IMPORT_ERROR = exc
 else:
     _IMPORT_ERROR = None
+
+
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 
 PROMPT = """You are a strict QA critic for an airline voice agent.
@@ -77,4 +82,3 @@ def evaluate_artifact(payload: dict[str, Any], *, model: str = "openai:gpt-4o-mi
 def load_artifact(path: str | Path) -> dict[str, Any]:
     artifact_path = Path(path)
     return json.loads(artifact_path.read_text(encoding="utf-8"))
-

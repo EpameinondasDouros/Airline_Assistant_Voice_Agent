@@ -8,8 +8,12 @@ from pydantic import BaseModel
 from agents.config import get_agent_settings
 from agents.chat.session import ChatSession
 
-from refinement_loop.engine import RefinementLoop
-from refinement_loop.prompt_store import PromptStore
+try:
+    from refinement_loop.engine import RefinementLoop
+    from refinement_loop.prompt_store import PromptStore
+except ModuleNotFoundError:
+    RefinementLoop = None
+    PromptStore = None
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -94,6 +98,12 @@ class RefinementRunOut(BaseModel):
 
 @router.post("/refine", response_model=RefinementRunOut)
 def refine_prompt() -> RefinementRunOut:
+    if RefinementLoop is None or PromptStore is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Prompt refinement is not available in this deployment.",
+        )
+
     store = PromptStore(_prompt_path())
     engine = RefinementLoop(store)
     result = engine.run_once()

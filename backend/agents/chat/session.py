@@ -6,7 +6,7 @@ from pathlib import Path
 from threading import Condition, Lock
 
 from agents.config import AgentSettings
-from agents.elevenlabs_chat import ElevenLabsChatAgent
+from agents.chat.elevenlabs import ElevenLabsChatAgent
 
 from .messages import ChatMessage
 
