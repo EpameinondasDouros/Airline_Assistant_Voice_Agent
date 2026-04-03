@@ -7,6 +7,7 @@ from decimal import Decimal
 from sqlalchemy import select
 
 from app.db.flight_schema import ensure_flight_seat_columns
+from app.db.seat_inventory import sync_seat_inventory
 from app.db.session import SessionLocal, engine
 from app.models.flight import Flight, FlightStatus, SeatClass
 
@@ -125,14 +126,14 @@ CLASS_CONFIG = {
         "price_multiplier": Decimal("1.55"),
         "window_seat_capacity": 12,
         "aisle_seat_capacity": 12,
-        "extra_legroom_capacity": 30,
+        "extra_legroom_capacity": 0,
     },
     SeatClass.BUSINESS: {
         "capacity": 16,
         "price_multiplier": Decimal("2.40"),
         "window_seat_capacity": 8,
         "aisle_seat_capacity": 8,
-        "extra_legroom_capacity": 16,
+        "extra_legroom_capacity": 0,
     },
 }
 
@@ -211,6 +212,8 @@ def main() -> None:
         print(f"Seed complete. Inserted {created} flights.")
     finally:
         session.close()
+    created_seats = sync_seat_inventory(engine)
+    print(f"Seat inventory sync complete. Inserted {created_seats} seats.")
 
 
 if __name__ == "__main__":

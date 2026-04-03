@@ -45,7 +45,22 @@ def send_message(payload: ChatMessageIn) -> ChatMessageOut:
     try:
         response_message = session.send_and_wait(payload.message)
     except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        error_text = str(exc)
+        transient_markers = (
+            "not been started",
+            "websocket session to become ready",
+            "Timed out waiting for the agent response",
+            "Agent response was not captured",
+        )
+        if any(marker in error_text for marker in transient_markers):
+            try:
+                session.restart()
+                response_message = session.send_and_wait(payload.message)
+                return ChatMessageOut(accepted=True, response=response_message.content)
+            except RuntimeError as retry_exc:
+                raise HTTPException(status_code=503, detail=str(retry_exc)) from retry_exc
+
+        raise HTTPException(status_code=409, detail=error_text) from exc
 
     return ChatMessageOut(accepted=True, response=response_message.content)
 

@@ -6,6 +6,7 @@ from app.models.booking_extra import BookingExtra, ExtraType
 from app.models.booking_passenger import BookingPassenger
 from app.models.flight import Flight, FlightStatus, SeatClass, SeatPreference
 from app.models.knowledge_article import KnowledgeArticle
+from app.models.seat_inventory import SeatInventory
 
 __all__ = [
     "Booking",
@@ -21,4 +22,5 @@ __all__ = [
     "RefundStatus",
     "SeatClass",
     "SeatPreference",
+    "SeatInventory",
 ]

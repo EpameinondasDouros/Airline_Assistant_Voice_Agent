@@ -64,6 +64,12 @@ To publish the current configured branch of the agent:
 python -m agents.publish_agent
 ```
 
+To run the full sync/publish flow in one step:
+
+```bash
+bash agents/update_agent.sh
+```
+
 To run the new chat session CLI:
 
 ```bash

@@ -92,14 +92,14 @@ const SEAT_LAYOUTS = {
     columns: ["A", "B", "C", "D", "E", "F"],
     windowColumns: new Set(["A", "F"]),
     aisleColumns: new Set(["C", "D"]),
-    extraLegroomRows: new Set([21, 22, 23, 24, 25]),
+    extraLegroomRows: new Set(),
   },
   business: {
     rows: Array.from({ length: 4 }, (_, index) => index + 25),
     columns: ["A", "B", "C", "D"],
     windowColumns: new Set(["A", "D"]),
     aisleColumns: new Set(["B", "C"]),
-    extraLegroomRows: new Set([25, 26, 27, 28]),
+    extraLegroomRows: new Set(),
   },
 };
 
@@ -138,14 +138,14 @@ function getSeatAvailabilityForPlane(row, column, seatClass) {
     return {
       exists: ["A", "B", "C", "D"].includes(column),
       active: className === "business",
-      extraLegroom: true,
+      extraLegroom: false,
     };
   }
   if (row >= 5 && row <= 9) {
     return {
       exists: FULL_PLANE_COLUMNS.includes(column),
       active: className === "premium_economy",
-      extraLegroom: true,
+      extraLegroom: false,
     };
   }
   if (row >= 10 && row <= 26) {

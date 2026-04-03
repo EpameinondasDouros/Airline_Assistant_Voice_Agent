@@ -14,37 +14,14 @@ from app.models.booking_event import BookingEvent, BookingEventType
 from app.models.booking_extra import BookingExtra
 from app.models.booking_passenger import BookingPassenger
 from app.models.flight import Flight, FlightStatus, SeatPreference
+from app.models.seat_inventory import SeatInventory
+from app.db.seat_inventory import seat_inventory_counts
 from app.schemas.booking import (
     BookingAddExtrasRequest,
     BookingCancelRequest,
     BookingCreate,
     BookingRescheduleRequest,
 )
-
-
-SEAT_LAYOUTS: dict[str, dict[str, object]] = {
-    "economy": {
-        "rows": range(10, 30),
-        "columns": ("A", "B", "C", "D", "E", "F"),
-        "window_columns": {"A", "F"},
-        "aisle_columns": {"C", "D"},
-        "extra_legroom_rows": {27, 28, 29},
-    },
-    "premium_economy": {
-        "rows": range(5, 10),
-        "columns": ("A", "B", "C", "D", "E", "F"),
-        "window_columns": {"A", "F"},
-        "aisle_columns": {"C", "D"},
-        "extra_legroom_rows": {5, 6, 7, 8, 9},
-    },
-    "business": {
-        "rows": range(1, 5),
-        "columns": ("A", "B", "C", "D"),
-        "window_columns": {"A", "D"},
-        "aisle_columns": {"B", "C"},
-        "extra_legroom_rows": {1, 2, 3, 4},
-    },
-}
 
 
 class BookingService:
@@ -107,6 +84,9 @@ class BookingService:
                 if passenger.seat_number
                 else self._assign_default_seat_number(flight, passenger.seat_preference)
             )
+            inventory = self._seat_inventory_for_seat(flight.id, assigned_seat_number)
+            if inventory is not None:
+                inventory.is_booked = True
             self.session.add(
                 BookingPassenger(
                     booking_id=booking.id,
@@ -157,6 +137,11 @@ class BookingService:
         if booking.status != BookingStatus.CANCELLED:
             booking.flight.booked_seats = max(0, booking.flight.booked_seats - passenger_count)
             self._apply_preference_counts(booking.flight, booking.passengers, delta=-1)
+            for passenger in booking.passengers:
+                if passenger.seat_number:
+                    inventory = self._seat_inventory_for_seat(booking.flight.id, passenger.seat_number.upper().strip())
+                    if inventory is not None:
+                        inventory.is_booked = False
 
         booking.status = BookingStatus.CANCELLED
         booking.cancelled_at = datetime.now(UTC)
@@ -240,6 +225,10 @@ class BookingService:
         new_total = new_flight.price * passenger_count
 
         for passenger in current_booking.passengers:
+            if passenger.seat_number:
+                current_inventory = self._seat_inventory_for_seat(current_booking.flight.id, passenger.seat_number.upper().strip())
+                if current_inventory is not None:
+                    current_inventory.is_booked = False
             self.session.add(
                 BookingPassenger(
                     booking_id=new_booking.id,
@@ -309,10 +298,11 @@ class BookingService:
             if preference is not None:
                 requested[preference] += 1
 
+        inventory_counts = seat_inventory_counts(self.session, flight.id)
         availability = {
-            SeatPreference.WINDOW: flight.window_seat_capacity - flight.window_seat_booked,
-            SeatPreference.AISLE: flight.aisle_seat_capacity - flight.aisle_seat_booked,
-            SeatPreference.EXTRA_LEGROOM: flight.extra_legroom_capacity - flight.extra_legroom_booked,
+            SeatPreference.WINDOW: inventory_counts["window_seat_available"],
+            SeatPreference.AISLE: inventory_counts["aisle_seat_available"],
+            SeatPreference.EXTRA_LEGROOM: inventory_counts["extra_legroom_available"],
         }
 
         for preference, count in requested.items():
@@ -323,52 +313,43 @@ class BookingService:
                 )
 
     def _ensure_seat_numbers_valid(self, flight: Flight, passengers: list[BookingPassenger] | list) -> None:
-        layout = self._seat_layout_for_class(flight.seat_class.value)
         for passenger in passengers:
             seat_number = getattr(passenger, "seat_number", None)
             if seat_number is None:
                 continue
             normalized_seat_number = seat_number.upper().strip()
-            if not self._seat_number_allowed_for_class(layout, normalized_seat_number):
+            inventory = self._seat_inventory_for_seat(flight.id, normalized_seat_number)
+            if inventory is None or inventory.cabin != flight.seat_class.value:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Seat {seat_number} is not valid for {flight.seat_class.value.replace('_', ' ')}.",
                 )
             preference = self._normalize_preference(getattr(passenger, "seat_preference", None))
-            seat_type = self._seat_type_for_number(layout, normalized_seat_number)
-            if preference is not None and seat_type is not None and preference != seat_type:
+            if preference is not None and inventory.seat_type != preference.value:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Seat {seat_number} does not match the selected {preference.value.replace('_', ' ')} preference.",
                 )
-            if self._seat_number_taken(flight.id, normalized_seat_number):
+            if inventory.is_booked or self._seat_number_taken(flight.id, normalized_seat_number):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Seat {seat_number} is already booked for this flight.",
                 )
 
     def _assign_default_seat_number(self, flight: Flight, preference: object | None) -> str:
-        seat_class = flight.seat_class.value
-        layout = self._seat_layout_for_class(seat_class)
         preference_value = self._normalize_preference(preference)
-        if preference_value == SeatPreference.WINDOW:
-            return self._next_seat_from_pool(flight.id, layout, columns=layout["window_columns"], rows=layout["rows"])
-        if preference_value == SeatPreference.AISLE:
-            return self._next_seat_from_pool(flight.id, layout, columns=layout["aisle_columns"], rows=layout["rows"])
-        if preference_value == SeatPreference.EXTRA_LEGROOM:
-            return self._next_seat_from_pool(
-                flight.id,
-                layout,
-                columns=layout["columns"],
-                rows=layout["extra_legroom_rows"],
-            )
-        return self._next_seat_from_pool(flight.id, layout, columns=layout["columns"], rows=layout["rows"])
-
-    def _seat_layout_for_class(self, seat_class: str) -> dict[str, object]:
-        layout = SEAT_LAYOUTS.get(seat_class)
-        if layout is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported seat class: {seat_class}.")
-        return layout
+        statement = select(SeatInventory).where(
+            SeatInventory.flight_id == flight.id,
+            SeatInventory.cabin == flight.seat_class.value,
+            SeatInventory.is_booked.is_(False),
+        )
+        if preference_value is not None:
+            statement = statement.where(SeatInventory.seat_type == preference_value.value)
+        statement = statement.order_by(SeatInventory.id.asc())
+        inventory = self.session.scalar(statement)
+        if inventory is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No seats available for the selected preference.")
+        return inventory.seat_number
 
     def _seat_number_taken(self, flight_id: int, seat_number: str) -> bool:
         statement = select(BookingPassenger.id).join(Booking).where(
@@ -377,51 +358,12 @@ class BookingService:
         )
         return self.session.scalar(statement) is not None
 
-    def _next_seat_from_pool(
-        self,
-        flight_id: int,
-        layout: dict[str, object],
-        *,
-        columns: tuple[str, ...] | set[str],
-        rows: range | set[int],
-    ) -> str:
-        # Deterministic seat choice for the seeded demo data; prevents over-allocating a class/pattern.
-        ordered_rows = sorted(rows)
-        ordered_columns = [column for column in layout["columns"] if column in columns]
-        for row in ordered_rows:
-            for column in ordered_columns:
-                candidate = f"{row}{column}"
-                if not self._seat_number_taken(flight_id, candidate):
-                    return candidate
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No seats available for the selected preference.")
-
-    def _seat_number_allowed_for_class(self, layout: dict[str, object], seat_number: str) -> bool:
-        seat_number = seat_number.upper().strip()
-        row_part = "".join(ch for ch in seat_number if ch.isdigit())
-        col_part = "".join(ch for ch in seat_number if ch.isalpha())
-        if not row_part or not col_part:
-            return False
-        row = int(row_part)
-        column = col_part[-1]
-        return row in layout["rows"] and column in layout["columns"]
-
-    def _seat_type_for_number(self, layout: dict[str, object], seat_number: str) -> SeatPreference | None:
-        seat_number = seat_number.upper().strip()
-        row_part = "".join(ch for ch in seat_number if ch.isdigit())
-        col_part = "".join(ch for ch in seat_number if ch.isalpha())
-        if not row_part or not col_part:
-            return None
-        row = int(row_part)
-        column = col_part[-1]
-        if row not in layout["rows"] or column not in layout["columns"]:
-            return None
-        if column in layout["window_columns"]:
-            return SeatPreference.WINDOW
-        if column in layout["aisle_columns"]:
-            return SeatPreference.AISLE
-        if row in layout["extra_legroom_rows"]:
-            return SeatPreference.EXTRA_LEGROOM
-        return None
+    def _seat_inventory_for_seat(self, flight_id: int, seat_number: str) -> SeatInventory | None:
+        statement = select(SeatInventory).where(
+            SeatInventory.flight_id == flight_id,
+            SeatInventory.seat_number == seat_number,
+        )
+        return self.session.scalar(statement)
 
     def _apply_preference_counts(self, flight: Flight, passengers: list[BookingPassenger] | list, *, delta: int) -> None:
         for passenger in passengers:

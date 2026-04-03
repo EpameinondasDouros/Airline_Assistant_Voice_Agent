@@ -35,7 +35,7 @@ def main() -> None:
                     AgentDeploymentRequestItem(
                         branch_id=branch_id,
                         deployment_strategy=AgentDeploymentPercentageStrategy(
-                            traffic_percentage=1.0,
+                            traffic_percentage=100.0,
                             type="percentage",
                         ),
                     )

@@ -59,6 +59,11 @@ class ChatSession:
         )
         self._agent.start()
 
+    def restart(self) -> None:
+        with self._send_lock:
+            self.stop()
+            self.start()
+
     def send(self, message: str) -> None:
         if self._agent is None:
             raise RuntimeError("Chat session has not been started.")

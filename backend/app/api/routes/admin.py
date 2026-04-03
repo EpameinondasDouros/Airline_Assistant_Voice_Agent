@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
+from app.db.seat_inventory import seat_inventory_counts
 from app.schemas.booking import BookingSummaryRead
 from app.schemas.flight import FlightRead
 from app.services.booking_service import BookingService
@@ -11,14 +12,12 @@ from app.services.flight_service import FlightService
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-def _to_flight_read(flight) -> FlightRead:
+def _to_flight_read(session: Session, flight) -> FlightRead:
+    counts = seat_inventory_counts(session, flight.id)
     return FlightRead.model_validate(
         {
             **flight.__dict__,
-            "available_seats": flight.capacity - flight.booked_seats,
-            "window_seat_available": flight.window_seat_capacity - flight.window_seat_booked,
-            "aisle_seat_available": flight.aisle_seat_capacity - flight.aisle_seat_booked,
-            "extra_legroom_available": flight.extra_legroom_capacity - flight.extra_legroom_booked,
+            **counts,
         }
     )
 
@@ -29,7 +28,7 @@ def admin_list_flights(
     session: Session = Depends(get_db_session),
 ) -> list[FlightRead]:
     service = FlightService(session)
-    return [_to_flight_read(flight) for flight in service.list_flights(limit=limit)]
+    return [_to_flight_read(session, flight) for flight in service.list_flights(limit=limit)]
 
 
 @router.get("/bookings", response_model=list[BookingSummaryRead])

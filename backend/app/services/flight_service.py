@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, exists, select
 from sqlalchemy.orm import Session
 
 from app.models.flight import Flight, FlightStatus, SeatClass, SeatPreference
+from app.models.seat_inventory import SeatInventory
 
 
 class FlightService:
@@ -50,13 +51,24 @@ class FlightService:
         if seat_class:
             statement = statement.where(Flight.seat_class == seat_class)
         if only_available:
-            statement = statement.where(Flight.booked_seats < Flight.capacity)
-        if seat_preference == SeatPreference.WINDOW:
-            statement = statement.where(Flight.window_seat_booked < Flight.window_seat_capacity)
-        elif seat_preference == SeatPreference.AISLE:
-            statement = statement.where(Flight.aisle_seat_booked < Flight.aisle_seat_capacity)
-        elif seat_preference == SeatPreference.EXTRA_LEGROOM:
-            statement = statement.where(Flight.extra_legroom_booked < Flight.extra_legroom_capacity)
+            statement = statement.where(
+                exists(
+                    select(1).where(
+                        SeatInventory.flight_id == Flight.id,
+                        SeatInventory.is_booked.is_(False),
+                    )
+                )
+            )
+        if seat_preference is not None:
+            statement = statement.where(
+                exists(
+                    select(1).where(
+                        SeatInventory.flight_id == Flight.id,
+                        SeatInventory.is_booked.is_(False),
+                        SeatInventory.seat_type == seat_preference.value,
+                    )
+                )
+            )
 
         if sort_by == "price":
             statement = statement.order_by(Flight.price, Flight.departure_time)

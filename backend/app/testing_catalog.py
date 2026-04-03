@@ -108,7 +108,7 @@ SCENARIOS: list[Scenario] = [
             "Passenger name is Dana Kyriakou. Contact email is dana.kyriakou@example.com. Date of birth is 1996-07-22.",
             "No extras.",
         ],
-        expected_tools=["find_flights_with_seat_preference", "create_flight_booking"],
+        expected_tools=["find_flights_with_seat_preference", "get_seat_inventory", "create_flight_booking"],
         expected_outcome="booking_created",
         expected_keywords=["booking", "reference"],
         mutation_expected=True,
@@ -162,4 +162,3 @@ def get_scenario(slug: str) -> Scenario:
             return scenario
     available = ", ".join(sorted(s.slug for s in SCENARIOS))
     raise ValueError(f"Unknown scenario '{slug}'. Available scenarios: {available}")
-

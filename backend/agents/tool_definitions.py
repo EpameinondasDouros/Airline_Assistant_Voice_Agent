@@ -318,4 +318,16 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
                 "flight_id": _llm_integer("The flight id returned by a flight search result.")
             },
         ),
+        _tool(
+            name="get_seat_inventory",
+            description=(
+                "Use this tool when the caller needs the actual seat map or seat-by-seat availability for a specific flight. "
+                "It returns every seat in the flight's inventory with its cabin, seat type, and booking state."
+            ),
+            url=f"{api_base}/api/flights/{{flight_id}}/seats",
+            method="GET",
+            path_params_schema={
+                "flight_id": _llm_integer("The flight id returned by a flight search result.")
+            },
+        ),
     ]
