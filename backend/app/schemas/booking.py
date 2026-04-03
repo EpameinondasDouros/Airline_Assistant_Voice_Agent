@@ -14,7 +14,7 @@ from app.models.flight import SeatClass, SeatPreference
 class PassengerCreate(BaseModel):
     first_name: str
     last_name: str
-    date_of_birth: date | None = None
+    date_of_birth: date
     passenger_type: str = "adult"
     seat_preference: SeatPreference | None = None
     seat_number: str | None = None
@@ -57,7 +57,7 @@ class BookingPassengerRead(BaseModel):
     id: int
     first_name: str
     last_name: str
-    date_of_birth: date | None
+    date_of_birth: date
     passenger_type: str
     seat_preference: SeatPreference | None
     seat_number: str | None

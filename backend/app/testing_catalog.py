@@ -60,11 +60,10 @@ SCENARIOS: list[Scenario] = [
         expected_tools=["get_airline_policy"],
         expected_outcome="policy_answer",
         expected_keywords=["pets", "carrier", "cabin"],
-        follow_up_question_expected=True,
-    ),
+        follow_up_question_expected=False,    ),
     Scenario(
         slug="reschedule_existing_booking",
-        description="Reschedule an existing booking to a different flight.",
+description="Reschedule an existing booking to a different flight.",
         messages=[
             "Reschedule booking reference TMQ7L5N8 to the next available business-class flight from FCO to ATH.",
             "Yes, move me to option 1.",

@@ -186,7 +186,7 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
                                     "description": "Whether mobility assistance is required."
                                 },
                             },
-                            "required": ["first_name", "last_name"],
+                            "required": ["first_name", "last_name", "date_of_birth"],
                         },
                     },
                     "extras": {

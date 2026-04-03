@@ -6,6 +6,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from .debug_output import print_agent_json
 from .models import CritiqueVerdict
 
 try:
@@ -76,6 +77,7 @@ def _artifact_prompt(payload: dict[str, Any]) -> str:
 def evaluate_artifact(payload: dict[str, Any], *, model: str = "openai:gpt-4o-mini") -> CritiqueVerdict:
     agent = _build_agent(model)
     result = agent.run_sync(_artifact_prompt(payload))
+    print_agent_json("critic", result.output)
     return result.output
 
 

@@ -23,6 +23,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from agents.config import get_agent_settings  # noqa: E402
 from agents.chat.elevenlabs import ElevenLabsChatAgent  # noqa: E402
+from testing.refinement.customer_agent import CustomerSimulator  # noqa: E402
 from testing.scenarios import SCENARIOS, Scenario, get_scenario  # noqa: E402
 
 
@@ -404,6 +405,42 @@ def _contains_keywords(final_agent_message: str | None, keywords: list[str]) -> 
     return all(keyword.lower() in haystack for keyword in keywords)
 
 
+def _latest_agent_message(entries: list[TranscriptEntry]) -> str | None:
+    for entry in reversed(entries):
+        if entry.role == "agent":
+            return entry.text
+    return None
+
+
+def _wait_for_agent_turn(
+    recorder: TranscriptRecorder,
+    settings,
+    conversation_id: str | None,
+    *,
+    baseline_agent_count: int,
+    timeout_seconds: float,
+    settle_timeout_seconds: float,
+    initial_message: str,
+) -> bool:
+    got_agent_response = recorder.wait_for_agent_activity(timeout_seconds)
+    if not got_agent_response and recorder.agent_count() > baseline_agent_count:
+        got_agent_response = True
+    if got_agent_response:
+        return True
+
+    remote_conversation = _poll_for_remote_turn_completion(
+        settings,
+        conversation_id,
+        baseline_agent_count=baseline_agent_count,
+        timeout_seconds=max(settle_timeout_seconds, 8.0),
+    )
+    if recorder.agent_count() > baseline_agent_count:
+        return True
+    if not _has_meaningful_remote_agent_turn(remote_conversation, baseline_agent_count):
+        return False
+    return True
+
+
 def _build_assertions(
     scenario: Scenario,
     transcript: list[dict],
@@ -482,6 +519,7 @@ def run_scenario(
 ) -> Path:
     settings = get_agent_settings()
     recorder = TranscriptRecorder(live_output=live_output)
+    customer = CustomerSimulator()
     agent = ElevenLabsChatAgent(
         settings,
         on_agent_response=recorder.on_agent_response,
@@ -491,39 +529,89 @@ def run_scenario(
     agent.start()
     started_at = datetime.now(UTC).isoformat()
     conversation_id = agent.conversation_id
+    pending_messages = list(scenario.messages)
 
     try:
         if recorder.wait_for_agent_activity(message_delay_seconds):
             recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
 
-        for message in scenario.messages:
-            baseline_agent_count = recorder.agent_count()
-            recorder.add_user_message(message)
-            agent.send(message)
-            got_agent_response = recorder.wait_for_agent_activity(response_timeout_seconds)
-            if not got_agent_response and recorder.agent_count() > baseline_agent_count:
-                got_agent_response = True
-            if not got_agent_response:
-                remote_conversation = _poll_for_remote_turn_completion(
+        if not pending_messages:
+            raise RuntimeError(f"Scenario '{scenario.slug}' has no scripted user messages.")
+
+        first_message = pending_messages.pop(0)
+        baseline_agent_count = recorder.agent_count()
+        recorder.add_user_message(first_message)
+        agent.send(first_message)
+        if not _wait_for_agent_turn(
+            recorder,
+            settings,
+            conversation_id,
+            baseline_agent_count=baseline_agent_count,
+            timeout_seconds=response_timeout_seconds,
+            settle_timeout_seconds=settle_timeout_seconds,
+            initial_message=first_message,
+        ):
+            raise RuntimeError(f"Timed out waiting for the agent response after user message: {first_message}")
+
+        while True:
+            recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
+            latest_agent_message = _latest_agent_message(recorder.entries)
+            decision = customer.decide(
+                scenario={
+                    "slug": scenario.slug,
+                    "description": scenario.description,
+                    "messages": scenario.messages,
+                    "expected_tools": scenario.expected_tools,
+                    "expected_outcome": scenario.expected_outcome,
+                    "expected_keywords": scenario.expected_keywords,
+                    "mutation_expected": scenario.mutation_expected,
+                    "booking_reference_expected": scenario.booking_reference_expected,
+                    "follow_up_question_expected": scenario.follow_up_question_expected,
+                },
+                transcript=[asdict(entry) for entry in recorder.entries],
+                pending_messages=pending_messages,
+                latest_assistant_message=latest_agent_message,
+            )
+
+            if decision.action == "done":
+                break
+            if decision.action == "wait":
+                if not recorder.wait_for_agent_activity(response_timeout_seconds):
+                    remote_conversation = _poll_for_remote_turn_completion(
+                        settings,
+                        conversation_id,
+                        baseline_agent_count=recorder.agent_count(),
+                        timeout_seconds=max(settle_timeout_seconds, 8.0),
+                    )
+                    if not _has_meaningful_remote_agent_turn(remote_conversation, recorder.agent_count()):
+                        break
+                continue
+
+            if decision.action == "reply":
+                if decision.message is None:
+                    raise RuntimeError("Customer simulator requested a reply without a message.")
+                if pending_messages and decision.message == pending_messages[0]:
+                    next_message = pending_messages.pop(0)
+                else:
+                    next_message = decision.message
+                    if next_message in pending_messages:
+                        pending_messages.remove(next_message)
+                baseline_agent_count = recorder.agent_count()
+                recorder.add_user_message(next_message)
+                agent.send(next_message)
+                if not _wait_for_agent_turn(
+                    recorder,
                     settings,
                     conversation_id,
                     baseline_agent_count=baseline_agent_count,
-                    timeout_seconds=max(settle_timeout_seconds, 8.0),
-                )
-                if recorder.agent_count() > baseline_agent_count:
-                    got_agent_response = True
-                elif not _has_meaningful_remote_agent_turn(remote_conversation, baseline_agent_count):
-                    raise RuntimeError(
-                        f"Timed out waiting for the agent response after user message: {message}"
-                    )
-                else:
-                    got_agent_response = True
+                    timeout_seconds=response_timeout_seconds,
+                    settle_timeout_seconds=settle_timeout_seconds,
+                    initial_message=next_message,
+                ):
+                    raise RuntimeError(f"Timed out waiting for the agent response after user message: {next_message}")
+                continue
 
-            recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
-            time.sleep(message_delay_seconds)
-
-        if recorder.has_agent_entries():
-            recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
+            raise RuntimeError(f"Unsupported customer simulator action: {decision.action}")
     finally:
         conversation_id = agent.conversation_id or conversation_id
         agent.stop()

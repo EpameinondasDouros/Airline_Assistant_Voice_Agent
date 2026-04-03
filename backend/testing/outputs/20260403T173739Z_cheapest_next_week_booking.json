@@ -1,0 +1,589 @@
+{
+  "scenario": {
+    "slug": "cheapest_next_week_booking",
+    "description": "Find and book the cheapest available ticket within the following week.",
+    "messages": [
+      "Find the cheapest available flights from FCO to ATH within the following week in premium economy.",
+      "Book option 1.",
+      "Passenger name is Nico Conti. Contact email is nico.conti@example.com. Date of birth is 1989-09-14.",
+      "No extras."
+    ],
+    "expected_tools": [
+      "find_cheapest_flights_next_week",
+      "create_flight_booking"
+    ],
+    "expected_outcome": "booking_created",
+    "expected_keywords": [
+      "booking",
+      "reference"
+    ],
+    "mutation_expected": true,
+    "booking_reference_expected": true,
+    "follow_up_question_expected": false
+  },
+  "run": {
+    "started_at": "2026-04-03T17:36:49.352008+00:00",
+    "finished_at": "2026-04-03T17:37:36.137265+00:00",
+    "agent_id": "agent_5701kn80jnmfesbbmwer1sraq5yx",
+    "branch_id": "agtbrch_1401kn80jpkxecwaee0f6bmv5qne",
+    "conversation_id": "conv_8201kna6ph17e9na0sv2hn0vf91n",
+    "git_commit_hash": "0e531fe417e0a43fe8873944e9482ef4687409cd",
+    "prompt_metadata": {
+      "prompt_path": "/Users/epameinondasdouros/Personal/TechMellon/Task-1/Airline_Assistant_Voice_Agent/backend/agents/prompts/flight_booking_agent.md",
+      "prompt_length_chars": 5415,
+      "prompt_updated_at": "2026-04-03T16:50:28.704972+00:00"
+    }
+  },
+  "transcript": [
+    {
+      "role": "agent",
+      "text": "Hello! How can I help you today?",
+      "timestamp": "2026-04-03T17:36:49.470726+00:00"
+    },
+    {
+      "role": "user",
+      "text": "Find the cheapest available flights from FCO to ATH within the following week in premium economy.",
+      "timestamp": "2026-04-03T17:36:51.513786+00:00"
+    },
+    {
+      "role": "agent",
+      "text": "I found up to 3 options.\n- Option 1: TM206 | FCO -> ATH | 2026-04-06T15:20:00 | premium_economy | 139.50 | Window and aisle seats available; no extra-legroom in premium economy\n- Option 2: TM206 | FCO -> ATH | 2026-04-07T15:20:00 | premium_economy | 139.50 | Window and aisle seats available; no extra-legroom in premium economy\n- Option 3: TM206 | FCO -> ATH | 2026-04-08T15:20:00 | premium_economy | 139.50 | Window and aisle seats available; no extra-legroom in premium economy\nWhich option would you like me to use?",
+      "timestamp": "2026-04-03T17:36:58.018162+00:00"
+    },
+    {
+      "role": "user",
+      "text": "Book option 1.",
+      "timestamp": "2026-04-03T17:37:04.505541+00:00"
+    },
+    {
+      "role": "agent",
+      "text": "I can do that. Please share the contact name, contact email, and passenger first and last names.",
+      "timestamp": "2026-04-03T17:37:15.645890+00:00"
+    },
+    {
+      "role": "user",
+      "text": "Passenger name is Nico Conti. Contact email is nico.conti@example.com. Date of birth is 1989-09-14.",
+      "timestamp": "2026-04-03T17:37:20.690255+00:00"
+    },
+    {
+      "role": "agent",
+      "text": "Booking confirmed.\nReference: TMQ11R4KE0\nFlight: TM206 | FCO -> ATH\nDeparture: 2026-04-06T15:20:00\nClass: premium_economy\nPassengers: 1\nSeat preference: Requested; assignment subject to availability\nExtras: None\nWould you like to add checked bags or choose a specific seat?",
+      "timestamp": "2026-04-03T17:37:32.660851+00:00"
+    }
+  ],
+  "final_agent_message": "Booking confirmed.\nReference: TMQ11R4KE0\nFlight: TM206 | FCO -> ATH\nDeparture: 2026-04-06T15:20:00\nClass: premium_economy\nPassengers: 1\nSeat preference: Requested; assignment subject to availability\nExtras: None\nWould you like to add checked bags or choose a specific seat?",
+  "booking_reference_detected": "TMQ11R4KE0",
+  "tool_trace": [
+    {
+      "kind": "tool_call",
+      "turn_index": 3,
+      "role": "agent",
+      "tool_name": "find_cheapest_flights_next_week",
+      "request_id": "call_pmSSTKRx5jiwgshAJKf9kzQ4",
+      "params": {
+        "origin": "FCO",
+        "destination": "ATH",
+        "seat_class": "premium_economy"
+      },
+      "tool_has_been_called": true,
+      "type": "webhook"
+    },
+    {
+      "kind": "tool_result",
+      "turn_index": 4,
+      "role": "agent",
+      "tool_name": "find_cheapest_flights_next_week",
+      "request_id": "call_pmSSTKRx5jiwgshAJKf9kzQ4",
+      "result": [
+        {
+          "id": 11,
+          "flight_number": "TM206",
+          "origin_airport": "FCO",
+          "destination_airport": "ATH",
+          "departure_time": "2026-04-06T15:20:00",
+          "arrival_time": "2026-04-06T17:20:00",
+          "terminal": "T1",
+          "departure_gate": "A10",
+          "check_in_open_at": "2026-04-06T12:20:00",
+          "check_in_close_at": "2026-04-06T14:35:00",
+          "boarding_starts_at": "2026-04-06T14:30:00",
+          "boarding_closes_at": "2026-04-06T15:00:00",
+          "seat_class": "premium_economy",
+          "price": "139.50",
+          "capacity": 36,
+          "booked_seats": 0,
+          "available_seats": 30,
+          "window_seat_capacity": 10,
+          "window_seat_booked": 0,
+          "window_seat_available": 10,
+          "aisle_seat_capacity": 10,
+          "aisle_seat_booked": 0,
+          "aisle_seat_available": 10,
+          "extra_legroom_capacity": 0,
+          "extra_legroom_booked": 0,
+          "extra_legroom_available": 0,
+          "status": "scheduled"
+        },
+        {
+          "id": 47,
+          "flight_number": "TM206",
+          "origin_airport": "FCO",
+          "destination_airport": "ATH",
+          "departure_time": "2026-04-07T15:20:00",
+          "arrival_time": "2026-04-07T17:20:00",
+          "terminal": "T2",
+          "departure_gate": "B11",
+          "check_in_open_at": "2026-04-07T12:20:00",
+          "check_in_close_at": "2026-04-07T14:35:00",
+          "boarding_starts_at": "2026-04-07T14:30:00",
+          "boarding_closes_at": "2026-04-07T15:00:00",
+          "seat_class": "premium_economy",
+          "price": "139.50",
+          "capacity": 36,
+          "booked_seats": 0,
+          "available_seats": 30,
+          "window_seat_capacity": 10,
+          "window_seat_booked": 0,
+          "window_seat_available": 10,
+          "aisle_seat_capacity": 10,
+          "aisle_seat_booked": 0,
+          "aisle_seat_available": 10,
+          "extra_legroom_capacity": 0,
+          "extra_legroom_booked": 0,
+          "extra_legroom_available": 0,
+          "status": "scheduled"
+        },
+        {
+          "id": 83,
+          "flight_number": "TM206",
+          "origin_airport": "FCO",
+          "destination_airport": "ATH",
+          "departure_time": "2026-04-08T15:20:00",
+          "arrival_time": "2026-04-08T17:20:00",
+          "terminal": "T3",
+          "departure_gate": "C12",
+          "check_in_open_at": "2026-04-08T12:20:00",
+          "check_in_close_at": "2026-04-08T14:35:00",
+          "boarding_starts_at": "2026-04-08T14:30:00",
+          "boarding_closes_at": "2026-04-08T15:00:00",
+          "seat_class": "premium_economy",
+          "price": "139.50",
+          "capacity": 36,
+          "booked_seats": 0,
+          "available_seats": 30,
+          "window_seat_capacity": 10,
+          "window_seat_booked": 0,
+          "window_seat_available": 10,
+          "aisle_seat_capacity": 10,
+          "aisle_seat_booked": 0,
+          "aisle_seat_available": 10,
+          "extra_legroom_capacity": 0,
+          "extra_legroom_booked": 0,
+          "extra_legroom_available": 0,
+          "status": "scheduled"
+        }
+      ],
+      "is_error": false,
+      "error_type": "",
+      "tool_latency_secs": 0.3245526629998494,
+      "tool_has_been_called": true
+    },
+    {
+      "kind": "tool_call",
+      "turn_index": 9,
+      "role": "agent",
+      "tool_name": "create_flight_booking",
+      "request_id": "create_flight_booking_db8f45c42797432083ef13139cd5bdc0",
+      "params": {
+        "flight_id": 11,
+        "passengers": [
+          {
+            "first_name": "Nico",
+            "last_name": "Conti",
+            "date_of_birth": "1989-09-14"
+          }
+        ],
+        "contact_email": "nico.conti@example.com",
+        "contact_name": "Nico Conti"
+      },
+      "tool_has_been_called": true,
+      "type": "webhook"
+    },
+    {
+      "kind": "tool_result",
+      "turn_index": 10,
+      "role": "agent",
+      "tool_name": "create_flight_booking",
+      "request_id": "create_flight_booking_db8f45c42797432083ef13139cd5bdc0",
+      "result": {
+        "id": 9,
+        "booking_reference": "TMQ11R4KE0",
+        "flight_id": 11,
+        "rescheduled_from_booking_id": null,
+        "contact_name": "Nico Conti",
+        "contact_email": "nico.conti@example.com",
+        "contact_phone": null,
+        "total_price": "139.50",
+        "status": "confirmed",
+        "cancelled_at": null,
+        "cancellation_reason": null,
+        "refund_status": "not_requested",
+        "refund_amount": null,
+        "created_at": "2026-04-03T17:37:31",
+        "updated_at": "2026-04-03T17:37:31",
+        "passengers": [
+          {
+            "id": 12,
+            "first_name": "Nico",
+            "last_name": "Conti",
+            "date_of_birth": "1989-09-14",
+            "passenger_type": "adult",
+            "seat_preference": null,
+            "seat_number": "5A",
+            "assistance_type": null,
+            "assistance_notes": null,
+            "mobility_assistance_required": false
+          }
+        ],
+        "extras": [],
+        "events": [
+          {
+            "id": 21,
+            "event_type": "created",
+            "event_time": "2026-04-03T17:37:31",
+            "summary": "Booking created",
+            "details": "Booking created via API."
+          }
+        ]
+      },
+      "is_error": false,
+      "error_type": "",
+      "tool_latency_secs": 0.4047196530000292,
+      "tool_has_been_called": true
+    }
+  ],
+  "turn_metrics": [
+    {
+      "turn_index": 1,
+      "role": "agent",
+      "message": "Hello! How can I help you today?",
+      "has_tool_activity": false,
+      "tool_call_count": 0,
+      "tool_result_count": 0,
+      "interrupted": false,
+      "time_in_call_secs": 0
+    },
+    {
+      "turn_index": 2,
+      "role": "user",
+      "message": "Find the cheapest available flights from FCO to ATH within the following week in premium economy.",
+      "has_tool_activity": false,
+      "tool_call_count": 0,
+      "tool_result_count": 0,
+      "interrupted": false,
+      "time_in_call_secs": 2
+    },
+    {
+      "turn_index": 3,
+      "role": "agent",
+      "message": null,
+      "has_tool_activity": true,
+      "tool_call_count": 1,
+      "tool_result_count": 0,
+      "interrupted": false,
+      "time_in_call_secs": 5
+    },
+    {
+      "turn_index": 4,
+      "role": "agent",
+      "message": null,
+      "has_tool_activity": true,
+      "tool_call_count": 0,
+      "tool_result_count": 1,
+      "interrupted": false,
+      "time_in_call_secs": 5
+    },
+    {
+      "turn_index": 5,
+      "role": "agent",
+      "message": "I found up to 3 options.\n- Option 1: TM206 | FCO -> ATH | 2026-04-06T15:20:00 | premium_economy | 139.50 | Window and aisle seats available; no extra-legroom in premium economy\n- Option 2: TM206 | FCO -> ATH | 2026-04-07T15:20:00 | premium_economy | 139.50 | Window and aisle seats available; no extra-legroom in premium economy\n- Option 3: TM206 | FCO -> ATH | 2026-04-08T15:20:00 | premium_economy | 139.50 | Window and aisle seats available; no extra-legroom in premium economy\nWhich option would you like me to use?",
+      "has_tool_activity": false,
+      "tool_call_count": 0,
+      "tool_result_count": 0,
+      "interrupted": false,
+      "time_in_call_secs": 5
+    },
+    {
+      "turn_index": 6,
+      "role": "user",
+      "message": "Book option 1.",
+      "has_tool_activity": false,
+      "tool_call_count": 0,
+      "tool_result_count": 0,
+      "interrupted": false,
+      "time_in_call_secs": 15
+    },
+    {
+      "turn_index": 7,
+      "role": "agent",
+      "message": "I can do that. Please share the contact name, contact email, and passenger first and last names.",
+      "has_tool_activity": false,
+      "tool_call_count": 0,
+      "tool_result_count": 0,
+      "interrupted": false,
+      "time_in_call_secs": 15
+    },
+    {
+      "turn_index": 8,
+      "role": "user",
+      "message": "Passenger name is Nico Conti. Contact email is nico.conti@example.com. Date of birth is 1989-09-14.",
+      "has_tool_activity": false,
+      "tool_call_count": 0,
+      "tool_result_count": 0,
+      "interrupted": false,
+      "time_in_call_secs": 31
+    },
+    {
+      "turn_index": 9,
+      "role": "agent",
+      "message": null,
+      "has_tool_activity": true,
+      "tool_call_count": 1,
+      "tool_result_count": 0,
+      "interrupted": false,
+      "time_in_call_secs": 41
+    },
+    {
+      "turn_index": 10,
+      "role": "agent",
+      "message": null,
+      "has_tool_activity": true,
+      "tool_call_count": 0,
+      "tool_result_count": 1,
+      "interrupted": false,
+      "time_in_call_secs": 41
+    },
+    {
+      "turn_index": 11,
+      "role": "agent",
+      "message": "Booking confirmed.\nReference: TMQ11R4KE0\nFlight: TM206 | FCO -> ATH\nDeparture: 2026-04-06T15:20:00\nClass: premium_economy\nPassengers: 1\nSeat preference: Requested; assignment subject to availability\nExtras: None\nWould you like to add checked bags or choose a specific seat?",
+      "has_tool_activity": false,
+      "tool_call_count": 0,
+      "tool_result_count": 0,
+      "interrupted": false,
+      "time_in_call_secs": 41
+    }
+  ],
+  "stats": {
+    "user_turn_count": 3,
+    "agent_turn_count": 4,
+    "tool_call_count": 2,
+    "tool_result_count": 2,
+    "interruption_count": 0,
+    "total_duration_secs": 48
+  },
+  "assertions": {
+    "used_expected_tools": true,
+    "called_tools": [
+      "find_cheapest_flights_next_week",
+      "create_flight_booking"
+    ],
+    "tool_call_count": 2,
+    "agent_replied_after_user_message": true,
+    "final_agent_message_present": true,
+    "final_message_contains_expected_keywords": true,
+    "booking_reference_detected": true,
+    "follow_up_question_detected": true
+  },
+  "backend_verification": {
+    "booking_reference": "TMQ11R4KE0",
+    "verified": true,
+    "status": "confirmed",
+    "flight_id": 11,
+    "seat_preferences": [
+      null
+    ],
+    "extras_count": 0,
+    "url": "https://airlineassistantvoiceagent.up.railway.app/api/bookings/TMQ11R4KE0"
+  },
+  "elevenlabs_conversation": {
+    "agent_id": "agent_5701kn80jnmfesbbmwer1sraq5yx",
+    "agent_name": "Airline_Agent_V1",
+    "conversation_id": "conv_8201kna6ph17e9na0sv2hn0vf91n",
+    "status": "done",
+    "branch_id": "agtbrch_1401kn80jpkxecwaee0f6bmv5qne",
+    "version_id": "agtvrsn_8901kna6m75jfxdt15adqw92hxe5",
+    "environment": "production",
+    "metadata": {
+      "call_duration_secs": 48,
+      "cost": 257,
+      "termination_reason": "Client disconnected: 1000",
+      "main_language": "en",
+      "text_only": true,
+      "conversation_initiation_source": "python_sdk"
+    },
+    "analysis": {
+      "call_successful": "success",
+      "call_summary_title": "Flight Booking Confirmation",
+      "transcript_summary": "The user requested to find the cheapest premium economy flights from FCO to ATH within the next week. The agent identified three identical flight options on consecutive days (April 6th, 7th, and 8th, 2026) for \u20ac139.50 each. The user selected the first option. After providing passenger details (Nico Conti, born 1989-09-14, email nico.conti@example.com), the agent successfully booked the flight, providing booking reference TMQ11R4KE0. The agent then offered additional services like checked bags or seat selection."
+    },
+    "transcript": [
+      {
+        "role": "agent",
+        "message": "Hello! How can I help you today?",
+        "original_message": null,
+        "time_in_call_secs": 0,
+        "interrupted": false,
+        "tool_calls": [],
+        "tool_results": []
+      },
+      {
+        "role": "user",
+        "message": "Find the cheapest available flights from FCO to ATH within the following week in premium economy.",
+        "original_message": null,
+        "time_in_call_secs": 2,
+        "interrupted": false,
+        "tool_calls": [],
+        "tool_results": []
+      },
+      {
+        "role": "agent",
+        "message": null,
+        "original_message": null,
+        "time_in_call_secs": 5,
+        "interrupted": false,
+        "tool_calls": [
+          {
+            "tool_name": "find_cheapest_flights_next_week",
+            "params_as_json": "{\"origin\":\"FCO\",\"destination\":\"ATH\",\"seat_class\":\"premium_economy\"}",
+            "type": "webhook",
+            "request_id": "call_pmSSTKRx5jiwgshAJKf9kzQ4",
+            "tool_has_been_called": true,
+            "tool_details": {
+              "type": "webhook",
+              "method": "GET",
+              "url": "https://airlineassistantvoiceagent.up.railway.app/api/flights/search",
+              "path_params": {},
+              "query_params": {
+                "origin": "\"FCO\"",
+                "destination": "\"ATH\"",
+                "seat_class": "\"premium_economy\"",
+                "sort_by": "\"price\"",
+                "only_available": "\"true\"",
+                "limit": "\"3\""
+              }
+            }
+          }
+        ],
+        "tool_results": []
+      },
+      {
+        "role": "agent",
+        "message": null,
+        "original_message": null,
+        "time_in_call_secs": 5,
+        "interrupted": false,
+        "tool_calls": [],
+        "tool_results": [
+          {
+            "tool_name": "find_cheapest_flights_next_week",
+            "request_id": "call_pmSSTKRx5jiwgshAJKf9kzQ4",
+            "tool_has_been_called": true,
+            "is_error": false,
+            "tool_latency_secs": 0.3245526629998494,
+            "error_type": "",
+            "result_value": "[{\"id\":11,\"flight_number\":\"TM206\",\"origin_airport\":\"FCO\",\"destination_airport\":\"ATH\",\"departure_time\":\"2026-04-06T15:20:00\",\"arrival_time\":\"2026-04-06T17:20:00\",\"terminal\":\"T1\",\"departure_gate\":\"A10\",\"check_in_open_at\":\"2026-04-06T12:20:00\",\"check_in_close_at\":\"2026-04-06T14:35:00\",\"boarding_starts_at\":\"2026-04-06T14:30:00\",\"boarding_closes_at\":\"2026-04-06T15:00:00\",\"seat_class\":\"premium_economy\",\"price\":\"139.50\",\"capacity\":36,\"booked_seats\":0,\"available_seats\":30,\"window_seat_capacity\":10,\"window_seat_booked\":0,\"window_seat_available\":10,\"aisle_seat_capacity\":10,\"aisle_seat_booked\":0,\"aisle_seat_available\":10,\"extra_legroom_capacity\":0,\"extra_legroom_booked\":0,\"extra_legroom_available\":0,\"status\":\"scheduled\"},{\"id\":47,\"flight_number\":\"TM206\",\"origin_airport\":\"FCO\",\"destination_airport\":\"ATH\",\"departure_time\":\"2026-04-07T15:20:00\",\"arrival_time\":\"2026-04-07T17:20:00\",\"terminal\":\"T2\",\"departure_gate\":\"B11\",\"check_in_open_at\":\"2026-04-07T12:20:00\",\"check_in_close_at\":\"2026-04-07T14:35:00\",\"boarding_starts_at\":\"2026-04-07T14:30:00\",\"boarding_closes_at\":\"2026-04-07T15:00:00\",\"seat_class\":\"premium_economy\",\"price\":\"139.50\",\"capacity\":36,\"booked_seats\":0,\"available_seats\":30,\"window_seat_capacity\":10,\"window_seat_booked\":0,\"window_seat_available\":10,\"aisle_seat_capacity\":10,\"aisle_seat_booked\":0,\"aisle_seat_available\":10,\"extra_legroom_capacity\":0,\"extra_legroom_booked\":0,\"extra_legroom_available\":0,\"status\":\"scheduled\"},{\"id\":83,\"flight_number\":\"TM206\",\"origin_airport\":\"FCO\",\"destination_airport\":\"ATH\",\"departure_time\":\"2026-04-08T15:20:00\",\"arrival_time\":\"2026-04-08T17:20:00\",\"terminal\":\"T3\",\"departure_gate\":\"C12\",\"check_in_open_at\":\"2026-04-08T12:20:00\",\"check_in_close_at\":\"2026-04-08T14:35:00\",\"boarding_starts_at\":\"2026-04-08T14:30:00\",\"boarding_closes_at\":\"2026-04-08T15:00:00\",\"seat_class\":\"premium_economy\",\"price\":\"139.50\",\"capacity\":36,\"booked_seats\":0,\"available_seats\":30,\"window_seat_capacity\":10,\"window_seat_booked\":0,\"window_seat_available\":10,\"aisle_seat_capacity\":10,\"aisle_seat_booked\":0,\"aisle_seat_available\":10,\"extra_legroom_capacity\":0,\"extra_legroom_booked\":0,\"extra_legroom_available\":0,\"status\":\"scheduled\"}]"
+          }
+        ]
+      },
+      {
+        "role": "agent",
+        "message": "I found up to 3 options.\n- Option 1: TM206 | FCO -> ATH | 2026-04-06T15:20:00 | premium_economy | 139.50 | Window and aisle seats available; no extra-legroom in premium economy\n- Option 2: TM206 | FCO -> ATH | 2026-04-07T15:20:00 | premium_economy | 139.50 | Window and aisle seats available; no extra-legroom in premium economy\n- Option 3: TM206 | FCO -> ATH | 2026-04-08T15:20:00 | premium_economy | 139.50 | Window and aisle seats available; no extra-legroom in premium economy\nWhich option would you like me to use?",
+        "original_message": null,
+        "time_in_call_secs": 5,
+        "interrupted": false,
+        "tool_calls": [],
+        "tool_results": []
+      },
+      {
+        "role": "user",
+        "message": "Book option 1.",
+        "original_message": null,
+        "time_in_call_secs": 15,
+        "interrupted": false,
+        "tool_calls": [],
+        "tool_results": []
+      },
+      {
+        "role": "agent",
+        "message": "I can do that. Please share the contact name, contact email, and passenger first and last names.",
+        "original_message": null,
+        "time_in_call_secs": 15,
+        "interrupted": false,
+        "tool_calls": [],
+        "tool_results": []
+      },
+      {
+        "role": "user",
+        "message": "Passenger name is Nico Conti. Contact email is nico.conti@example.com. Date of birth is 1989-09-14.",
+        "original_message": null,
+        "time_in_call_secs": 31,
+        "interrupted": false,
+        "tool_calls": [],
+        "tool_results": []
+      },
+      {
+        "role": "agent",
+        "message": null,
+        "original_message": null,
+        "time_in_call_secs": 41,
+        "interrupted": false,
+        "tool_calls": [
+          {
+            "tool_name": "create_flight_booking",
+            "params_as_json": "{\"flight_id\": 11, \"passengers\": [{\"first_name\": \"Nico\", \"last_name\": \"Conti\", \"date_of_birth\": \"1989-09-14\"}], \"contact_email\": \"nico.conti@example.com\", \"contact_name\": \"Nico Conti\"}",
+            "type": "webhook",
+            "request_id": "create_flight_booking_db8f45c42797432083ef13139cd5bdc0",
+            "tool_has_been_called": true,
+            "tool_details": {
+              "type": "webhook",
+              "method": "POST",
+              "url": "https://airlineassistantvoiceagent.up.railway.app/api/bookings",
+              "path_params": {},
+              "query_params": {}
+            }
+          }
+        ],
+        "tool_results": []
+      },
+      {
+        "role": "agent",
+        "message": null,
+        "original_message": null,
+        "time_in_call_secs": 41,
+        "interrupted": false,
+        "tool_calls": [],
+        "tool_results": [
+          {
+            "tool_name": "create_flight_booking",
+            "request_id": "create_flight_booking_db8f45c42797432083ef13139cd5bdc0",
+            "tool_has_been_called": true,
+            "is_error": false,
+            "tool_latency_secs": 0.4047196530000292,
+            "error_type": "",
+            "result_value": "{\"id\":9,\"booking_reference\":\"TMQ11R4KE0\",\"flight_id\":11,\"rescheduled_from_booking_id\":null,\"contact_name\":\"Nico Conti\",\"contact_email\":\"nico.conti@example.com\",\"contact_phone\":null,\"total_price\":\"139.50\",\"status\":\"confirmed\",\"cancelled_at\":null,\"cancellation_reason\":null,\"refund_status\":\"not_requested\",\"refund_amount\":null,\"created_at\":\"2026-04-03T17:37:31\",\"updated_at\":\"2026-04-03T17:37:31\",\"passengers\":[{\"id\":12,\"first_name\":\"Nico\",\"last_name\":\"Conti\",\"date_of_birth\":\"1989-09-14\",\"passenger_type\":\"adult\",\"seat_preference\":null,\"seat_number\":\"5A\",\"assistance_type\":null,\"assistance_notes\":null,\"mobility_assistance_required\":false}],\"extras\":[],\"events\":[{\"id\":21,\"event_type\":\"created\",\"event_time\":\"2026-04-03T17:37:31\",\"summary\":\"Booking created\",\"details\":\"Booking created via API.\"}]}"
+          }
+        ]
+      },
+      {
+        "role": "agent",
+        "message": "Booking confirmed.\nReference: TMQ11R4KE0\nFlight: TM206 | FCO -> ATH\nDeparture: 2026-04-06T15:20:00\nClass: premium_economy\nPassengers: 1\nSeat preference: Requested; assignment subject to availability\nExtras: None\nWould you like to add checked bags or choose a specific seat?",
+        "original_message": null,
+        "time_in_call_secs": 41,
+        "interrupted": false,
+        "tool_calls": [],
+        "tool_results": []
+      }
+    ]
+  }
+}

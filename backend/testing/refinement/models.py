@@ -56,3 +56,61 @@ class RootCauseVerdict(BaseModel):
         description="Short fix direction, such as prompt_change, tool_definition_change, or backend_code_change."
     )
     suggested_next_step: str = Field(description="Single most useful next action to validate or fix the root cause.")
+
+
+class SectionEdit(BaseModel):
+    path: str = Field(description="Repo-relative path to the file that should be changed.")
+    selector_type: str = Field(
+        description="One of: python_symbol, markdown_heading, or text_between."
+    )
+    selector_value: str = Field(description="Selector payload, such as a function name or heading text.")
+    reason: str = Field(description="Why this section should change.")
+    replacement: str = Field(description="Replacement content for the matched section only.")
+
+
+class BoundedFixPlan(BaseModel):
+    scenario_slug: str
+    summary: str = Field(description="Short summary of the proposed fix.")
+    rationale: str = Field(description="Why this fix addresses the diagnosed root cause.")
+    expected_improvement: str = Field(description="What should improve after applying the fix.")
+    verification_command: str = Field(description="Single command to rerun the most relevant validation.")
+    section_edits: list[SectionEdit] = Field(default_factory=list)
+
+
+class AppliedSectionChange(BaseModel):
+    path: str
+    selector_type: str
+    selector_value: str
+    applied: bool
+    blocked: bool = False
+    error: str | None = None
+    before_content: str | None = None
+    after_content: str | None = None
+
+
+class VerificationResult(BaseModel):
+    command: str
+    success: bool
+    exit_code: int
+    stdout: str = ""
+    stderr: str = ""
+    produced_artifact_path: str | None = None
+
+
+class AcceptanceDecision(BaseModel):
+    accepted: bool
+    reason: str
+
+
+class RefinementReport(BaseModel):
+    artifact_path: str
+    critique: CritiqueVerdict
+    root_cause: RootCauseVerdict
+    fix_plan: BoundedFixPlan
+    applied_changes: list[AppliedSectionChange] = Field(default_factory=list)
+    sync_commands: list[str] = Field(default_factory=list)
+    verification: VerificationResult | None = None
+    rerun_artifact_path: str | None = None
+    after_critique: CritiqueVerdict | None = None
+    after_root_cause: RootCauseVerdict | None = None
+    acceptance: AcceptanceDecision | None = None

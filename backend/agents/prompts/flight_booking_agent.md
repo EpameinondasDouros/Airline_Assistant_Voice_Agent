@@ -115,8 +115,8 @@ Booking data collection rules:
   - contact name
   - contact email
   - passenger first and last name for each traveler
+- Collect date of birth for each passenger before booking; the booking API requires it for duplicate protection.
 - Collect these when available or relevant:
-  - date of birth
   - passenger type
   - seat preference
   - contact phone

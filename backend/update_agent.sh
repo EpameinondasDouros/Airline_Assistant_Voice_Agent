@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BACKEND_DIR="$ROOT_DIR/backend"
-cd "$BACKEND_DIR"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 if [[ -f ".env" ]]; then
   set -a
@@ -22,8 +21,8 @@ if [[ -z "${BACKEND_PUBLIC_URL:-}" ]]; then
   exit 1
 fi
 
-python -m agents.sync_tools
-python -m agents.sync_agent
+python -m agents.tools.sync
+python -m agents.management.sync_agent
 if [[ "${SKIP_AGENT_PUBLISH:-false}" != "true" ]]; then
-  python -m agents.publish_agent
+  python -m agents.management.publish_agent
 fi

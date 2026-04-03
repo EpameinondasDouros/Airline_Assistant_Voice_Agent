@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -10,6 +10,10 @@ from app.db.base import Base
 
 class KnowledgeArticle(Base):
     __tablename__ = "knowledge_articles"
+    __table_args__ = (
+        UniqueConstraint("topic", "title", name="uq_knowledge_articles_topic_title"),
+        CheckConstraint("version >= 1", name="ck_knowledge_articles_version_positive"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     topic: Mapped[str] = mapped_column(String(64), nullable=False, index=True)

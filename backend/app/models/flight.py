@@ -4,7 +4,7 @@ import enum
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum, Integer, Numeric, String, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, DateTime, Enum, Integer, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -35,6 +35,43 @@ class Flight(Base):
             "departure_time",
             "seat_class",
             name="uq_flights_number_departure_class",
+        ),
+        CheckConstraint("departure_time < arrival_time", name="ck_flights_departure_before_arrival"),
+        CheckConstraint(
+            "check_in_open_at IS NULL OR check_in_close_at IS NULL OR check_in_open_at <= check_in_close_at",
+            name="ck_flights_check_in_open_before_close",
+        ),
+        CheckConstraint(
+            "boarding_starts_at IS NULL OR boarding_closes_at IS NULL OR boarding_starts_at <= boarding_closes_at",
+            name="ck_flights_boarding_start_before_close",
+        ),
+        CheckConstraint(
+            "boarding_closes_at IS NULL OR boarding_closes_at <= departure_time",
+            name="ck_flights_boarding_close_before_departure",
+        ),
+        CheckConstraint("capacity > 0", name="ck_flights_capacity_positive"),
+        CheckConstraint("price > 0", name="ck_flights_price_positive"),
+        CheckConstraint("booked_seats >= 0", name="ck_flights_booked_seats_nonnegative"),
+        CheckConstraint("booked_seats <= capacity", name="ck_flights_booked_seats_within_capacity"),
+        CheckConstraint("window_seat_capacity >= 0", name="ck_flights_window_capacity_nonnegative"),
+        CheckConstraint("window_seat_booked >= 0", name="ck_flights_window_booked_nonnegative"),
+        CheckConstraint("window_seat_booked <= window_seat_capacity", name="ck_flights_window_booked_within_capacity"),
+        CheckConstraint("aisle_seat_capacity >= 0", name="ck_flights_aisle_capacity_nonnegative"),
+        CheckConstraint("aisle_seat_booked >= 0", name="ck_flights_aisle_booked_nonnegative"),
+        CheckConstraint("aisle_seat_booked <= aisle_seat_capacity", name="ck_flights_aisle_booked_within_capacity"),
+        CheckConstraint("extra_legroom_capacity >= 0", name="ck_flights_extra_legroom_capacity_nonnegative"),
+        CheckConstraint("extra_legroom_booked >= 0", name="ck_flights_extra_legroom_booked_nonnegative"),
+        CheckConstraint(
+            "extra_legroom_booked <= extra_legroom_capacity",
+            name="ck_flights_extra_legroom_booked_within_capacity",
+        ),
+        CheckConstraint(
+            "window_seat_capacity + aisle_seat_capacity + extra_legroom_capacity <= capacity",
+            name="ck_flights_preference_capacity_within_total_capacity",
+        ),
+        CheckConstraint(
+            "window_seat_booked + aisle_seat_booked + extra_legroom_booked <= booked_seats",
+            name="ck_flights_preference_booked_within_total_booked",
         ),
     )
 

@@ -127,16 +127,19 @@ def main() -> None:
     session = SessionLocal()
     try:
         existing_articles = {
-            article.title: article
+            (article.topic, article.title): article
             for article in session.scalars(select(KnowledgeArticle))
         }
         created = 0
         updated = 0
 
         for article in ARTICLES:
-            existing = existing_articles.get(article["title"])
+            key = (article["topic"], article["title"])
+            existing = existing_articles.get(key)
             if existing is None:
-                session.add(KnowledgeArticle(**article))
+                new_article = KnowledgeArticle(**article)
+                session.add(new_article)
+                existing_articles[key] = new_article
                 created += 1
                 continue
 

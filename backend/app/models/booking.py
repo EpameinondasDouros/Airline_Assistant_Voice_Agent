@@ -4,7 +4,7 @@ import enum
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -26,6 +26,31 @@ class RefundStatus(str, enum.Enum):
 
 class Booking(Base):
     __tablename__ = "bookings"
+    __table_args__ = (
+        Index("ix_bookings_flight_status_refund_status", "flight_id", "status", "refund_status"),
+        CheckConstraint("total_price >= 0", name="ck_bookings_total_price_nonnegative"),
+        CheckConstraint("refund_amount IS NULL OR refund_amount >= 0", name="ck_bookings_refund_amount_nonnegative"),
+        CheckConstraint(
+            "status != 'CANCELLED' OR cancelled_at IS NOT NULL",
+            name="ck_bookings_cancelled_requires_cancelled_at",
+        ),
+        CheckConstraint(
+            "status != 'CANCELLED' OR cancellation_reason IS NOT NULL",
+            name="ck_bookings_cancelled_requires_reason",
+        ),
+        CheckConstraint(
+            "refund_status = 'NOT_REQUESTED' OR status = 'CANCELLED'",
+            name="ck_bookings_refund_requires_cancelled_status",
+        ),
+        CheckConstraint(
+            "refund_status NOT IN ('APPROVED', 'PAID') OR refund_amount IS NOT NULL",
+            name="ck_bookings_paid_refund_requires_amount",
+        ),
+        CheckConstraint(
+            "rescheduled_from_booking_id IS NULL OR status = 'CONFIRMED'",
+            name="ck_bookings_reschedule_reference_requires_confirmed_status",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     booking_reference: Mapped[str] = mapped_column(String(12), nullable=False, unique=True, index=True)

@@ -143,6 +143,7 @@ BOOKING_SEEDS = (
         contact_email="omar.almansoori@example.com",
         contact_phone="+971-50-777-2201",
         status=BookingStatus.CANCELLED,
+        cancelled_at=datetime(2026, 4, 5, 9, 0),
         cancellation_reason="rescheduled to a later departure",
         passengers=(
             PassengerSeed("Omar", "Al Mansoori", date(1988, 6, 17), seat_preference="extra_legroom"),

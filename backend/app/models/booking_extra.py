@@ -4,7 +4,7 @@ import enum
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -21,6 +21,10 @@ class ExtraType(str, enum.Enum):
 
 class BookingExtra(Base):
     __tablename__ = "booking_extras"
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="ck_booking_extras_quantity_positive"),
+        CheckConstraint("price >= 0", name="ck_booking_extras_price_nonnegative"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id"), nullable=False, index=True)

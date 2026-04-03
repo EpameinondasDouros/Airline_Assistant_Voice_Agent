@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import secrets
 import string
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -22,6 +22,13 @@ from app.schemas.booking import (
     BookingCreate,
     BookingRescheduleRequest,
 )
+
+
+UNRESOLVED_REFUND_STATUSES = {
+    RefundStatus.PENDING,
+    RefundStatus.APPROVED,
+    RefundStatus.PAID,
+}
 
 
 class BookingService:
@@ -59,6 +66,8 @@ class BookingService:
     def create_booking(self, payload: BookingCreate) -> Booking:
         flight = self._get_flight_or_404(payload.flight_id)
         passenger_count = len(payload.passengers)
+        self._ensure_unique_passengers_in_request(payload.passengers)
+        self._ensure_no_duplicate_or_refund_conflicts(flight, payload.passengers)
         self._ensure_flight_bookable(flight, passenger_count)
         self._ensure_preferences_available(flight, payload.passengers)
         self._ensure_seat_numbers_valid(flight, payload.passengers)
@@ -195,6 +204,7 @@ class BookingService:
 
         new_flight = self._get_flight_or_404(payload.new_flight_id)
         passenger_count = len(current_booking.passengers)
+        self._ensure_no_duplicate_or_refund_conflicts(new_flight, current_booking.passengers)
         self._ensure_flight_bookable(new_flight, passenger_count)
         self._ensure_preferences_available(new_flight, current_booking.passengers)
 
@@ -350,6 +360,85 @@ class BookingService:
         if inventory is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No seats available for the selected preference.")
         return inventory.seat_number
+
+    def _ensure_unique_passengers_in_request(self, passengers: list[object]) -> None:
+        seen_identities: set[tuple[str, str, date]] = set()
+        for passenger in passengers:
+            identity = self._passenger_identity(passenger)
+            if identity in seen_identities:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Duplicate passenger entries are not allowed in the same booking request.",
+                )
+            seen_identities.add(identity)
+
+    def _ensure_no_duplicate_or_refund_conflicts(self, flight: Flight, passengers: list[object]) -> None:
+        requested_identities = {self._passenger_identity(passenger) for passenger in passengers}
+        candidate_bookings = self.session.scalars(
+            select(Booking)
+            .where(Booking.flight_id == flight.id)
+            .options(selectinload(Booking.passengers))
+        )
+
+        for booking in candidate_bookings:
+            if booking.status == BookingStatus.RESCHEDULED:
+                continue
+
+            passenger_identities = {
+                self._passenger_identity(passenger)
+                for passenger in booking.passengers
+                if passenger.date_of_birth is not None
+            }
+            matching_identities = requested_identities.intersection(passenger_identities)
+            if not matching_identities:
+                continue
+
+            if booking.status == BookingStatus.CONFIRMED:
+                identity = next(iter(matching_identities))
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=self._duplicate_booking_message(identity),
+                )
+
+            if booking.refund_status in UNRESOLVED_REFUND_STATUSES:
+                identity = next(iter(matching_identities))
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=self._refund_block_message(identity),
+                )
+
+    def _passenger_identity(self, passenger: object) -> tuple[str, str, date]:
+        first_name = self._normalize_name(getattr(passenger, "first_name", ""))
+        last_name = self._normalize_name(getattr(passenger, "last_name", ""))
+        date_of_birth = getattr(passenger, "date_of_birth", None)
+        if not first_name or not last_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Passenger first and last name are required.",
+            )
+        if date_of_birth is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Passenger date of birth is required to prevent duplicate bookings.",
+            )
+        return first_name, last_name, date_of_birth
+
+    def _normalize_name(self, value: object) -> str:
+        return " ".join(str(value).split()).casefold()
+
+    def _duplicate_booking_message(self, identity: tuple[str, str, date]) -> str:
+        first_name, last_name, date_of_birth = identity
+        return (
+            "Passenger "
+            f"{first_name.title()} {last_name.title()} ({date_of_birth.isoformat()}) already has a booking on this flight."
+        )
+
+    def _refund_block_message(self, identity: tuple[str, str, date]) -> str:
+        first_name, last_name, date_of_birth = identity
+        return (
+            "Passenger "
+            f"{first_name.title()} {last_name.title()} ({date_of_birth.isoformat()}) has an unresolved refund on this flight."
+        )
 
     def _seat_number_taken(self, flight_id: int, seat_number: str) -> bool:
         statement = select(BookingPassenger.id).join(Booking).where(
