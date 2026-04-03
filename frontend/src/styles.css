@@ -571,10 +571,16 @@ button, input { font: inherit; }
 .testing-select {
   min-width: 18rem;
   min-height: 3rem;
-  padding: 0.8rem 1rem;
+  padding: 0.8rem 2.4rem 0.8rem 1rem;
   border-radius: 999px;
   border: 1px solid rgba(124, 138, 137, 0.16);
   background: rgba(255, 255, 255, 0.82);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18' fill='none'%3E%3Cpath d='M4 7L9 12L14 7' stroke='%236e7979' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.95rem center;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   color: var(--ink);
 }
 .testing-select--full {

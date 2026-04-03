@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.flight_schema import ensure_flight_seat_columns
+from app.db.seat_inventory import sync_seat_inventory
 from app.db.session import SessionLocal, engine
 from app.models.booking import Booking, BookingStatus, RefundStatus
 from app.models.booking_event import BookingEvent, BookingEventType
@@ -164,8 +165,8 @@ BOOKING_SEEDS = (
         status=BookingStatus.CONFIRMED,
         rescheduled_from_reference="TMR6K2S1",
         passengers=(
-            PassengerSeed("Omar", "Al Mansoori", date(1988, 6, 17), seat_preference="extra_legroom", seat_number="8A"),
-            PassengerSeed("Layla", "Al Mansoori", date(1991, 4, 28), seat_preference="extra_legroom", seat_number="8B"),
+            PassengerSeed("Omar", "Al Mansoori", date(1988, 6, 17), seat_preference="window", seat_number="8A"),
+            PassengerSeed("Layla", "Al Mansoori", date(1991, 4, 28), seat_preference="aisle", seat_number="8C"),
         ),
         extras=(
             ExtraSeed(ExtraType.SPORTS_EQUIPMENT, 1, Decimal("55.00"), "golf bag"),
@@ -273,6 +274,7 @@ def build_booking_events(seed: BookingSeed, booking_id: int) -> list[BookingEven
 
 def main() -> None:
     ensure_flight_seat_columns(engine)
+    sync_seat_inventory(engine)
     session = SessionLocal()
     try:
         existing_refs = set(session.scalars(select(Booking.booking_reference)))
