@@ -634,20 +634,19 @@ def run_task(
         ):
             raise RuntimeError(f"Timed out waiting for the agent response after user message: {first_message}")
 
-        last_seen_agent_count = recorder.agent_count()
+        processed_agent_count = 0
         while customer_reply_count < max_customer_replies:
             fresh_agent_count = _ensure_fresh_agent_turn(
                 recorder,
                 settings,
                 conversation_id,
-                last_seen_agent_count=last_seen_agent_count,
+                last_seen_agent_count=processed_agent_count,
                 response_timeout_seconds=response_timeout_seconds,
                 settle_timeout_seconds=settle_timeout_seconds,
                 quiet_window_seconds=quiet_window_seconds,
             )
             if fresh_agent_count is None:
                 break
-            last_seen_agent_count = fresh_agent_count
 
             latest_agent_message = _latest_agent_message(recorder.entries)
             decision = customer.decide(
@@ -665,6 +664,7 @@ def run_task(
                 transcript=[asdict(entry) for entry in recorder.entries],
                 latest_assistant_message=latest_agent_message,
             )
+            processed_agent_count = fresh_agent_count
 
             if decision.action == "done":
                 break
@@ -689,7 +689,6 @@ def run_task(
                     initial_message=decision.message,
                 ):
                     raise RuntimeError(f"Timed out waiting for the agent response after user message: {decision.message}")
-                last_seen_agent_count = recorder.agent_count()
                 continue
 
             raise RuntimeError(f"Unsupported customer simulator action: {decision.action}")

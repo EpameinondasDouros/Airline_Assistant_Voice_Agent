@@ -68,7 +68,7 @@ def _build_agent(model: str) -> Agent[None, CustomerReply]:
 
 
 class CustomerSimulator:
-    def __init__(self, *, model: str = "openai:gpt-4o-mini") -> None:
+    def __init__(self, *, model: str = "openai:gpt-5-nano") -> None:
         self.model = model
         self._agent = _build_agent(model)
 
