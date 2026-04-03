@@ -14,6 +14,7 @@ This package contains the backend-side ElevenLabs integration layer for the Tech
 - `config.py`: loads ElevenLabs and backend public URL settings from `.env`
 - `elevenlabs_chat.py`: wraps the ElevenLabs chat-mode conversation session
 - `cli.py`: starts a local terminal chat session against the configured agent
+- `chat/`: higher-level chat session abstractions and a CLI entrypoint
 - `tool_definitions.py`: central source of truth for the ElevenLabs webhook tool configurations
 - `sync_tools.py`: creates or updates the webhook tools in ElevenLabs using the Python SDK
 - `sync_agent.py`: updates the configured ElevenLabs agent with the local prompt and synced tool ids
@@ -61,6 +62,12 @@ To publish the current configured branch of the agent:
 
 ```bash
 python -m agents.publish_agent
+```
+
+To run the new chat session CLI:
+
+```bash
+python -m agents.chat.cli
 ```
 
 ## Next step

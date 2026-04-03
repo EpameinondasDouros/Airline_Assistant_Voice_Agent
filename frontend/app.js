@@ -1,6 +1,5 @@
 import {
   BOOKING_STATUS_OPTIONS,
-  CHAT_SUGGESTIONS,
   EMPTY_API_BASE,
   EXTRA_TYPE_OPTIONS,
   REFUND_STATUS_OPTIONS,
@@ -12,7 +11,6 @@ import {
   createDetailList,
   createEmptyState,
   createFeedback,
-  createJsonBlock,
   createMetaGrid,
   createStatusBadge,
   renderOptionList,
@@ -80,7 +78,6 @@ const elements = {
   chatThread: document.querySelector("#chat-thread"),
   chatForm: document.querySelector("#chat-form"),
   chatInput: document.querySelector("#chat-input"),
-  chatSuggestions: document.querySelector("#chat-suggestions"),
   apiBaseForm: document.querySelector("#api-config-form"),
   apiBaseInput: document.querySelector("#api-base-input"),
   apiResetButton: document.querySelector("#api-reset-button"),
@@ -149,7 +146,6 @@ function initialize() {
   hydrateSelects();
   bindGlobalEvents();
   initializeRepeaters();
-  renderChatSuggestions();
   renderChatThread();
   syncScreenFromHash();
   refreshDashboard();
@@ -159,7 +155,9 @@ function initialize() {
 }
 
 function hydrateApiBase() {
-  elements.apiBaseInput.value = apiClient.getBaseUrl();
+  if (elements.apiBaseInput) {
+    elements.apiBaseInput.value = apiClient.getBaseUrl();
+  }
   renderRequestMeta(apiClient.getLastRequestMeta(), { track: false });
 }
 
@@ -183,27 +181,25 @@ function bindGlobalEvents() {
     elements.sidebarToggle.setAttribute("aria-expanded", String(isOpen));
   });
 
-  elements.chatForm.addEventListener("submit", handleChatSubmit);
-  elements.chatSuggestions.addEventListener("click", handleChatSuggestionClick);
-  elements.chatThread.addEventListener("click", handleChatActionClick);
+  elements.chatForm?.addEventListener("submit", handleChatSubmit);
+  elements.chatThread?.addEventListener("click", handleChatActionClick);
 
-  elements.apiBaseForm.addEventListener("submit", (event) => {
+  elements.apiBaseForm?.addEventListener("submit", (event) => {
     event.preventDefault();
-    const baseUrl = elements.apiBaseInput.value.trim() || EMPTY_API_BASE;
+    const baseUrl = elements.apiBaseInput?.value.trim() || EMPTY_API_BASE;
     apiClient.setBaseUrl(baseUrl);
-    showFeedback(`API base saved: ${baseUrl}`, "success");
-    renderRequestMeta(apiClient.getLastRequestMeta(), { track: false });
     refreshDashboard();
   });
 
-  elements.apiResetButton.addEventListener("click", () => {
-    elements.apiBaseInput.value = EMPTY_API_BASE;
+  elements.apiResetButton?.addEventListener("click", () => {
+    if (elements.apiBaseInput) {
+      elements.apiBaseInput.value = EMPTY_API_BASE;
+    }
     apiClient.setBaseUrl(EMPTY_API_BASE);
-    showFeedback(`API base reset to ${EMPTY_API_BASE}`, "success");
     refreshDashboard();
   });
 
-  elements.clearRequestHistory.addEventListener("click", () => {
+  elements.clearRequestHistory?.addEventListener("click", () => {
     state.requestHistory = [];
     renderRequestHistory();
   });
@@ -319,6 +315,9 @@ function clearFeedback() {
 }
 
 function renderRequestMeta(meta, options = {}) {
+  if (!elements.requestMeta) {
+    return;
+  }
   const { track = true } = options;
   if (!meta) {
     elements.requestMeta.textContent = "No requests yet.";
@@ -350,6 +349,9 @@ function pushRequestHistory(meta) {
 }
 
 function renderRequestHistory() {
+  if (!elements.requestHistory) {
+    return;
+  }
   if (!state.requestHistory.length) {
     elements.requestHistory.className = "request-history empty-panel";
     elements.requestHistory.innerHTML = "Request history will appear here.";
@@ -374,8 +376,12 @@ function renderRequestHistory() {
 }
 
 function updateApiStatus(ok, message) {
-  elements.apiStatusDot.className = `status-dot ${ok ? "ok" : "error"}`;
-  setText(elements.apiStatusText, message);
+  if (elements.apiStatusDot) {
+    elements.apiStatusDot.className = `status-dot ${ok ? "ok" : "error"}`;
+  }
+  if (elements.apiStatusText) {
+    setText(elements.apiStatusText, message);
+  }
 }
 
 async function runRequest(fn, options = {}) {
@@ -574,10 +580,6 @@ function renderFlightDetail() {
       ["Boarding starts", formatDateTime(flight.boarding_starts_at)],
       ["Boarding closes", formatDateTime(flight.boarding_closes_at)],
     ])}
-    <div class="json-section">
-      <h5>Raw payload</h5>
-      ${createJsonBlock(flight)}
-    </div>
   `;
   bindDetailActionButtons(elements.flightDetail);
 }
@@ -746,10 +748,6 @@ function renderBookingDetail() {
       <h5>Events</h5>
       <div class="events-list">${eventItems}</div>
     </div>
-    <div class="json-section">
-      <h5>Raw payload</h5>
-      ${createJsonBlock(booking)}
-    </div>
   `;
   bindDetailActionButtons(elements.bookingDetail);
 }
@@ -862,20 +860,13 @@ async function submitMutation({ loadingMessage, request, successMessage, onSucce
 
 function renderMutationResult(payload) {
   elements.mutationResult.className = "detail-panel";
-  elements.mutationResult.innerHTML = createJsonBlock(payload);
-}
-
-function renderChatSuggestions() {
-  elements.chatSuggestions.innerHTML = CHAT_SUGGESTIONS.map(
-    (suggestion) => `
-      <button class="chat-suggestion" type="button" data-suggestion="${escapeHtml(suggestion)}">
-        ${escapeHtml(suggestion)}
-      </button>
-    `,
-  ).join("");
+  elements.mutationResult.innerHTML = createMutationSummary(payload);
 }
 
 function renderChatThread() {
+  if (!elements.chatThread) {
+    return;
+  }
   elements.chatThread.innerHTML = state.chatMessages
     .map((message) => {
       const actions = message.actions?.length
@@ -933,16 +924,6 @@ function handleChatSubmit(event) {
   window.setTimeout(() => {
     appendChatMessage(response);
   }, 220);
-}
-
-function handleChatSuggestionClick(event) {
-  const button = event.target.closest("[data-suggestion]");
-  if (!button) {
-    return;
-  }
-
-  elements.chatInput.value = button.dataset.suggestion || "";
-  elements.chatInput.focus();
 }
 
 function handleChatActionClick(event) {
@@ -1200,9 +1181,58 @@ function renderKnowledgeDetail() {
       <h5>Content</h5>
       <div class="article-content">${escapeHtml(article.content).replace(/\n/g, "<br />")}</div>
     </div>
-    <div class="json-section">
-      <h5>Raw payload</h5>
-      ${createJsonBlock(article)}
+  `;
+}
+
+function createMutationSummary(payload) {
+  if (!payload || payload.error) {
+    return `
+      <div class="status-summary status-summary-error">
+        <strong>Request failed</strong>
+        <p>${escapeHtml(payload?.message || "The last action did not complete successfully.")}</p>
+      </div>
+    `;
+  }
+
+  if (payload.new_booking) {
+    return `
+      <div class="status-summary">
+        <strong>Booking rescheduled</strong>
+        <p>
+          Previous reference ${escapeHtml(payload.previous_booking_reference)} was moved to
+          ${escapeHtml(payload.new_booking.booking_reference)}.
+        </p>
+      </div>
+      ${createMetaGrid([
+        ["New booking reference", payload.new_booking.booking_reference],
+        ["Flight ID", payload.new_booking.flight_id],
+        ["Status", titleCase(payload.new_booking.status)],
+        ["Total price", formatCurrency(payload.new_booking.total_price)],
+      ])}
+    `;
+  }
+
+  if (payload.booking_reference) {
+    return `
+      <div class="status-summary">
+        <strong>Booking updated</strong>
+        <p>
+          Booking ${escapeHtml(payload.booking_reference)} is now ${escapeHtml(titleCase(payload.status))}.
+        </p>
+      </div>
+      ${createMetaGrid([
+        ["Booking reference", payload.booking_reference],
+        ["Flight ID", payload.flight_id],
+        ["Status", titleCase(payload.status)],
+        ["Total price", formatCurrency(payload.total_price)],
+      ])}
+    `;
+  }
+
+  return `
+    <div class="status-summary">
+      <strong>Action completed</strong>
+      <p>The operation finished successfully.</p>
     </div>
   `;
 }

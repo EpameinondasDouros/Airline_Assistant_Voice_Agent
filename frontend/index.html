@@ -3,22 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AeroMellon Operations Console</title>
+    <title>AeroMellon Concierge</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
-          <a class="brand" href="#" data-nav="dashboard">AeroMellon</a>
-          <p class="brand-subtitle">Operations Console</p>
+          <a class="brand" href="#" data-nav="concierge">AeroMellon</a>
+          <p class="brand-subtitle">Elite Voyager</p>
         </div>
 
         <nav class="sidebar-nav" aria-label="Primary navigation">
-          <button class="nav-item" data-nav="concierge" type="button">
+          <button class="nav-item active" data-nav="concierge" type="button">
             Concierge
           </button>
-          <button class="nav-item active" data-nav="dashboard" type="button">
+          <button class="nav-item" data-nav="dashboard" type="button">
             Dashboard
           </button>
           <button class="nav-item" data-nav="flights" type="button">
@@ -35,41 +35,7 @@
           </button>
         </nav>
 
-        <section class="sidebar-panel">
-          <p class="sidebar-panel-label">Backend</p>
-          <form id="api-config-form" class="stack-sm">
-            <label class="field-label" for="api-base-input">API base URL</label>
-            <input
-              id="api-base-input"
-              name="apiBase"
-              type="url"
-              placeholder="http://localhost:8000"
-              autocomplete="off"
-            />
-            <div class="inline-actions">
-              <button class="button button-primary" type="submit">Save</button>
-              <button class="button button-secondary" id="api-reset-button" type="button">
-                Reset
-              </button>
-            </div>
-          </form>
-          <p class="sidebar-panel-help">
-            Used for `/health` and all `/api/...` requests. Saved in this browser.
-          </p>
-        </section>
-
-        <section class="sidebar-panel">
-          <div class="card-header sidebar-panel-header">
-            <p class="sidebar-panel-label">Request Activity</p>
-            <button class="button button-secondary button-small" id="clear-request-history" type="button">
-              Clear
-            </button>
-          </div>
-          <div id="request-meta" class="request-meta">No requests yet.</div>
-          <div id="request-history" class="request-history empty-panel">
-            Request history will appear here.
-          </div>
-        </section>
+        <div class="sidebar-spacer"></div>
       </aside>
 
       <div class="main-shell">
@@ -86,19 +52,15 @@
             <span></span>
           </button>
           <div>
-            <p class="eyebrow">Airline customer-service system</p>
-            <h1 id="page-title">Dashboard</h1>
-          </div>
-          <div class="topbar-meta">
-            <span class="status-dot" id="api-status-dot"></span>
-            <span id="api-status-text">API not checked</span>
+            <p class="eyebrow">AeroMellon Concierge</p>
+            <h1 id="page-title">Concierge</h1>
           </div>
         </header>
 
         <div id="feedback-banner" class="feedback-banner hidden" role="status"></div>
 
         <main class="content">
-          <section class="screen" id="screen-concierge" data-screen="concierge">
+          <section class="screen is-visible" id="screen-concierge" data-screen="concierge">
             <div class="concierge-screen">
               <div class="concierge-hero">
                 <div class="concierge-badge">AI</div>
@@ -111,7 +73,6 @@
               <div id="chat-thread" class="chat-thread" aria-live="polite"></div>
 
               <div class="chat-composer-wrap">
-                <div id="chat-suggestions" class="chat-suggestions"></div>
                 <form id="chat-form" class="chat-composer">
                   <div class="chat-composer-icon">...</div>
                   <input
@@ -132,7 +93,7 @@
             </div>
           </section>
 
-          <section class="screen is-visible" id="screen-dashboard" data-screen="dashboard">
+          <section class="screen" id="screen-dashboard" data-screen="dashboard">
             <div class="screen-intro">
               <h2>System overview</h2>
               <p>

@@ -76,6 +76,10 @@ code {
   border-right: 1px solid rgba(15, 37, 72, 0.06);
 }
 
+.sidebar-spacer {
+  flex: 1;
+}
+
 .sidebar-header {
   padding: 2px 6px 4px;
 }
@@ -191,7 +195,7 @@ code {
 
 .main-shell {
   min-width: 0;
-  padding: 22px 26px 34px;
+  padding: 18px 22px 28px;
 }
 
 .topbar {
@@ -201,9 +205,9 @@ code {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 16px;
-  padding: 18px 22px;
+  gap: 14px;
+  margin-bottom: 10px;
+  padding: 14px 18px;
   border: 1px solid rgba(15, 37, 72, 0.08);
   border-radius: var(--radius-xl);
   background: rgba(252, 249, 241, 0.82);
@@ -212,8 +216,8 @@ code {
 }
 
 .topbar h1 {
-  margin: 6px 0 0;
-  font-size: clamp(1.7rem, 3vw, 2.6rem);
+  margin: 4px 0 0;
+  font-size: clamp(1.4rem, 2.5vw, 2.1rem);
   letter-spacing: -0.05em;
 }
 
@@ -294,60 +298,60 @@ code {
 
 .concierge-screen {
   display: grid;
-  gap: 24px;
-  min-height: calc(100vh - 180px);
-  padding-bottom: 24px;
+  gap: 16px;
+  min-height: calc(100vh - 150px);
+  padding-bottom: 18px;
 }
 
 .concierge-hero {
   display: grid;
   justify-items: center;
-  gap: 14px;
-  padding: 34px 20px 8px;
+  gap: 10px;
+  padding: 20px 20px 4px;
   text-align: center;
 }
 
 .concierge-badge {
   display: grid;
   place-items: center;
-  width: 72px;
-  height: 72px;
-  border-radius: 22px;
+  width: 60px;
+  height: 60px;
+  border-radius: 18px;
   background: rgba(0, 101, 101, 0.1);
   color: var(--teal-700);
-  font-size: 1.15rem;
+  font-size: 0.98rem;
   font-weight: 800;
   letter-spacing: 0.18em;
 }
 
 .concierge-hero h2 {
   margin: 0;
-  font-size: clamp(3rem, 6vw, 4.7rem);
+  font-size: clamp(2.3rem, 4.8vw, 3.8rem);
   letter-spacing: -0.07em;
   line-height: 0.95;
 }
 
 .concierge-hero p {
-  max-width: 560px;
+  max-width: 500px;
   margin: 0;
   color: var(--ink-soft);
-  font-size: 1.08rem;
-  line-height: 1.6;
+  font-size: 0.98rem;
+  line-height: 1.5;
 }
 
 .chat-thread {
   display: grid;
-  gap: 22px;
-  max-width: 1080px;
+  gap: 16px;
+  max-width: 980px;
   width: 100%;
   margin: 0 auto;
 }
 
 .chat-row {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   align-items: flex-start;
-  max-width: 88%;
+  max-width: 84%;
 }
 
 .chat-row.user {
@@ -358,11 +362,11 @@ code {
 .chat-avatar {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   border-radius: 999px;
   flex: 0 0 auto;
-  font-size: 0.82rem;
+  font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.08em;
 }
@@ -378,9 +382,9 @@ code {
 }
 
 .chat-bubble {
-  max-width: 760px;
-  padding: 26px 30px;
-  border-radius: 24px;
+  max-width: 700px;
+  padding: 20px 24px;
+  border-radius: 20px;
   box-shadow: var(--shadow);
 }
 
@@ -397,19 +401,18 @@ code {
 
 .chat-bubble p {
   margin: 0;
-  font-size: 1rem;
-  line-height: 1.65;
+  font-size: 0.95rem;
+  line-height: 1.6;
 }
 
 .chat-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 18px;
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .chat-action-button,
-.chat-suggestion,
 .chat-send {
   appearance: none;
   border: 0;
@@ -417,10 +420,11 @@ code {
 }
 
 .chat-action-button {
-  min-height: 46px;
-  padding: 0 20px;
-  border-radius: 12px;
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 11px;
   font-weight: 700;
+  font-size: 0.92rem;
 }
 
 .chat-action-button.primary {
@@ -436,74 +440,52 @@ code {
 .chat-composer-wrap {
   position: sticky;
   bottom: 0;
-  max-width: 1080px;
+  max-width: 980px;
   width: 100%;
   margin: 0 auto;
-  padding-top: 12px;
+  padding-top: 2px;
   background: linear-gradient(180deg, rgba(247, 243, 232, 0), rgba(247, 243, 232, 0.94) 24%, rgba(247, 243, 232, 1) 56%);
-}
-
-.chat-suggestions {
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding: 0 0 12px;
-  scrollbar-width: none;
-}
-
-.chat-suggestions::-webkit-scrollbar {
-  display: none;
-}
-
-.chat-suggestion {
-  white-space: nowrap;
-  min-height: 48px;
-  padding: 0 22px;
-  border-radius: 999px;
-  background: rgba(235, 232, 224, 0.9);
-  color: var(--ink-soft);
-  font-size: 0.96rem;
 }
 
 .chat-composer {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px 14px 22px;
-  border-radius: 22px;
+  gap: 12px;
+  padding: 10px 12px 10px 18px;
+  border-radius: 18px;
   background: rgba(235, 232, 224, 0.94);
   box-shadow: var(--shadow);
 }
 
 .chat-composer-icon {
   color: rgba(0, 101, 101, 0.48);
-  font-size: 1.55rem;
+  font-size: 1.25rem;
   line-height: 1;
 }
 
 .chat-composer input {
-  min-height: 54px;
+  min-height: 46px;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--ink);
-  font-size: 1rem;
+  font-size: 0.95rem;
 }
 
 .chat-send {
-  min-width: 58px;
-  height: 58px;
-  padding: 0 18px;
-  border-radius: 18px;
+  min-width: 52px;
+  height: 52px;
+  padding: 0 16px;
+  border-radius: 16px;
   background: linear-gradient(135deg, var(--teal-700), var(--teal-600));
   color: #fff;
   font-weight: 700;
 }
 
 .chat-footnote {
-  margin: 12px 0 0;
+  margin: 8px 0 0;
   color: var(--ink-muted);
-  font-size: 0.72rem;
+  font-size: 0.64rem;
   letter-spacing: 0.11em;
   text-align: center;
   text-transform: uppercase;
@@ -607,7 +589,6 @@ code {
 .card-header h3,
 .subsection-header h4,
 .detail-header h4,
-.json-section h5,
 .detail-section h5 {
   margin: 0;
   font-size: 1.02rem;
@@ -968,22 +949,32 @@ textarea:focus-visible,
   line-height: 1.5;
 }
 
-.json-section,
 .detail-section {
   display: grid;
   gap: 10px;
 }
 
-.json-block {
-  margin: 0;
-  max-height: 340px;
-  overflow: auto;
+.status-summary {
   padding: 16px;
   border-radius: 16px;
-  background: #0f1d34;
-  color: #f5f7fb;
-  font-size: 0.84rem;
-  line-height: 1.5;
+  background: var(--panel-muted);
+  border: 1px solid rgba(15, 37, 72, 0.06);
+}
+
+.status-summary strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.status-summary p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+
+.status-summary-error {
+  border-color: rgba(187, 58, 68, 0.18);
+  background: rgba(187, 58, 68, 0.08);
 }
 
 .repeater-list {

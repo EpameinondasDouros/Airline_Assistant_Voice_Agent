@@ -9,14 +9,6 @@ export const SCREEN_TITLES = {
   knowledge: "Knowledge",
 };
 
-export const CHAT_SUGGESTIONS = [
-  "Find me the cheapest flight this week",
-  "Change my booking",
-  "Add a ski bag",
-  "What time does check-in open?",
-  "Request wheelchair assistance",
-];
-
 export const SEAT_CLASS_OPTIONS = [
   { value: "economy", label: "Economy" },
   { value: "premium_economy", label: "Premium Economy" },

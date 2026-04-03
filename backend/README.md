@@ -14,6 +14,11 @@ python -m app.scripts.seed_knowledge
 uvicorn app.main:app --reload
 ```
 
+The backend now also exposes a minimal chat endpoint and prompt refinement endpoint:
+
+- `POST /api/chat` submits a message to the ElevenLabs session
+- `POST /api/chat/refine` runs one prompt refinement pass and writes the updated prompt back to disk
+
 ## Railway Deployment
 
 This backend can be deployed to Railway as a public FastAPI service for ElevenLabs tool/webhook calls.

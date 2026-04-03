@@ -8,6 +8,7 @@ from elevenlabs import (
     AgentDeploymentRequestItem,
     ElevenLabs,
 )
+from elevenlabs.core.api_error import ApiError
 
 from agents.config import get_agent_settings
 
@@ -26,31 +27,42 @@ def main() -> None:
     if not branch_id:
         raise ValueError("Could not determine the current agent branch id to deploy.")
 
-    deployment = client.conversational_ai.agents.deployments.create(
-        agent_id=settings.elevenlabs_agent_id,
-        deployment_request=AgentDeploymentRequest(
-            requests=[
-                AgentDeploymentRequestItem(
-                    branch_id=branch_id,
-                    deployment_strategy=AgentDeploymentPercentageStrategy(
-                        traffic_percentage=1.0,
-                        type="percentage",
-                    ),
-                )
-            ]
-        ),
-    )
-
-    print(
-        json.dumps(
-            {
-                "agent_id": settings.elevenlabs_agent_id,
-                "branch_id": branch_id,
-                "deployment": getattr(deployment, "traffic_percentage_branch_id_map", None),
-            },
-            indent=2,
+    try:
+        deployment = client.conversational_ai.agents.deployments.create(
+            agent_id=settings.elevenlabs_agent_id,
+            deployment_request=AgentDeploymentRequest(
+                requests=[
+                    AgentDeploymentRequestItem(
+                        branch_id=branch_id,
+                        deployment_strategy=AgentDeploymentPercentageStrategy(
+                            traffic_percentage=1.0,
+                            type="percentage",
+                        ),
+                    )
+                ]
+            ),
         )
-    )
+        result = {
+            "agent_id": settings.elevenlabs_agent_id,
+            "branch_id": branch_id,
+            "published": True,
+            "deployment": getattr(deployment, "traffic_percentage_branch_id_map", None),
+        }
+    except ApiError as exc:
+        if exc.status_code != 405:
+            raise
+        result = {
+            "agent_id": settings.elevenlabs_agent_id,
+            "branch_id": branch_id,
+            "published": False,
+            "reason": "deployment_api_not_available",
+            "message": (
+                "This ElevenLabs workspace/API does not allow publish via the deployments endpoint. "
+                "The agent config can still be synced from Python; publish the draft from the ElevenLabs dashboard if needed."
+            ),
+        }
+
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":
