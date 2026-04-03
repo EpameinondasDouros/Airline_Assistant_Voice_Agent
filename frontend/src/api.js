@@ -79,6 +79,10 @@ export function createBooking(payload) {
   });
 }
 
+export function listAllTripsBooked(limit = 500) {
+  return request(`/api/bookings/all-trips-booked?limit=${encodeURIComponent(limit)}`);
+}
+
 export function listTestingTasks() {
   return request("/api/testing/tasks");
 }
@@ -125,20 +129,59 @@ export async function runTestingTaskLive(payload = {}, onEvent = () => {}) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let objectStart = -1;
+
+  function consumeBuffer() {
+    let consumedThrough = 0;
+    for (let index = 0; index < buffer.length; index += 1) {
+      const char = buffer[index];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (char === "\\") {
+        if (inString) escape = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (char === "{") {
+        if (depth === 0) {
+          objectStart = index;
+        }
+        depth += 1;
+      } else if (char === "}") {
+        if (depth > 0) depth -= 1;
+        if (depth === 0 && objectStart >= 0) {
+          const chunk = buffer.slice(objectStart, index + 1).trim();
+          if (chunk) {
+            try {
+              onEvent(JSON.parse(chunk));
+            } catch {
+              onEvent({ type: "log", message: chunk });
+            }
+          }
+          consumedThrough = index + 1;
+          objectStart = -1;
+        }
+      }
+    }
+    if (consumedThrough > 0) {
+      buffer = buffer.slice(consumedThrough);
+    }
+  }
+
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() || "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        onEvent(JSON.parse(line));
-      } catch {
-        onEvent({ type: "log", message: line });
-      }
-    }
+    consumeBuffer();
   }
   if (buffer.trim()) {
     try {

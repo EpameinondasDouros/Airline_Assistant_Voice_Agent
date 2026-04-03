@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.booking import Booking, BookingStatus, RefundStatus
 from app.models.booking_event import BookingEvent, BookingEventType
@@ -48,11 +48,27 @@ class BookingService:
         )
         return list(self.session.scalars(statement))
 
+    def list_booked_trips(self, limit: int = 500) -> list[Booking]:
+        statement = (
+            select(Booking)
+            .join(Booking.flight)
+            .where(Booking.status == BookingStatus.CONFIRMED)
+            .options(
+                joinedload(Booking.flight),
+                selectinload(Booking.passengers),
+                selectinload(Booking.extras),
+            )
+            .order_by(Flight.departure_time.asc(), Booking.created_at.desc())
+            .limit(limit)
+        )
+        return list(self.session.scalars(statement))
+
     def get_booking_by_reference(self, booking_reference: str) -> Booking:
         statement = (
             select(Booking)
             .where(Booking.booking_reference == booking_reference)
             .options(
+                joinedload(Booking.flight),
                 selectinload(Booking.passengers),
                 selectinload(Booking.extras),
                 selectinload(Booking.events),

@@ -29,7 +29,7 @@ else:
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 
-PROMPT = """You are a bounded-section code fixer for the testing layer of an airline agent repository.
+PROMPT = """You are a bounded-section code fixer for the app and agents layers of an airline agent repository.
 
 You receive:
 - a task-based testing artifact
@@ -42,7 +42,7 @@ Your job is to propose the smallest set of bounded edits that most likely fixes 
 Strict rules:
 - Never propose a full-file rewrite.
 - Use only the provided candidate files for section edits.
-- Every proposed path must stay inside backend/testing.
+- Every proposed path must stay inside backend/app or backend/agents.
 - Each edit must use one selector_type: python_symbol, markdown_heading, or text_between.
 - For python_symbol, selector_value must be an existing top-level function, class, or Class.method.
 - For markdown_heading, selector_value must match an existing markdown heading.
@@ -51,7 +51,7 @@ Strict rules:
 - For markdown_heading, replacement must contain the full replacement section, including the heading line.
 - For text_between, replacement must contain only the content between the anchors, not the anchors themselves.
 - Prefer one edit. Use more than one only if clearly necessary.
-- Do not propose edits outside backend/testing.
+- Do not propose edits outside backend/app or backend/agents.
 
 Good fixes are narrow, testable, and directly tied to the diagnosed root cause.
 """
@@ -118,7 +118,7 @@ def _artifact_prompt(
         "critique": critique,
         "root_cause": root_cause,
         "candidate_files": _select_candidate_files(root_cause),
-        "scope_rule": "Only propose edits to files inside backend/testing.",
+        "scope_rule": "Only propose edits to files inside backend/app or backend/agents.",
     }
     return (
         "Produce a bounded fix plan for this failing or weak task artifact.\n\n"

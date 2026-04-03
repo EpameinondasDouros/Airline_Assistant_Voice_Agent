@@ -10,6 +10,8 @@ Current flow:
 - `apply_fix_plan.py` applies the bounded edits, runs sync if needed, reruns validation, and updates the report
 - `run_refinement_cycle.py` runs the full loop in one command
 
+Fix plans are allowed to propose edits only in `backend/app` and `backend/agents`. The `backend/testing` tree is read-only evidence and harness code.
+
 Example:
 
 ```bash

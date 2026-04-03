@@ -8,7 +8,7 @@ from pydantic import BaseModel, EmailStr, Field
 from app.models.booking import BookingStatus, RefundStatus
 from app.models.booking_event import BookingEventType
 from app.models.booking_extra import ExtraType
-from app.models.flight import SeatClass, SeatPreference
+from app.models.flight import FlightStatus, SeatClass, SeatPreference
 
 
 class PassengerCreate(BaseModel):
@@ -107,6 +107,39 @@ class BookingRead(BaseModel):
     passengers: list[BookingPassengerRead]
     extras: list[BookingExtraRead]
     events: list[BookingEventRead]
+
+    model_config = {"from_attributes": True}
+
+
+class BookedTripFlightRead(BaseModel):
+    id: int
+    flight_number: str
+    origin_airport: str
+    destination_airport: str
+    departure_time: datetime
+    arrival_time: datetime
+    terminal: str | None
+    departure_gate: str | None
+    seat_class: SeatClass
+    price: Decimal
+    status: FlightStatus
+
+    model_config = {"from_attributes": True}
+
+
+class BookedTripRead(BaseModel):
+    id: int
+    booking_reference: str
+    contact_name: str
+    contact_email: EmailStr
+    contact_phone: str | None
+    total_price: Decimal
+    status: BookingStatus
+    created_at: datetime
+    updated_at: datetime
+    passengers: list[BookingPassengerRead]
+    extras: list[BookingExtraRead]
+    flight: BookedTripFlightRead
 
     model_config = {"from_attributes": True}
 

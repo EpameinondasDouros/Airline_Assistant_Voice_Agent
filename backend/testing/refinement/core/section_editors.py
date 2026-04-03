@@ -7,8 +7,9 @@ from pathlib import Path
 from .models import AppliedSectionChange, SectionEdit
 
 
-BACKEND_ROOT = Path(__file__).resolve().parents[2]
-TESTING_ROOT = BACKEND_ROOT / "testing"
+BACKEND_ROOT = Path(__file__).resolve().parents[3]
+APP_ROOT = BACKEND_ROOT / "app"
+AGENTS_ROOT = BACKEND_ROOT / "agents"
 
 
 @dataclass(frozen=True)
@@ -28,7 +29,7 @@ def normalize_repo_path(path: str) -> str:
 
 def get_policy(path: str) -> EditPolicy | None:
     normalized = normalize_repo_path(path)
-    if not normalized.startswith("backend/testing/"):
+    if not normalized.startswith(("backend/app/", "backend/agents/")):
         return None
 
     if normalized.endswith(".py"):
@@ -53,7 +54,7 @@ def get_policy(path: str) -> EditPolicy | None:
 
 def path_is_blocked(path: str) -> bool:
     normalized = normalize_repo_path(path)
-    return not normalized.startswith("backend/testing/")
+    return not normalized.startswith(("backend/app/", "backend/agents/"))
 
 
 def read_target_file(path: str) -> str:
@@ -62,17 +63,21 @@ def read_target_file(path: str) -> str:
 
 
 def candidate_paths_for_category(category: str) -> list[str]:
-    del category
+    root_priority = (APP_ROOT, AGENTS_ROOT)
+    if category == "prompt_based":
+        root_priority = (AGENTS_ROOT, APP_ROOT)
+
     candidates: list[str] = []
-    for path in sorted(TESTING_ROOT.rglob("*")):
-        if not path.is_file():
-            continue
-        relative = path.relative_to(BACKEND_ROOT.parent).as_posix()
-        if "/outputs/" in relative or "/reports/" in relative or "__pycache__" in relative:
-            continue
-        if path.suffix not in {".py", ".md", ".json"}:
-            continue
-        candidates.append(relative)
+    for root in root_priority:
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(BACKEND_ROOT.parent).as_posix()
+            if "__pycache__" in relative:
+                continue
+            if path.suffix not in {".py", ".md", ".json"}:
+                continue
+            candidates.append(relative)
     return candidates
 
 

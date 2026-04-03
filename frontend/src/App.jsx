@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   createBooking,
   getChatHistory,
-  getTestingRunRefinement,
-  getTestingRun,
+  listAllTripsBooked,
   listFlights,
   listTestingTasks,
   listTestingRuns,
@@ -30,10 +29,30 @@ function formatFlightDate(value) {
   return date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 }
 
+function formatFlightTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 function formatTimestamp(value) {
   if (!value) return "—";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function formatCurrency(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  const amount = Number(value);
+  if (Number.isNaN(amount)) return `$${value}`;
+  return amount.toLocaleString([], { style: "currency", currency: "USD" });
+}
+
+function formatSeatClass(value) {
+  if (!value) return "—";
+  return String(value)
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function formatJson(value) {
@@ -70,60 +89,6 @@ function getTestingConversationTurns(run) {
   }
 
   return [];
-}
-
-function getTestingTask(run) {
-  return run?.task || run?.scenario || {};
-}
-
-function getTestingVerdict(run) {
-  return run?.evaluator_verdict || null;
-}
-
-function getTestingRootCause(run) {
-  return run?.root_cause || null;
-}
-
-function getRefinementLoop(refinement) {
-  if (!refinement) return [];
-  return [
-    {
-      title: "Critique",
-      status: refinement.critique ? "done" : "pending",
-      body: refinement.critique
-        ? `${refinement.critique.verdict || "No verdict"} · score ${refinement.critique.overall_score ?? "—"}`
-        : "Not available",
-    },
-    {
-      title: "Root cause",
-      status: refinement.root_cause ? "done" : "pending",
-      body: refinement.root_cause
-        ? `${refinement.root_cause.root_cause_category || "—"} · ${refinement.root_cause.primary_root_cause || "No summary"}`
-        : "Not available",
-    },
-    {
-      title: "Fix plan",
-      status: refinement.fix_plan ? "done" : "pending",
-      body: refinement.fix_plan?.summary || "Not available",
-    },
-    {
-      title: "Applied changes",
-      status: refinement.applied_changes?.length ? "done" : "pending",
-      body: refinement.applied_changes?.length ? `${refinement.applied_changes.length} change(s) applied` : "No changes applied",
-    },
-    {
-      title: "Verification",
-      status: refinement.verification ? "done" : "pending",
-      body: refinement.verification?.success === true ? "Verification passed" : refinement.verification ? "Verification failed" : "Not available",
-    },
-    {
-      title: "Acceptance",
-      status: refinement.acceptance ? "done" : "pending",
-      body: refinement.acceptance
-        ? `${refinement.acceptance.accepted ? "Accepted" : "Rejected"} · ${refinement.acceptance.reason}`
-        : "Not available",
-    },
-  ];
 }
 
 function safeJson(value) {
@@ -271,6 +236,9 @@ function App() {
   const [health, setHealth] = useState("Ready");
   const [flightStatus, setFlightStatus] = useState("Loading flights...");
   const [flights, setFlights] = useState([]);
+  const [bookedTrips, setBookedTrips] = useState([]);
+  const [tripsStatus, setTripsStatus] = useState("Loading booked trips...");
+  const [tripsLoading, setTripsLoading] = useState(false);
   const [selectedFlight, setSelectedFlight] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [modalMode, setModalMode] = useState("detail");
@@ -303,18 +271,23 @@ function App() {
   const [testingTasks, setTestingTasks] = useState([]);
   const [testingRuns, setTestingRuns] = useState([]);
   const [selectedTestingRunId, setSelectedTestingRunId] = useState(null);
-  const [selectedTestingRun, setSelectedTestingRun] = useState(null);
-  const [selectedTestingRefinement, setSelectedTestingRefinement] = useState(null);
   const [selectedTaskSlug, setSelectedTaskSlug] = useState("");
   const [testingBusy, setTestingBusy] = useState(false);
   const [testingLiveLines, setTestingLiveLines] = useState([]);
   const [testingLiveActive, setTestingLiveActive] = useState(false);
   const visibleFlights = useMemo(() => uniqueFlights(flights), [flights]);
-  const testingConversationTurns = useMemo(() => getTestingConversationTurns(selectedTestingRun), [selectedTestingRun]);
-  const testingRefinementSteps = useMemo(() => getRefinementLoop(selectedTestingRefinement), [selectedTestingRefinement]);
-  const selectedTestingTask = useMemo(() => getTestingTask(selectedTestingRun), [selectedTestingRun]);
-  const selectedTestingVerdict = useMemo(() => getTestingVerdict(selectedTestingRun), [selectedTestingRun]);
-  const selectedTestingRootCause = useMemo(() => getTestingRootCause(selectedTestingRun), [selectedTestingRun]);
+  const bookedTripSummary = useMemo(() => {
+    const passengerCount = bookedTrips.reduce((total, trip) => total + (trip.passengers?.length || 0), 0);
+    const nextDeparture = bookedTrips
+      .map((trip) => trip.flight?.departure_time)
+      .filter(Boolean)
+      .sort((left, right) => new Date(left) - new Date(right))[0] || null;
+    return {
+      trips: bookedTrips.length,
+      passengers: passengerCount,
+      nextDeparture,
+    };
+  }, [bookedTrips]);
 
   useEffect(() => {
     listFlights(3)
@@ -327,6 +300,10 @@ function App() {
         setFlightStatus(error.message);
         setHealth("Flight API unavailable");
       });
+  }, []);
+
+  useEffect(() => {
+    loadBookedTrips();
   }, []);
 
   useEffect(() => {
@@ -356,26 +333,29 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!selectedTestingRunId) {
-      setSelectedTestingRun(null);
-      setSelectedTestingRefinement(null);
-      return;
+    if (screen === "trips") {
+      loadBookedTrips({ silent: bookedTrips.length > 0 });
     }
-    getTestingRun(selectedTestingRunId)
-      .then((response) => {
-        setSelectedTestingRun(response.payload);
+  }, [screen]);
+
+  function loadBookedTrips({ silent = false } = {}) {
+    if (!silent) {
+      setTripsStatus("Loading booked trips...");
+    }
+    setTripsLoading(true);
+    return listAllTripsBooked()
+      .then((items) => {
+        setBookedTrips(items);
+        setTripsStatus(items.length ? `Loaded ${items.length} booked trip${items.length === 1 ? "" : "s"}.` : "No booked trips yet.");
       })
       .catch((error) => {
-        setTestingStatus(error.message);
-      });
-    getTestingRunRefinement(selectedTestingRunId)
-      .then((response) => {
-        setSelectedTestingRefinement(response);
+        setBookedTrips([]);
+        setTripsStatus(error.message);
       })
-      .catch(() => {
-        setSelectedTestingRefinement(null);
+      .finally(() => {
+        setTripsLoading(false);
       });
-  }, [selectedTestingRunId]);
+  }
 
   function runFlightSearch() {
     searchFlights({
@@ -490,8 +470,10 @@ function App() {
     setBookingStatus("Creating booking...");
     createBooking(payload)
       .then((response) => {
-        setBookingStatus(`Booking confirmed: ${response.booking.booking_reference}`);
-        setChatInput(`Book flight ${selectedFlight.flight_number} for ${payload.contact_name}. Booking reference: ${response.booking.booking_reference}.`);
+        setBookingStatus(`Booking confirmed: ${response.booking_reference}`);
+        setTripsStatus(`Latest booking confirmed: ${response.booking_reference}`);
+        loadBookedTrips({ silent: true }).catch(() => {});
+        setChatInput(`Book flight ${selectedFlight.flight_number} for ${payload.contact_name}. Booking reference: ${response.booking_reference}.`);
         setModalMode("detail");
       })
       .catch((error) => {
@@ -511,7 +493,7 @@ function App() {
   function executeTestingRun(payload = {}) {
     setTestingBusy(true);
     setTestingLiveActive(true);
-    setTestingLiveLines([]);
+    setTestingLiveLines([{ tag: "status", text: "Connecting to live test runner..." }]);
     setTestingStatus("Running testing task...");
     runTestingTaskLive(payload, (event) => {
       if (!event || typeof event !== "object") return;
@@ -563,7 +545,7 @@ function App() {
         setTestingLiveLines((current) => [...current, { tag: "run", text: "Run finished." }]);
         const scope = payload.task ? `task ${payload.task}` : "all tasks";
         setTestingStatus(`Completed ${scope}.`);
-        refreshTestingRuns(selectedTestingRunId);
+        refreshTestingRuns(selectedTestingRunId).catch(() => {});
         return;
       }
       if (event.type === "error") {
@@ -589,6 +571,7 @@ function App() {
         <div className="topbar__brand">AeroMellon</div>
         <div className="topbar__links">
           <button className={screen === "search" ? "tab active" : "tab"} onClick={() => setScreen("search")}>Search Flights</button>
+          <button className={screen === "trips" ? "tab active" : "tab"} onClick={() => setScreen("trips")}>All Trips Booked</button>
           <button className={screen === "concierge" ? "tab active" : "tab"} onClick={() => setScreen("concierge")}>Concierge AI</button>
           <button className={screen === "testing" ? "tab active" : "tab"} onClick={() => setScreen("testing")}>Testing</button>
         </div>
@@ -601,9 +584,9 @@ function App() {
         </div>
         <nav className="sidebar__nav" aria-label="Primary">
           <button className={screen === "search" ? "sidebar__item active" : "sidebar__item"} onClick={() => setScreen("search")}>Search Flights</button>
+          <button className={screen === "trips" ? "sidebar__item active" : "sidebar__item"} onClick={() => setScreen("trips")}>All Trips Booked</button>
           <button className={screen === "concierge" ? "sidebar__item active" : "sidebar__item"} onClick={() => setScreen("concierge")}>Concierge</button>
           <button className={screen === "testing" ? "sidebar__item active" : "sidebar__item"} onClick={() => setScreen("testing")}>Testing</button>
-          <a className="sidebar__item" href="#">My Trips</a>
           <a className="sidebar__item" href="#">Policy Hub</a>
         </nav>
       </aside>
@@ -906,28 +889,6 @@ function App() {
               </form>
               <p className="status-pill status-pill--center">AeroMellon AI Concierge • {chatStatus}</p>
             </section>
-
-            {testingLiveActive || testingLiveLines.length ? (
-              <section className="testing-live">
-                <div className="testing-live__header">
-                  <div>
-                    <span className="eyebrow">Live output</span>
-                    <strong>Streaming test run</strong>
-                  </div>
-                  <span className="status-pill status-pill--center">{testingBusy ? "Running..." : "Complete"}</span>
-                </div>
-                <pre className="testing-live__console" aria-live="polite">
-                  {testingLiveLines.length
-                    ? testingLiveLines
-                        .map((line) => {
-                          const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-                          return `[${stamp}] [${String(line.tag).toUpperCase()}] ${line.text}`;
-                        })
-                        .join("\n")
-                    : "[waiting] No live output yet."}
-                </pre>
-              </section>
-            ) : null}
           </>
         ) : (
           <>
@@ -968,6 +929,28 @@ function App() {
                 Refresh runs
               </button>
             </section>
+
+            {testingLiveActive || testingLiveLines.length ? (
+              <section className="testing-live">
+                <div className="testing-live__header">
+                  <div>
+                    <span className="eyebrow">Live output</span>
+                    <strong>Streaming test run</strong>
+                  </div>
+                  <span className="status-pill status-pill--center">{testingBusy ? "Running..." : "Complete"}</span>
+                </div>
+                <pre className="testing-live__console" aria-live="polite">
+                  {testingLiveLines.length
+                    ? testingLiveLines
+                        .map((line) => {
+                          const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                          return `[${stamp}] [${String(line.tag).toUpperCase()}] ${line.text}`;
+                        })
+                        .join("\n")
+                    : "[waiting] No live output yet."}
+                </pre>
+              </section>
+            ) : null}
           </>
         )}
       </main>

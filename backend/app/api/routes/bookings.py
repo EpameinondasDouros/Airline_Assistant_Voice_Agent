@@ -6,6 +6,7 @@ from app.schemas.booking import (
     BookingAddExtrasRequest,
     BookingCreate,
     BookingRead,
+    BookedTripRead,
     BookingSummaryRead,
     BookingCancelRequest,
     BookingRescheduleRequest,
@@ -24,6 +25,15 @@ def list_bookings(
 ) -> list[BookingSummaryRead]:
     service = BookingService(session)
     return [BookingSummaryRead.model_validate(booking) for booking in service.list_bookings(limit=limit)]
+
+
+@router.get("/all-trips-booked", response_model=list[BookedTripRead])
+def list_all_trips_booked(
+    limit: int = Query(default=500, ge=1, le=500),
+    session: Session = Depends(get_db_session),
+) -> list[BookedTripRead]:
+    service = BookingService(session)
+    return [BookedTripRead.model_validate(booking) for booking in service.list_booked_trips(limit=limit)]
 
 
 @router.post("", response_model=BookingRead, status_code=201)

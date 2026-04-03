@@ -22,7 +22,7 @@ from ..agents.fixer_agent import generate_fix_plan_from_artifact
 from ..agents.root_cause_evaluator import evaluate_root_cause
 
 
-BACKEND_ROOT = Path(__file__).resolve().parents[2]
+BACKEND_ROOT = Path(__file__).resolve().parents[3]
 REPORTS_ROOT = BACKEND_ROOT / "testing" / "refinement" / "reports"
 Logger = Callable[[str], None]
 
