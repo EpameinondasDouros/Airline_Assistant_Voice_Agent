@@ -16,17 +16,14 @@ from urllib.request import urlopen
 
 from elevenlabs import ElevenLabs
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-BACKEND_ROOT = PROJECT_ROOT / "backend"
-TESTING_ROOT = PROJECT_ROOT / "testing"
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+TESTING_ROOT = BACKEND_ROOT / "testing"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
-if str(TESTING_ROOT) not in sys.path:
-    sys.path.insert(0, str(TESTING_ROOT))
 
 from agents.config import get_agent_settings  # noqa: E402
 from agents.elevenlabs_chat import ElevenLabsChatAgent  # noqa: E402
-from scenarios import SCENARIOS, Scenario, get_scenario  # noqa: E402
+from testing.scenarios import SCENARIOS, Scenario, get_scenario  # noqa: E402
 
 
 Role = Literal["user", "agent", "user_transcript"]
@@ -100,7 +97,7 @@ class TranscriptRecorder:
 
 
 def _outputs_dir() -> Path:
-    output_dir = PROJECT_ROOT / "testing" / "outputs"
+    output_dir = TESTING_ROOT / "outputs"
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
 
@@ -385,7 +382,7 @@ def _git_commit_hash() -> str | None:
         return (
             subprocess.check_output(
                 ["git", "rev-parse", "HEAD"],
-                cwd=PROJECT_ROOT,
+                cwd=BACKEND_ROOT,
                 stderr=subprocess.DEVNULL,
                 text=True,
             )

@@ -29,4 +29,4 @@ package-dir = {"" = "."}
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*", "agents*", "refinement_loop*"]
+include = ["app*", "agents*", "refinement_loop*", "testing*"]

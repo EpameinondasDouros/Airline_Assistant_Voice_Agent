@@ -20,7 +20,8 @@ from app.schemas.testing import (
 router = APIRouter(prefix="/testing", tags=["testing"])
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
-TESTING_ROOT = PROJECT_ROOT / "testing"
+BACKEND_ROOT = Path(__file__).resolve().parents[3]
+TESTING_ROOT = BACKEND_ROOT / "testing"
 OUTPUTS_ROOT = TESTING_ROOT / "outputs"
 from app.testing_catalog import SCENARIOS, get_scenario
 
@@ -113,7 +114,8 @@ def run_testing_scenarios(request: TestingRunRequest) -> TestingRunExecutionRead
 
     command = [
         sys.executable,
-        str(TESTING_ROOT / "run_conversation_tests.py"),
+        "-m",
+        "testing.run_conversation_tests",
         "--quiet",
         "--message-delay",
         str(request.message_delay),
@@ -129,7 +131,7 @@ def run_testing_scenarios(request: TestingRunRequest) -> TestingRunExecutionRead
 
     completed = subprocess.run(
         command,
-        cwd=PROJECT_ROOT,
+        cwd=BACKEND_ROOT,
         capture_output=True,
         text=True,
     )
