@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import time
 
 from elevenlabs.client import ElevenLabs
 from elevenlabs.conversational_ai.conversation import (
@@ -55,6 +56,7 @@ class ElevenLabsChatAgent:
             callback_user_transcript=self._on_user_transcript,
         )
         self._conversation.start_session()
+        self._wait_until_ready()
 
     def send(self, message: str) -> None:
         if self._conversation is None:
@@ -64,5 +66,37 @@ class ElevenLabsChatAgent:
     def stop(self) -> None:
         if self._conversation is None:
             return
-        self._conversation.end_session()
+        conversation = self._conversation
+        conversation.end_session()
+        try:
+            conversation.wait_for_session_end()
+        except RuntimeError:
+            pass
         self._conversation = None
+
+    @property
+    def conversation_id(self) -> str | None:
+        if self._conversation is None:
+            return None
+        return getattr(self._conversation, "_conversation_id", None)
+
+    def _wait_until_ready(self, timeout_seconds: float = 8.0) -> None:
+        if self._conversation is None:
+            raise RuntimeError("Conversation has not been started.")
+
+        deadline = time.time() + timeout_seconds
+        while time.time() < deadline:
+            websocket = getattr(self._conversation, "_ws", None)
+            thread = getattr(self._conversation, "_thread", None)
+            if websocket is not None:
+                return
+            if thread is not None and not thread.is_alive():
+                raise RuntimeError(
+                    "ElevenLabs conversation session ended before the websocket became ready. "
+                    "Check the agent id, agent publication state, and workspace auth requirements."
+                )
+            time.sleep(0.1)
+
+        raise RuntimeError(
+            "Timed out waiting for the ElevenLabs websocket session to become ready."
+        )

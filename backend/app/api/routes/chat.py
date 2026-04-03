@@ -43,11 +43,30 @@ class ChatMessageOut(BaseModel):
 def send_message(payload: ChatMessageIn) -> ChatMessageOut:
     session = _get_session()
     try:
-        session.send(payload.message)
+        response_message = session.send_and_wait(payload.message)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    return ChatMessageOut(accepted=True, response="Message submitted to the ElevenLabs session.")
+    return ChatMessageOut(accepted=True, response=response_message.content)
+
+
+class ChatHistoryItemOut(BaseModel):
+    role: str
+    content: str
+    created_at: str
+
+
+@router.get("/history", response_model=list[ChatHistoryItemOut])
+def get_history() -> list[ChatHistoryItemOut]:
+    session = _get_session()
+    return [
+        ChatHistoryItemOut(
+            role=item.role,
+            content=item.content,
+            created_at=item.created_at.isoformat(),
+        )
+        for item in session.history()
+    ]
 
 
 class RefinementRunOut(BaseModel):
@@ -70,4 +89,3 @@ def refine_prompt() -> RefinementRunOut:
         issues=result.feedback.issues,
         suggestion=result.feedback.suggestion,
     )
-

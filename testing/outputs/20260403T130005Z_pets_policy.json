@@ -1,0 +1,97 @@
+{
+  "scenario": {
+    "slug": "pets_policy",
+    "description": "Ask for the airline pet policy.",
+    "messages": [
+      "Are pets permitted on board and under what conditions?"
+    ],
+    "expected_tools": [
+      "get_airline_policy"
+    ],
+    "expected_outcome": "policy_answer",
+    "expected_keywords": [
+      "pets",
+      "carrier",
+      "cabin"
+    ],
+    "mutation_expected": false,
+    "booking_reference_expected": false,
+    "follow_up_question_expected": true
+  },
+  "run": {
+    "started_at": "2026-04-03T12:59:53.460307+00:00",
+    "finished_at": "2026-04-03T13:00:05.476989+00:00",
+    "agent_id": "agent_5701kn80jnmfesbbmwer1sraq5yx",
+    "branch_id": "agtbrch_1401kn80jpkxecwaee0f6bmv5qne",
+    "conversation_id": "conv_0201kn9pvefff3h8yptzb0g9ejep",
+    "git_commit_hash": "70b76d2f4506e7e1c3436baf0f30c8561c5d4174",
+    "prompt_metadata": {
+      "prompt_path": "/Users/epameinondasdouros/Personal/TechMellon/Task-1/Airline_Assistant_Voice_Agent/backend/agents/prompts/flight_booking_agent.md",
+      "prompt_length_chars": 5162,
+      "prompt_updated_at": "2026-04-02T23:22:55.525786+00:00"
+    }
+  },
+  "transcript": [
+    {
+      "role": "agent",
+      "text": "Hello! How can I help you today?",
+      "timestamp": "2026-04-03T12:59:53.529742+00:00"
+    },
+    {
+      "role": "user",
+      "text": "Are pets permitted on board and under what conditions?",
+      "timestamp": "2026-04-03T12:59:55.079716+00:00"
+    },
+    {
+      "role": "agent",
+      "text": "Yes. Small cats and dogs can travel in the cabin if the pet plus carrier is 8 kg or less. They must stay in an approved soft-sided carrier that fits under the seat for the entire flight, and space is limited so you need to request it in advance.\n\nLarger pets may travel in the hold on selected routes in an airline-approved hard carrier. We don\u2019t accept pets in the hold if temperatures or other operational factors make it unsafe. Trained assistance dogs travel free of charge, subject to documentation checks.\n\nTell me your route and date, your pet type and total weight including the carrier, and whether you want cabin or hold, and I\u2019ll advise availability and next steps.",
+      "timestamp": "2026-04-03T13:00:03.466928+00:00"
+    }
+  ],
+  "final_agent_message": "Yes. Small cats and dogs can travel in the cabin if the pet plus carrier is 8 kg or less. They must stay in an approved soft-sided carrier that fits under the seat for the entire flight, and space is limited so you need to request it in advance.\n\nLarger pets may travel in the hold on selected routes in an airline-approved hard carrier. We don\u2019t accept pets in the hold if temperatures or other operational factors make it unsafe. Trained assistance dogs travel free of charge, subject to documentation checks.\n\nTell me your route and date, your pet type and total weight including the carrier, and whether you want cabin or hold, and I\u2019ll advise availability and next steps.",
+  "booking_reference_detected": null,
+  "tool_trace": [],
+  "turn_metrics": [],
+  "stats": {
+    "user_turn_count": 1,
+    "agent_turn_count": 2,
+    "tool_call_count": 0,
+    "tool_result_count": 0,
+    "interruption_count": 0,
+    "total_duration_secs": 0
+  },
+  "assertions": {
+    "used_expected_tools": false,
+    "called_tools": [],
+    "tool_call_count": 0,
+    "agent_replied_after_user_message": true,
+    "final_agent_message_present": true,
+    "final_message_contains_expected_keywords": true,
+    "booking_reference_detected": false,
+    "follow_up_question_detected": false
+  },
+  "backend_verification": null,
+  "elevenlabs_conversation": {
+    "agent_id": "agent_5701kn80jnmfesbbmwer1sraq5yx",
+    "agent_name": "Airline_Agent_V1",
+    "conversation_id": "conv_0201kn9pvefff3h8yptzb0g9ejep",
+    "status": "in-progress",
+    "branch_id": "agtbrch_1401kn80jpkxecwaee0f6bmv5qne",
+    "version_id": "agtvrsn_5401kn87f799e7f9pdq7prdh9z59",
+    "environment": "production",
+    "metadata": {
+      "call_duration_secs": 0,
+      "cost": null,
+      "termination_reason": "",
+      "main_language": "en",
+      "text_only": false,
+      "conversation_initiation_source": "python_sdk"
+    },
+    "analysis": {
+      "call_successful": null,
+      "call_summary_title": null,
+      "transcript_summary": null
+    },
+    "transcript": []
+  }
+}

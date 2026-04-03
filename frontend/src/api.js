@@ -67,3 +67,33 @@ export function sendChatMessage(message) {
     body: JSON.stringify({ message }),
   });
 }
+
+export function getChatHistory() {
+  return request("/api/chat/history");
+}
+
+export function createBooking(payload) {
+  return request("/api/bookings", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listTestingScenarios() {
+  return request("/api/testing/scenarios");
+}
+
+export function listTestingRuns() {
+  return request("/api/testing/runs");
+}
+
+export function getTestingRun(runId) {
+  return request(`/api/testing/runs/${encodeURIComponent(runId)}`);
+}
+
+export function runTestingScenario(payload = {}) {
+  return request("/api/testing/run", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

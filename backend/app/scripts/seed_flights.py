@@ -118,21 +118,21 @@ CLASS_CONFIG = {
         "price_multiplier": Decimal("1.00"),
         "window_seat_capacity": 40,
         "aisle_seat_capacity": 40,
-        "extra_legroom_capacity": 12,
+        "extra_legroom_capacity": 18,
     },
     SeatClass.PREMIUM_ECONOMY: {
         "capacity": 36,
         "price_multiplier": Decimal("1.55"),
         "window_seat_capacity": 12,
         "aisle_seat_capacity": 12,
-        "extra_legroom_capacity": 6,
+        "extra_legroom_capacity": 30,
     },
     SeatClass.BUSINESS: {
-        "capacity": 18,
+        "capacity": 16,
         "price_multiplier": Decimal("2.40"),
         "window_seat_capacity": 8,
         "aisle_seat_capacity": 8,
-        "extra_legroom_capacity": 4,
+        "extra_legroom_capacity": 16,
     },
 }
 
