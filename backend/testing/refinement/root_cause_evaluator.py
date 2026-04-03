@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from .critic import evaluate_artifact
 from .debug_output import print_agent_json
-from .models import RootCauseVerdict
+from .models import CritiqueVerdict, RootCauseVerdict
 
 try:
     from pydantic_ai import Agent
@@ -22,34 +22,23 @@ else:
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 
-PROMPT = """You are a root-cause evaluator for an airline voice-agent testing loop.
+PROMPT = """You are a root-cause evaluator for an airline agent capability-testing loop.
 
 You will receive:
-1. a testing artifact from a scripted conversation run
+1. a task-based testing artifact
 2. a first-pass QA critique of that artifact
 
-Your job is not to restate the failure. Your job is to identify the most likely root cause.
+Your job is not to restate the weakness. Your job is to identify the most likely root cause.
+
+Use exactly one top-level category:
+- prompt_based
+- script_based
+
+Interpretation:
+- prompt_based: the agent's instruction following, response structure, clarification behavior, or conversational strategy was the main problem
+- script_based: the task definition, tools, backend behavior, seeded data, evaluator assumptions, or test harness mechanics were the main problem
 
 Be conservative and pick the narrowest cause supported by evidence.
-Prefer one primary cause, even if there are secondary symptoms.
-
-Use these categories:
-- prompt_instruction_gap
-- tool_selection_error
-- tool_contract_mismatch
-- backend_bug
-- testing_harness_issue
-- expectation_mismatch
-- data_issue
-- unknown
-
-When naming likely fix targets, prefer concrete repo locations or concise system areas, for example:
-- backend/agents/prompts/flight_booking_agent.md
-- backend/agents/tools/definitions.py
-- backend/app/services/booking_service.py
-- backend/testing/run_conversation_tests.py
-- scenario expectations
-
 If no meaningful failure is present, set failure_detected to false and explain why.
 """
 
@@ -67,36 +56,27 @@ def _build_agent(model: str) -> Agent[None, RootCauseVerdict]:
 
 
 def _artifact_prompt(payload: dict[str, Any], critique: dict[str, Any]) -> str:
-    scenario = payload.get("scenario") or {}
-    assertions = payload.get("assertions") or {}
-    tool_trace = payload.get("tool_trace") or []
-    transcript = payload.get("transcript") or []
-    final_message = payload.get("final_agent_message")
-    backend_verification = payload.get("backend_verification")
-    stats = payload.get("stats") or {}
-
+    task = payload.get("task") or payload.get("scenario") or {}
     compact_payload = {
-        "scenario": {
-            "slug": scenario.get("slug"),
-            "description": scenario.get("description"),
-            "messages": scenario.get("messages"),
-            "expected_tools": scenario.get("expected_tools"),
-            "expected_outcome": scenario.get("expected_outcome"),
-            "expected_keywords": scenario.get("expected_keywords"),
-            "mutation_expected": scenario.get("mutation_expected"),
-            "booking_reference_expected": scenario.get("booking_reference_expected"),
-            "follow_up_question_expected": scenario.get("follow_up_question_expected"),
+        "task": {
+            "slug": task.get("slug"),
+            "description": task.get("description"),
+            "goal": task.get("goal"),
+            "task_type": task.get("task_type"),
+            "initial_user_intent": task.get("initial_user_intent"),
+            "evaluation_focus": task.get("evaluation_focus"),
+            "required_backend_effects": task.get("required_backend_effects"),
+            "allowed_tools_hint": task.get("allowed_tools_hint"),
         },
-        "assertions": assertions,
-        "stats": stats,
-        "final_agent_message": final_message,
-        "tool_trace": tool_trace,
-        "backend_verification": backend_verification,
-        "transcript": transcript,
+        "stats": payload.get("stats") or {},
+        "final_agent_message": payload.get("final_agent_message"),
+        "tool_trace": payload.get("tool_trace") or [],
+        "backend_verification": payload.get("backend_verification"),
+        "transcript": payload.get("transcript") or [],
         "critique": critique,
     }
     return (
-        "Diagnose the most likely root cause for this testing result and return a structured verdict.\n\n"
+        "Diagnose the most likely root cause for this task-based testing result and return a structured verdict.\n\n"
         + json.dumps(compact_payload, indent=2)
     )
 
@@ -104,10 +84,12 @@ def _artifact_prompt(payload: dict[str, Any], critique: dict[str, Any]) -> str:
 def evaluate_root_cause(
     payload: dict[str, Any],
     *,
+    critique: CritiqueVerdict | None = None,
     model: str = "openai:gpt-4o-mini",
 ) -> RootCauseVerdict:
-    critique = evaluate_artifact(payload, model=model).model_dump(mode="json")
+    critique_payload = critique.model_dump(mode="json") if critique else evaluate_artifact(payload, model=model).model_dump(mode="json")
     agent = _build_agent(model)
-    result = agent.run_sync(_artifact_prompt(payload, critique))
+    result = agent.run_sync(_artifact_prompt(payload, critique_payload))
     print_agent_json("root_cause", result.output)
     return result.output
+

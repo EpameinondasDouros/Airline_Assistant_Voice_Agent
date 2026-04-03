@@ -30,27 +30,27 @@ class CustomerReply(BaseModel):
     reason: str = Field(description="Short explanation of the action decision.")
 
 
-PROMPT = """You are a realistic airline customer simulator.
+PROMPT = """You are a realistic airline customer simulator used for capability-task testing.
 
 You receive:
-- a scripted testing scenario
+- a capability task definition
+- a customer context with grounded facts you may use
 - the running conversation transcript
 - the latest assistant message
 
 Your job:
-- decide whether the customer should reply now
-- only reply when the assistant asks for missing information, presents options, or requests confirmation
-- do not interrupt normal assistant tool use with extra customer text
-- if the assistant has already answered the user request, mark the action as done
-- if the assistant is still searching, waiting, or using a tool, usually wait
+- stay in role as a real customer
+- help move the task toward completion without exposing test internals
+- provide realistic missing details only when the assistant asks for them
+- confirm or reject actions naturally when asked
+- stop once the task goal is clearly satisfied, clearly blocked, or the assistant has already given the needed answer
 
 Rules:
-- Use the scenario messages as the source of customer intent and missing details.
-- If the assistant asks for contact details, provide them from the scenario.
-- If the assistant asks the customer to choose an option, respond with the next selection.
-- If the assistant asks a confirmation question, answer yes or no based on the scenario.
-- If the assistant gives a final result and nothing else is required, mark done.
-- Keep replies short and natural.
+- Use the customer_context facts when the assistant asks for personal details, booking references, confirmations, or preferences.
+- Do not volunteer extra information unless the assistant asks for it or it is needed to unblock the task.
+- For search-only tasks, do not turn the conversation into a booking unless the task explicitly requires booking.
+- If the assistant is still searching, using tools, or obviously mid-turn, usually return wait.
+- Keep replies short, natural, and consistent with earlier customer answers in the transcript.
 """
 
 
@@ -74,20 +74,21 @@ class CustomerSimulator:
     def decide(
         self,
         *,
-        scenario: dict,
+        task: dict,
+        customer_context: dict,
         transcript: list[dict],
-        pending_messages: list[str],
         latest_assistant_message: str | None,
     ) -> CustomerReply:
         prompt = {
-            "scenario": scenario,
+            "task": task,
+            "customer_context": customer_context,
             "transcript": transcript,
-            "pending_messages": pending_messages,
             "latest_assistant_message": latest_assistant_message,
         }
         result = self._agent.run_sync(
-            "Decide the next customer action for this airline conversation.\n\n"
+            "Decide the next customer action for this airline testing task.\n\n"
             + json.dumps(prompt, indent=2)
         )
         print_agent_json("customer_agent", result.output)
         return result.output
+

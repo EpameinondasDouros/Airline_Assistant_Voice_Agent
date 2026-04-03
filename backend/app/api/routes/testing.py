@@ -14,21 +14,25 @@ from app.schemas.testing import (
     TestingRunRead,
     TestingRunRequest,
     TestingRunSummaryRead,
-    TestingScenarioRead,
+    TestingTaskRead,
 )
+from testing.tasks import TASKS, get_task
 
 
 router = APIRouter(prefix="/testing", tags=["testing"])
 
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 TESTING_ROOT = BACKEND_ROOT / "testing"
 OUTPUTS_ROOT = TESTING_ROOT / "outputs"
-from app.testing_catalog import SCENARIOS, get_scenario
+
+
+def _task_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return (payload.get("task") or payload.get("scenario") or {})
 
 
 def _run_id_from_payload(payload: dict[str, Any], fallback_name: str) -> str:
-    slug = ((payload.get("scenario") or {}).get("slug")) or "test"
+    task = _task_payload(payload)
+    slug = task.get("slug") or "test"
     conversation_id = ((payload.get("run") or {}).get("conversation_id")) or fallback_name
     return f"{slug}:{conversation_id}"
 
@@ -41,13 +45,16 @@ def _load_run_payload(path: Path) -> dict[str, Any]:
 
 
 def _build_summary(path: Path, payload: dict[str, Any]) -> TestingRunSummaryRead:
-    scenario = payload.get("scenario") or {}
+    task = _task_payload(payload)
     run = payload.get("run") or {}
     stats = payload.get("stats") or {}
+    evaluator = payload.get("evaluator_verdict") or {}
+    root_cause = payload.get("root_cause") or {}
     return TestingRunSummaryRead(
         id=_run_id_from_payload(payload, path.stem),
-        slug=scenario.get("slug") or path.stem,
-        description=scenario.get("description") or "",
+        slug=task.get("slug") or path.stem,
+        description=task.get("description") or "",
+        task_type=task.get("task_type"),
         started_at=run.get("started_at"),
         finished_at=run.get("finished_at"),
         conversation_id=run.get("conversation_id"),
@@ -55,6 +62,10 @@ def _build_summary(path: Path, payload: dict[str, Any]) -> TestingRunSummaryRead
         tool_call_count=int(stats.get("tool_call_count") or 0),
         booking_reference_detected=payload.get("booking_reference_detected"),
         has_backend_verification=bool(payload.get("backend_verification")),
+        evaluator_score=evaluator.get("overall_score"),
+        evaluator_success=evaluator.get("goal_achieved"),
+        root_cause_category=root_cause.get("root_cause_category"),
+        evaluator_verdict=evaluator.get("verdict"),
     )
 
 
@@ -72,21 +83,34 @@ def _find_run_path(run_id: str) -> Path:
     raise HTTPException(status_code=404, detail=f"Testing run '{run_id}' was not found.")
 
 
-@router.get("/scenarios", response_model=list[TestingScenarioRead])
-def list_testing_scenarios() -> list[TestingScenarioRead]:
+def _task_slug_from_request(request: TestingRunRequest) -> str | None:
+    return request.task or request.scenario
+
+
+def _task_reads() -> list[TestingTaskRead]:
     return [
-        TestingScenarioRead(
-            slug=scenario.slug,
-            description=scenario.description,
-            expected_tools=scenario.expected_tools,
-            expected_outcome=scenario.expected_outcome,
-            expected_keywords=scenario.expected_keywords,
-            mutation_expected=scenario.mutation_expected,
-            booking_reference_expected=scenario.booking_reference_expected,
-            follow_up_question_expected=scenario.follow_up_question_expected,
+        TestingTaskRead(
+            slug=task.slug,
+            description=task.description,
+            goal=task.goal,
+            task_type=task.task_type,
+            initial_user_intent=task.initial_user_intent,
+            evaluation_focus=task.evaluation_focus,
+            required_backend_effects=task.required_backend_effects,
+            allowed_tools_hint=task.allowed_tools_hint,
         )
-        for scenario in SCENARIOS
+        for task in TASKS
     ]
+
+
+@router.get("/tasks", response_model=list[TestingTaskRead])
+def list_testing_tasks() -> list[TestingTaskRead]:
+    return _task_reads()
+
+
+@router.get("/scenarios", response_model=list[TestingTaskRead])
+def list_testing_scenarios() -> list[TestingTaskRead]:
+    return _task_reads()
 
 
 @router.get("/runs", response_model=list[TestingRunSummaryRead])
@@ -106,10 +130,11 @@ def get_testing_run(run_id: str) -> TestingRunRead:
 
 
 @router.post("/run", response_model=TestingRunExecutionRead)
-def run_testing_scenarios(request: TestingRunRequest) -> TestingRunExecutionRead:
-    if request.scenario:
+def run_testing_tasks(request: TestingRunRequest) -> TestingRunExecutionRead:
+    selected_task = _task_slug_from_request(request)
+    if selected_task:
         try:
-            get_scenario(request.scenario)
+            get_task(selected_task)
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -117,12 +142,12 @@ def run_testing_scenarios(request: TestingRunRequest) -> TestingRunExecutionRead
     if not settings.elevenlabs_api_key:
         raise HTTPException(
             status_code=400,
-            detail="Testing requires ELEVENLABS_API_KEY to run conversation scenarios.",
+            detail="Testing requires ELEVENLABS_API_KEY to run capability-task conversations.",
         )
     if not settings.elevenlabs_agent_id:
         raise HTTPException(
             status_code=400,
-            detail="Testing requires ELEVENLABS_AGENT_ID to run conversation scenarios.",
+            detail="Testing requires ELEVENLABS_AGENT_ID to run capability-task conversations.",
         )
 
     command = [
@@ -139,8 +164,8 @@ def run_testing_scenarios(request: TestingRunRequest) -> TestingRunExecutionRead
         "--quiet-window",
         str(request.quiet_window),
     ]
-    if request.scenario:
-        command.extend(["--scenario", request.scenario])
+    if selected_task:
+        command.extend(["--task", selected_task])
 
     completed = subprocess.run(
         command,
@@ -163,3 +188,4 @@ def run_testing_scenarios(request: TestingRunRequest) -> TestingRunExecutionRead
         payload = _load_run_payload(output_path)
         summaries.append(_build_summary(output_path, payload))
     return TestingRunExecutionRead(results=summaries)
+

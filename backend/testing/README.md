@@ -1,10 +1,10 @@
 # Testing
 
-This folder is reserved for the agent testing harness, conversation scenarios, transcript capture, and evaluation utilities.
+This folder contains the task-driven agent testing harness, transcript capture, evaluation utilities, and refinement loop.
 
-Planned areas:
-- conversation runners
-- scenario definitions
+Main areas:
+- capability task definitions
+- AI-driven conversation runner
 - transcript outputs
-- evaluation scripts
+- evaluator and root-cause analysis
 - refinement loop helpers

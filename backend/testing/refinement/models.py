@@ -10,8 +10,9 @@ class CritiqueFinding(BaseModel):
 
 
 class CritiqueVerdict(BaseModel):
-    scenario_slug: str
+    task_slug: str
     overall_score: int = Field(ge=0, le=10)
+    goal_achieved: bool
     used_tools_correctly: bool
     answer_quality: str = Field(description="Short quality summary.")
     verdict: str = Field(description="One sentence overall conclusion.")
@@ -21,55 +22,40 @@ class CritiqueVerdict(BaseModel):
 
 class RootCauseFinding(BaseModel):
     title: str = Field(description="Short label for the diagnosed problem.")
-    category: str = Field(
-        description=(
-            "One of: prompt_instruction_gap, tool_selection_error, tool_contract_mismatch, "
-            "backend_bug, testing_harness_issue, expectation_mismatch, data_issue, unknown."
-        )
-    )
+    category: str = Field(description="One of: prompt_based or script_based.")
     evidence: str = Field(description="Concrete evidence from the artifact supporting the diagnosis.")
     impact: str = Field(description="What this issue caused in the observed run.")
 
 
 class RootCauseVerdict(BaseModel):
-    scenario_slug: str
+    task_slug: str
     failure_detected: bool
     primary_root_cause: str = Field(
-        description=(
-            "Short root cause summary, for example 'Prompt did not require a follow-up question' "
-            "or 'Backend tool returned inconsistent booking state'."
-        )
+        description="Short root cause summary explaining why the task underperformed."
     )
-    root_cause_category: str = Field(
-        description=(
-            "One of: prompt_instruction_gap, tool_selection_error, tool_contract_mismatch, "
-            "backend_bug, testing_harness_issue, expectation_mismatch, data_issue, unknown."
-        )
-    )
+    root_cause_category: str = Field(description="One of: prompt_based or script_based.")
     confidence: float = Field(ge=0.0, le=1.0)
     findings: list[RootCauseFinding] = Field(default_factory=list)
     likely_fix_targets: list[str] = Field(
         default_factory=list,
-        description="Repo files or system areas most likely to require change.",
+        description="Repo files or testing-layer areas most likely to require change.",
     )
     suggested_fix_type: str = Field(
-        description="Short fix direction, such as prompt_change, tool_definition_change, or backend_code_change."
+        description="Short fix direction, such as prompt_change, task_rubric_change, or harness_change."
     )
     suggested_next_step: str = Field(description="Single most useful next action to validate or fix the root cause.")
 
 
 class SectionEdit(BaseModel):
     path: str = Field(description="Repo-relative path to the file that should be changed.")
-    selector_type: str = Field(
-        description="One of: python_symbol, markdown_heading, or text_between."
-    )
+    selector_type: str = Field(description="One of: python_symbol, markdown_heading, or text_between.")
     selector_value: str = Field(description="Selector payload, such as a function name or heading text.")
     reason: str = Field(description="Why this section should change.")
     replacement: str = Field(description="Replacement content for the matched section only.")
 
 
 class BoundedFixPlan(BaseModel):
-    scenario_slug: str
+    task_slug: str
     summary: str = Field(description="Short summary of the proposed fix.")
     rationale: str = Field(description="Why this fix addresses the diagnosed root cause.")
     expected_improvement: str = Field(description="What should improve after applying the fix.")
@@ -114,3 +100,4 @@ class RefinementReport(BaseModel):
     after_critique: CritiqueVerdict | None = None
     after_root_cause: RootCauseVerdict | None = None
     acceptance: AcceptanceDecision | None = None
+

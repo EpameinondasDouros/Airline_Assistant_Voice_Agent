@@ -79,8 +79,8 @@ export function createBooking(payload) {
   });
 }
 
-export function listTestingScenarios() {
-  return request("/api/testing/scenarios");
+export function listTestingTasks() {
+  return request("/api/testing/tasks");
 }
 
 export function listTestingRuns() {
@@ -91,9 +91,17 @@ export function getTestingRun(runId) {
   return request(`/api/testing/runs/${encodeURIComponent(runId)}`);
 }
 
-export function runTestingScenario(payload = {}) {
+export function runTestingTask(payload = {}) {
   return request("/api/testing/run", {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function listTestingScenarios() {
+  return listTestingTasks();
+}
+
+export function runTestingScenario(payload = {}) {
+  return runTestingTask(payload);
 }

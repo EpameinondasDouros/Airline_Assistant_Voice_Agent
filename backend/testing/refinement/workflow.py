@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import shlex
 import subprocess
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -19,7 +19,7 @@ from .models import (
     VerificationResult,
 )
 from .root_cause_evaluator import evaluate_root_cause
-from .section_editors import apply_section_edit, normalize_repo_path
+from .section_editors import apply_section_edit
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -28,23 +28,23 @@ Logger = Callable[[str], None]
 
 
 def _timestamp() -> str:
-    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def _default_logger(message: str) -> None:
     print(message)
 
 
-def _report_path(scenario_slug: str) -> Path:
+def _report_path(task_slug: str) -> Path:
     REPORTS_ROOT.mkdir(parents=True, exist_ok=True)
-    return REPORTS_ROOT / f"{_timestamp()}_{scenario_slug}_refinement.json"
+    return REPORTS_ROOT / f"{_timestamp()}_{task_slug}_refinement.json"
 
 
 def _normalize_verification_command(plan: BoundedFixPlan) -> str:
     command = (plan.verification_command or "").strip()
     if command.startswith("python -m testing.run_conversation_tests"):
         return command
-    return f"python -m testing.run_conversation_tests --scenario {shlex.quote(plan.scenario_slug)} --quiet"
+    return f"python -m testing.run_conversation_tests --task {shlex.quote(plan.task_slug)} --quiet"
 
 
 def _sync_commands_for_paths(paths: list[str]) -> list[str]:
@@ -87,10 +87,10 @@ def _run_command(command: str, *, logger: Logger | None = None) -> VerificationR
 
 
 def _acceptance_decision(
-    before_artifact: dict,
     before_critique: CritiqueVerdict,
-    after_artifact: dict,
+    before_root_cause: RootCauseVerdict,
     after_critique: CritiqueVerdict,
+    after_root_cause: RootCauseVerdict,
 ) -> AcceptanceDecision:
     improvements = 0
     regressions: list[str] = []
@@ -100,30 +100,20 @@ def _acceptance_decision(
     elif after_critique.overall_score < before_critique.overall_score:
         regressions.append("overall score decreased")
 
+    if after_critique.goal_achieved and not before_critique.goal_achieved:
+        improvements += 1
+    elif before_critique.goal_achieved and not after_critique.goal_achieved:
+        regressions.append("goal achievement regressed")
+
     if after_critique.used_tools_correctly and not before_critique.used_tools_correctly:
         improvements += 1
     elif before_critique.used_tools_correctly and not after_critique.used_tools_correctly:
         regressions.append("tool usage correctness regressed")
 
-    before_assertions = before_artifact.get("assertions") or {}
-    after_assertions = after_artifact.get("assertions") or {}
-
-    if (
-        after_assertions.get("final_message_contains_expected_keywords")
-        and not before_assertions.get("final_message_contains_expected_keywords")
-    ):
+    if not after_root_cause.failure_detected and before_root_cause.failure_detected:
         improvements += 1
-    elif (
-        before_assertions.get("final_message_contains_expected_keywords")
-        and not after_assertions.get("final_message_contains_expected_keywords")
-    ):
-        regressions.append("expected keyword coverage regressed")
-
-    if (
-        after_assertions.get("booking_reference_detected")
-        and not before_assertions.get("booking_reference_detected")
-    ):
-        improvements += 1
+    elif after_root_cause.failure_detected and not before_root_cause.failure_detected:
+        regressions.append("new root cause introduced")
 
     if regressions:
         return AcceptanceDecision(accepted=False, reason="; ".join(regressions))
@@ -144,23 +134,22 @@ def create_fix_plan_report(
         artifact_path,
         model=model,
     )
-    active_logger(f"[2/5] critique complete for scenario: {payload.get('scenario', {}).get('slug')}")
+    task = payload.get("task") or payload.get("scenario") or {}
+    active_logger(f"[2/5] critique complete for task: {task.get('slug')}")
     active_logger(f"[3/5] root cause: {root_cause_data.get('root_cause_category')} | {root_cause_data.get('primary_root_cause')}")
     active_logger(
         "[4/5] generated bounded fix plan with "
         f"{len(plan.section_edits)} section edit(s)"
     )
     for index, edit in enumerate(plan.section_edits, start=1):
-        active_logger(
-            f"  - edit {index}: {edit.path} | {edit.selector_type}:{edit.selector_value}"
-        )
+        active_logger(f"  - edit {index}: {edit.path} | {edit.selector_type}:{edit.selector_value}")
     report = RefinementReport(
         artifact_path=str(Path(artifact_path)),
         critique=CritiqueVerdict.model_validate(critique_data),
         root_cause=RootCauseVerdict.model_validate(root_cause_data),
         fix_plan=plan,
     )
-    report_path = _report_path(plan.scenario_slug)
+    report_path = _report_path(plan.task_slug)
     report_path.write_text(json.dumps(report.model_dump(mode="json"), indent=2), encoding="utf-8")
     active_logger(f"[5/5] wrote refinement report: {report_path}")
     return report, report_path
@@ -186,9 +175,7 @@ def apply_report(
     applied_changes: list[AppliedSectionChange] = []
     active_logger(f"[apply] applying {len(report.fix_plan.section_edits)} section edit(s)")
     for edit in report.fix_plan.section_edits:
-        active_logger(
-            f"[apply] editing {edit.path} | {edit.selector_type}:{edit.selector_value}"
-        )
+        active_logger(f"[apply] editing {edit.path} | {edit.selector_type}:{edit.selector_value}")
         result = apply_section_edit(edit)
         if result.applied:
             active_logger("[apply] success")
@@ -238,16 +225,14 @@ def apply_report(
     active_logger("[after] running critique on rerun artifact")
     report.after_critique = evaluate_artifact(rerun_artifact, model=model)
     active_logger("[after] running root cause evaluator on rerun artifact")
-    report.after_root_cause = evaluate_root_cause(rerun_artifact, model=model)
+    report.after_root_cause = evaluate_root_cause(rerun_artifact, critique=report.after_critique, model=model)
     report.acceptance = _acceptance_decision(
-        load_artifact(report.artifact_path),
         report.critique,
-        rerun_artifact,
+        report.root_cause,
         report.after_critique,
+        report.after_root_cause,
     )
 
     path.write_text(json.dumps(report.model_dump(mode="json"), indent=2), encoding="utf-8")
-    active_logger(
-        f"[result] {'accepted' if report.acceptance.accepted else 'rejected'}: {report.acceptance.reason}"
-    )
+    active_logger(f"[result] {'accepted' if report.acceptance.accepted else 'rejected'}: {report.acceptance.reason}")
     return report

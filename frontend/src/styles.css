@@ -665,6 +665,25 @@ button, input { font: inherit; }
   padding: 1.2rem;
   border-radius: 1.45rem;
 }
+.testing-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.8rem;
+}
+.testing-metric {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: 1rem;
+  background: rgba(246, 243, 235, 0.82);
+}
+.testing-metric span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.testing-metric strong {
+  color: var(--ink);
+}
 .testing-card--wide {
   grid-column: 1 / -1;
 }

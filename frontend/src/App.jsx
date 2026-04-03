@@ -4,9 +4,9 @@ import {
   getChatHistory,
   getTestingRun,
   listFlights,
+  listTestingTasks,
   listTestingRuns,
-  listTestingScenarios,
-  runTestingScenario,
+  runTestingTask,
   searchFlights,
   sendChatMessage,
 } from "./api";
@@ -69,6 +69,18 @@ function getTestingConversationTurns(run) {
   }
 
   return [];
+}
+
+function getTestingTask(run) {
+  return run?.task || run?.scenario || {};
+}
+
+function getTestingVerdict(run) {
+  return run?.evaluator_verdict || null;
+}
+
+function getTestingRootCause(run) {
+  return run?.root_cause || null;
 }
 
 function safeJson(value) {
@@ -245,14 +257,17 @@ function App() {
   const [chatStatus, setChatStatus] = useState("Connecting...");
   const [chatPending, setChatPending] = useState(false);
   const [testingStatus, setTestingStatus] = useState("Loading testing workspace...");
-  const [testingScenarios, setTestingScenarios] = useState([]);
+  const [testingTasks, setTestingTasks] = useState([]);
   const [testingRuns, setTestingRuns] = useState([]);
   const [selectedTestingRunId, setSelectedTestingRunId] = useState(null);
   const [selectedTestingRun, setSelectedTestingRun] = useState(null);
-  const [selectedScenarioSlug, setSelectedScenarioSlug] = useState("");
+  const [selectedTaskSlug, setSelectedTaskSlug] = useState("");
   const [testingBusy, setTestingBusy] = useState(false);
   const visibleFlights = useMemo(() => uniqueFlights(flights), [flights]);
   const testingConversationTurns = useMemo(() => getTestingConversationTurns(selectedTestingRun), [selectedTestingRun]);
+  const selectedTestingTask = useMemo(() => getTestingTask(selectedTestingRun), [selectedTestingRun]);
+  const selectedTestingVerdict = useMemo(() => getTestingVerdict(selectedTestingRun), [selectedTestingRun]);
+  const selectedTestingRootCause = useMemo(() => getTestingRootCause(selectedTestingRun), [selectedTestingRun]);
 
   useEffect(() => {
     listFlights(3)
@@ -280,13 +295,13 @@ function App() {
   }, []);
 
   useEffect(() => {
-    Promise.all([listTestingScenarios(), listTestingRuns()])
-      .then(([scenarios, runs]) => {
-        setTestingScenarios(scenarios);
+    Promise.all([listTestingTasks(), listTestingRuns()])
+      .then(([tasks, runs]) => {
+        setTestingTasks(tasks);
         setTestingRuns(runs);
-        setSelectedScenarioSlug(scenarios[0]?.slug || "");
+        setSelectedTaskSlug(tasks[0]?.slug || "");
         setSelectedTestingRunId((current) => current || runs[0]?.id || null);
-        setTestingStatus(runs.length ? `Loaded ${runs.length} testing runs.` : "No testing runs yet. Run a scenario to generate one.");
+        setTestingStatus(runs.length ? `Loaded ${runs.length} testing runs.` : "No testing runs yet. Run a task to generate one.");
       })
       .catch((error) => {
         setTestingStatus(error.message);
@@ -440,12 +455,12 @@ function App() {
 
   function executeTestingRun(payload = {}) {
     setTestingBusy(true);
-    setTestingStatus("Running testing scenario...");
-    runTestingScenario(payload)
+    setTestingStatus("Running testing task...");
+    runTestingTask(payload)
       .then((response) => {
         const preferredRunId = response.results[0]?.id || null;
         return refreshTestingRuns(preferredRunId).then(() => {
-          const scope = payload.scenario ? `scenario ${payload.scenario}` : "all scenarios";
+          const scope = payload.task ? `task ${payload.task}` : "all tasks";
           setTestingStatus(`Completed ${scope}. Generated ${response.results.length} run${response.results.length === 1 ? "" : "s"}.`);
         });
       })
@@ -785,35 +800,35 @@ function App() {
           <>
             <header className="page-header">
               <h1>Testing Observatory</h1>
-              <p>Run the ElevenLabs agent scenarios directly from the UI, then inspect assertions, tool calls, timeline data, and backend verification per test id.</p>
+              <p>Run AI-driven capability tasks against the ElevenLabs agent, then inspect evaluator verdicts, root-cause classifications, tool traces, and backend effects per test id.</p>
               <div className="status-pill">Testing: {testingStatus}</div>
             </header>
 
             <section className="testing-toolbar">
               <button type="button" className="button button--primary" onClick={() => executeTestingRun()} disabled={testingBusy}>
                 <span className="material-symbols-outlined">play_arrow</span>
-                Run all scenarios
+                Run all tasks
               </button>
               <select
-                value={selectedScenarioSlug}
-                onChange={(event) => setSelectedScenarioSlug(event.target.value)}
+                value={selectedTaskSlug}
+                onChange={(event) => setSelectedTaskSlug(event.target.value)}
                 className="testing-select"
-                disabled={testingBusy || !testingScenarios.length}
+                disabled={testingBusy || !testingTasks.length}
               >
-                {testingScenarios.map((scenario) => (
-                  <option key={scenario.slug} value={scenario.slug}>
-                    {scenario.slug}
+                {testingTasks.map((task) => (
+                  <option key={task.slug} value={task.slug}>
+                    {task.slug}
                   </option>
                 ))}
               </select>
               <button
                 type="button"
                 className="button button--secondary"
-                onClick={() => executeTestingRun(selectedScenarioSlug ? { scenario: selectedScenarioSlug } : {})}
-                disabled={testingBusy || !selectedScenarioSlug}
+                onClick={() => executeTestingRun(selectedTaskSlug ? { task: selectedTaskSlug } : {})}
+                disabled={testingBusy || !selectedTaskSlug}
               >
                 <span className="material-symbols-outlined">terminal</span>
-                Run selected scenario
+                Run selected task
               </button>
               <button type="button" className="button button--secondary" onClick={() => refreshTestingRuns(selectedTestingRunId)} disabled={testingBusy}>
                 <span className="material-symbols-outlined">refresh</span>
@@ -856,6 +871,35 @@ function App() {
               <div className="testing-content">
                 {selectedTestingRun ? (
                   <>
+                    <article className="testing-card">
+                      <div className="testing-card__header">
+                        <h3>Task Summary</h3>
+                        <span className="testing-muted">{selectedTestingTask.task_type || "task"}</span>
+                      </div>
+                      <div className="testing-metric-grid">
+                        <div className="testing-metric">
+                          <span>Task</span>
+                          <strong>{selectedTestingTask.slug || "—"}</strong>
+                        </div>
+                        <div className="testing-metric">
+                          <span>Goal achieved</span>
+                          <strong>{selectedTestingVerdict?.goal_achieved === true ? "Yes" : selectedTestingVerdict?.goal_achieved === false ? "No" : "Unknown"}</strong>
+                        </div>
+                        <div className="testing-metric">
+                          <span>Score</span>
+                          <strong>{selectedTestingVerdict?.overall_score ?? "—"}</strong>
+                        </div>
+                        <div className="testing-metric">
+                          <span>Root cause</span>
+                          <strong>{selectedTestingRootCause?.root_cause_category || "—"}</strong>
+                        </div>
+                      </div>
+                      <p className="testing-muted">{selectedTestingTask.description || "No task description found."}</p>
+                      {selectedTestingVerdict?.verdict ? <p><strong>Evaluator:</strong> {selectedTestingVerdict.verdict}</p> : null}
+                      {selectedTestingRootCause?.primary_root_cause ? <p><strong>Root cause:</strong> {selectedTestingRootCause.primary_root_cause}</p> : null}
+                      {selectedTestingRun?.evaluation_error ? <p><strong>Evaluation error:</strong> {selectedTestingRun.evaluation_error}</p> : null}
+                    </article>
+
                     <article className="testing-card testing-card--wide">
                       <div className="testing-card__header">
                         <h3>Conversation</h3>
@@ -887,6 +931,28 @@ function App() {
                       )}
                     </article>
 
+                    <article className="testing-card">
+                      <div className="testing-card__header">
+                        <h3>Backend Effects</h3>
+                      </div>
+                      {selectedTestingRun.backend_verification ? (
+                        <pre className="testing-pre">{safeJson(selectedTestingRun.backend_verification)}</pre>
+                      ) : (
+                        <p className="testing-muted">No backend verification was required for this task.</p>
+                      )}
+                    </article>
+
+                    <article className="testing-card">
+                      <div className="testing-card__header">
+                        <h3>Tool Trace</h3>
+                      </div>
+                      {selectedTestingRun.tool_trace?.length ? (
+                        <pre className="testing-pre">{safeJson(selectedTestingRun.tool_trace)}</pre>
+                      ) : (
+                        <p className="testing-muted">No tool activity was captured for this run.</p>
+                      )}
+                    </article>
+
                     <article className="testing-card testing-card--wide">
                       <div className="testing-card__header">
                         <h3>Raw JSON</h3>
@@ -898,7 +964,7 @@ function App() {
                   <div className="testing-empty testing-empty--large">
                     <span className="material-symbols-outlined">experiment</span>
                     <h2>No run selected</h2>
-                    <p>Run a scenario or refresh the workspace to inspect a testing artifact here.</p>
+                    <p>Run a task or refresh the workspace to inspect a testing artifact here.</p>
                   </div>
                 )}
               </div>

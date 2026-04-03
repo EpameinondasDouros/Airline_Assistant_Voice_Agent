@@ -21,16 +21,17 @@ else:
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 
-PROMPT = """You are a strict QA critic for an airline voice agent.
+PROMPT = """You are a strict QA critic for an airline agent capability-testing loop.
 
-You will receive one testing artifact from a scripted conversation run.
-Your job is to assess:
-1. whether the expected tools were used correctly
-2. whether the final answer satisfied the user request
-3. whether the response structure and completeness were good enough
+You will receive one testing artifact from a task-driven conversation run.
+Judge the run primarily on:
+1. whether the task goal was achieved
+2. whether the tool and data usage looked appropriate
+3. whether the final user-facing answer was clear and adequate
+4. whether backend evidence supports the claimed outcome for write actions
 
-Be concrete and conservative. Do not praise weak behavior.
-If something is missing, call it out clearly.
+Be concrete and conservative. Do not fail a run only because it used a different but still reasonable phrasing.
+Do not rely on rigid keyword matching. Use the transcript, tool trace, final answer, and backend verification as evidence.
 """
 
 
@@ -47,29 +48,27 @@ def _build_agent(model: str) -> Agent[None, CritiqueVerdict]:
 
 
 def _artifact_prompt(payload: dict[str, Any]) -> str:
-    scenario = payload.get("scenario") or {}
-    assertions = payload.get("assertions") or {}
-    tool_trace = payload.get("tool_trace") or []
-    transcript = payload.get("transcript") or []
-    final_message = payload.get("final_agent_message")
-
+    task = payload.get("task") or payload.get("scenario") or {}
     compact_payload = {
-        "scenario": {
-            "slug": scenario.get("slug"),
-            "description": scenario.get("description"),
-            "messages": scenario.get("messages"),
-            "expected_tools": scenario.get("expected_tools"),
-            "expected_outcome": scenario.get("expected_outcome"),
-            "expected_keywords": scenario.get("expected_keywords"),
-            "follow_up_question_expected": scenario.get("follow_up_question_expected"),
+        "task": {
+            "slug": task.get("slug"),
+            "description": task.get("description"),
+            "goal": task.get("goal"),
+            "task_type": task.get("task_type"),
+            "initial_user_intent": task.get("initial_user_intent"),
+            "evaluation_focus": task.get("evaluation_focus"),
+            "required_backend_effects": task.get("required_backend_effects"),
+            "allowed_tools_hint": task.get("allowed_tools_hint"),
         },
-        "assertions": assertions,
-        "final_agent_message": final_message,
-        "tool_trace": tool_trace,
-        "transcript": transcript,
+        "final_agent_message": payload.get("final_agent_message"),
+        "booking_reference_detected": payload.get("booking_reference_detected"),
+        "stats": payload.get("stats") or {},
+        "tool_trace": payload.get("tool_trace") or [],
+        "backend_verification": payload.get("backend_verification"),
+        "transcript": payload.get("transcript") or [],
     }
     return (
-        "Review this testing artifact and return a structured verdict.\n\n"
+        "Review this task-based testing artifact and return a structured verdict.\n\n"
         + json.dumps(compact_payload, indent=2)
     )
 
@@ -84,3 +83,4 @@ def evaluate_artifact(payload: dict[str, Any], *, model: str = "openai:gpt-4o-mi
 def load_artifact(path: str | Path) -> dict[str, Any]:
     artifact_path = Path(path)
     return json.loads(artifact_path.read_text(encoding="utf-8"))
+

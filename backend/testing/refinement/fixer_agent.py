@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from .critic import evaluate_artifact, load_artifact
 from .debug_output import print_agent_json
-from .models import BoundedFixPlan
+from .models import BoundedFixPlan, CritiqueVerdict
 from .root_cause_evaluator import evaluate_root_cause
 from .section_editors import (
     candidate_paths_for_category,
@@ -32,7 +32,7 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 PROMPT = """You are a bounded-section code fixer for the testing layer of an airline agent repository.
 
 You receive:
-- a testing artifact
+- a task-based testing artifact
 - a critique verdict
 - a root-cause verdict
 - a small set of candidate files with real current contents and policy metadata
@@ -70,7 +70,7 @@ def _build_agent(model: str) -> Agent[None, BoundedFixPlan]:
 
 
 def _select_candidate_files(root_cause: dict[str, Any]) -> list[dict[str, Any]]:
-    category = str(root_cause.get("root_cause_category") or "unknown")
+    category = str(root_cause.get("root_cause_category") or "script_based")
     candidate_paths = candidate_paths_for_category(category)
 
     candidates: list[dict[str, Any]] = []
@@ -99,26 +99,29 @@ def _artifact_prompt(
     critique: dict[str, Any],
     root_cause: dict[str, Any],
 ) -> str:
-    scenario = payload.get("scenario") or {}
+    task = payload.get("task") or payload.get("scenario") or {}
     compact_payload = {
-        "scenario": {
-            "slug": scenario.get("slug"),
-            "description": scenario.get("description"),
-            "messages": scenario.get("messages"),
-            "expected_tools": scenario.get("expected_tools"),
-            "expected_outcome": scenario.get("expected_outcome"),
-            "expected_keywords": scenario.get("expected_keywords"),
+        "task": {
+            "slug": task.get("slug"),
+            "description": task.get("description"),
+            "goal": task.get("goal"),
+            "task_type": task.get("task_type"),
+            "initial_user_intent": task.get("initial_user_intent"),
+            "evaluation_focus": task.get("evaluation_focus"),
+            "required_backend_effects": task.get("required_backend_effects"),
+            "allowed_tools_hint": task.get("allowed_tools_hint"),
         },
-        "assertions": payload.get("assertions") or {},
+        "stats": payload.get("stats") or {},
         "final_agent_message": payload.get("final_agent_message"),
         "tool_trace": payload.get("tool_trace") or [],
+        "backend_verification": payload.get("backend_verification"),
         "critique": critique,
         "root_cause": root_cause,
         "candidate_files": _select_candidate_files(root_cause),
         "scope_rule": "Only propose edits to files inside backend/testing.",
     }
     return (
-        "Produce a bounded fix plan for this failing or weak test artifact.\n\n"
+        "Produce a bounded fix plan for this failing or weak task artifact.\n\n"
         + json.dumps(compact_payload, indent=2)
     )
 
@@ -128,12 +131,18 @@ def generate_fix_plan(
     *,
     model: str = "openai:gpt-4o-mini",
 ) -> tuple[BoundedFixPlan, dict[str, Any], dict[str, Any]]:
-    critique = evaluate_artifact(payload, model=model).model_dump(mode="json")
-    root_cause = evaluate_root_cause(payload, model=model).model_dump(mode="json")
+    critique = evaluate_artifact(payload, model=model)
+    root_cause = evaluate_root_cause(payload, critique=critique, model=model)
     agent = _build_agent(model)
-    result = agent.run_sync(_artifact_prompt(payload, critique, root_cause))
+    result = agent.run_sync(
+        _artifact_prompt(
+            payload,
+            critique.model_dump(mode="json"),
+            root_cause.model_dump(mode="json"),
+        )
+    )
     print_agent_json("fixer_agent", result.output)
-    return result.output, critique, root_cause
+    return result.output, critique.model_dump(mode="json"), root_cause.model_dump(mode="json")
 
 
 def generate_fix_plan_from_artifact(
@@ -144,3 +153,4 @@ def generate_fix_plan_from_artifact(
     payload = load_artifact(artifact_path)
     plan, critique, root_cause = generate_fix_plan(payload, model=model)
     return payload, plan, critique, root_cause
+

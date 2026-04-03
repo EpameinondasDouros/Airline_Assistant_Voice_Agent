@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event, Lock
 from typing import Literal
@@ -21,10 +21,12 @@ TESTING_ROOT = BACKEND_ROOT / "testing"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from agents.config import get_agent_settings  # noqa: E402
 from agents.chat.elevenlabs import ElevenLabsChatAgent  # noqa: E402
+from agents.config import get_agent_settings  # noqa: E402
+from testing.refinement.critic import evaluate_artifact  # noqa: E402
 from testing.refinement.customer_agent import CustomerSimulator  # noqa: E402
-from testing.scenarios import SCENARIOS, Scenario, get_scenario  # noqa: E402
+from testing.refinement.root_cause_evaluator import evaluate_root_cause  # noqa: E402
+from testing.tasks import CapabilityTask, TASKS, get_task  # noqa: E402
 
 
 Role = Literal["user", "agent", "user_transcript"]
@@ -63,7 +65,7 @@ class TranscriptRecorder:
                 TranscriptEntry(
                     role=role,
                     text=text,
-                    timestamp=datetime.now(UTC).isoformat(),
+                    timestamp=datetime.now(timezone.utc).isoformat(),
                 )
             )
             self._last_entry_ts = time.time()
@@ -92,10 +94,6 @@ class TranscriptRecorder:
                 return
             time.sleep(0.1)
 
-    def has_agent_entries(self) -> bool:
-        with self._lock:
-            return any(entry.role == "agent" for entry in self.entries)
-
     def agent_count(self) -> int:
         with self._lock:
             return sum(1 for entry in self.entries if entry.role == "agent")
@@ -108,7 +106,7 @@ def _outputs_dir() -> Path:
 
 
 def _timestamp() -> str:
-    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def _model_to_jsonable(value: object) -> object:
@@ -398,13 +396,6 @@ def _build_stats(transcript: list[dict], tool_trace: list[dict], conversation: d
     }
 
 
-def _contains_keywords(final_agent_message: str | None, keywords: list[str]) -> bool:
-    if not final_agent_message:
-        return False
-    haystack = final_agent_message.lower()
-    return all(keyword.lower() in haystack for keyword in keywords)
-
-
 def _latest_agent_message(entries: list[TranscriptEntry]) -> str | None:
     for entry in reversed(entries):
         if entry.role == "agent":
@@ -441,48 +432,6 @@ def _wait_for_agent_turn(
     return True
 
 
-def _build_assertions(
-    scenario: Scenario,
-    transcript: list[dict],
-    final_agent_message: str | None,
-    tool_trace: list[dict],
-    booking_reference: str | None,
-) -> dict:
-    called_tool_names = [item["tool_name"] for item in tool_trace if item["kind"] == "tool_call" and item.get("tool_name")]
-    expected_tools_used = all(tool in called_tool_names for tool in scenario.expected_tools)
-    return {
-        "used_expected_tools": expected_tools_used,
-        "called_tools": called_tool_names,
-        "tool_call_count": len(called_tool_names),
-        "agent_replied_after_user_message": any(item.get("role") == "agent" for item in transcript),
-        "final_agent_message_present": bool(final_agent_message),
-        "final_message_contains_expected_keywords": _contains_keywords(final_agent_message, scenario.expected_keywords),
-        "booking_reference_detected": bool(booking_reference),
-        "follow_up_question_detected": bool(final_agent_message and "?" in final_agent_message),
-    }
-
-
-def _fetch_backend_verification(settings, booking_reference: str | None) -> dict | None:
-    if not booking_reference or not settings.backend_public_url:
-        return None
-    url = f"{settings.backend_public_url.rstrip('/')}/api/bookings/{booking_reference}"
-    try:
-        with urlopen(url, timeout=10) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
-        return {"booking_reference": booking_reference, "verified": False, "error": str(exc), "url": url}
-
-    return {
-        "booking_reference": booking_reference,
-        "verified": True,
-        "status": payload.get("status"),
-        "flight_id": payload.get("flight_id"),
-        "seat_preferences": [passenger.get("seat_preference") for passenger in payload.get("passengers", [])],
-        "extras_count": len(payload.get("extras", [])),
-        "url": url,
-    }
-
-
 def _git_commit_hash() -> str | None:
     try:
         return (
@@ -504,22 +453,119 @@ def _prompt_metadata() -> dict:
     return {
         "prompt_path": str(prompt_path),
         "prompt_length_chars": len(prompt_text),
-        "prompt_updated_at": datetime.fromtimestamp(prompt_path.stat().st_mtime, UTC).isoformat(),
+        "prompt_updated_at": datetime.fromtimestamp(prompt_path.stat().st_mtime, timezone.utc).isoformat(),
     }
 
 
-def run_scenario(
-    scenario: Scenario,
+def _customer_context(task: CapabilityTask) -> dict:
+    if task.slug == "book_flight":
+        return {
+            "full_name": "Eleni Pappas",
+            "first_name": "Eleni",
+            "last_name": "Pappas",
+            "email": "eleni.pappas@example.com",
+            "phone": "+306944001122",
+            "date_of_birth": "1992-04-16",
+            "passenger_count": 1,
+            "passenger_type": "adult",
+            "extras": "No extras.",
+        }
+    if task.slug == "cancel_or_reschedule_booking":
+        return {
+            "booking_reference": "TMQ7L5N8",
+            "confirm_reschedule": "Yes, move me to the best available option.",
+            "fallback_cancel": "If nothing suitable is available, cancel it instead.",
+        }
+    if task.slug == "add_baggage_or_special_items":
+        return {
+            "booking_reference": "TMX4A92K",
+            "extra_request": "one extra checked bag",
+            "confirmation": "Yes, please add it to the booking.",
+        }
+    if task.slug == "retrieve_booking_by_reference":
+        return {
+            "booking_reference": "TMQ7L5N8",
+        }
+    if task.slug == "search_available_flights":
+        return {
+            "origin": "FCO",
+            "destination": "ATH",
+            "cabin": "premium economy",
+            "booking_intent": "I am only comparing options right now, not booking.",
+        }
+    return {}
+
+
+def _fetch_booking_snapshot(settings, booking_reference: str | None) -> dict | None:
+    if not booking_reference or not settings.backend_public_url:
+        return None
+    url = f"{settings.backend_public_url.rstrip('/')}/api/bookings/{booking_reference}"
+    try:
+        with urlopen(url, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+        return {"booking_reference": booking_reference, "verified": False, "error": str(exc), "url": url}
+
+    return {
+        "booking_reference": booking_reference,
+        "verified": True,
+        "status": payload.get("status"),
+        "flight_id": payload.get("flight_id"),
+        "seat_preferences": [passenger.get("seat_preference") for passenger in payload.get("passengers", [])],
+        "extras_count": len(payload.get("extras", [])),
+        "url": url,
+    }
+
+
+def _build_backend_verification(
+    task: CapabilityTask,
+    *,
+    verification_reference: str | None,
+    before_snapshot: dict | None,
+    after_snapshot: dict | None,
+) -> dict | None:
+    if not task.required_backend_effects:
+        return None
+    changed_fields: list[str] = []
+    if before_snapshot and after_snapshot:
+        for field in ("status", "flight_id", "seat_preferences", "extras_count"):
+            if before_snapshot.get(field) != after_snapshot.get(field):
+                changed_fields.append(field)
+
+    effect_results = {
+        "booking_created": bool(after_snapshot and after_snapshot.get("verified") and not before_snapshot),
+        "booking_updated": bool(after_snapshot and after_snapshot.get("verified") and (changed_fields or before_snapshot)),
+        "extras_updated": bool(
+            before_snapshot
+            and after_snapshot
+            and before_snapshot.get("extras_count") != after_snapshot.get("extras_count")
+        ),
+    }
+    return {
+        "booking_reference": verification_reference,
+        "required_effects": task.required_backend_effects,
+        "before": before_snapshot,
+        "after": after_snapshot,
+        "changed_fields": changed_fields,
+        "effect_results": {key: effect_results.get(key) for key in task.required_backend_effects},
+    }
+
+
+def run_task(
+    task: CapabilityTask,
     *,
     message_delay_seconds: float,
     response_timeout_seconds: float,
     settle_timeout_seconds: float,
     quiet_window_seconds: float,
     live_output: bool,
+    review_model: str,
 ) -> Path:
     settings = get_agent_settings()
     recorder = TranscriptRecorder(live_output=live_output)
-    customer = CustomerSimulator()
+    customer = CustomerSimulator(model=review_model)
+    customer_context = _customer_context(task)
+    pre_snapshot = _fetch_booking_snapshot(settings, customer_context.get("booking_reference"))
     agent = ElevenLabsChatAgent(
         settings,
         on_agent_response=recorder.on_agent_response,
@@ -527,18 +573,16 @@ def run_scenario(
     )
 
     agent.start()
-    started_at = datetime.now(UTC).isoformat()
+    started_at = datetime.now(timezone.utc).isoformat()
     conversation_id = agent.conversation_id
-    pending_messages = list(scenario.messages)
+    customer_reply_count = 0
+    max_customer_replies = 8
 
     try:
         if recorder.wait_for_agent_activity(message_delay_seconds):
             recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
 
-        if not pending_messages:
-            raise RuntimeError(f"Scenario '{scenario.slug}' has no scripted user messages.")
-
-        first_message = pending_messages.pop(0)
+        first_message = task.initial_user_intent
         baseline_agent_count = recorder.agent_count()
         recorder.add_user_message(first_message)
         agent.send(first_message)
@@ -553,52 +597,50 @@ def run_scenario(
         ):
             raise RuntimeError(f"Timed out waiting for the agent response after user message: {first_message}")
 
-        while True:
+        while customer_reply_count < max_customer_replies:
             recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
             latest_agent_message = _latest_agent_message(recorder.entries)
             decision = customer.decide(
-                scenario={
-                    "slug": scenario.slug,
-                    "description": scenario.description,
-                    "messages": scenario.messages,
-                    "expected_tools": scenario.expected_tools,
-                    "expected_outcome": scenario.expected_outcome,
-                    "expected_keywords": scenario.expected_keywords,
-                    "mutation_expected": scenario.mutation_expected,
-                    "booking_reference_expected": scenario.booking_reference_expected,
-                    "follow_up_question_expected": scenario.follow_up_question_expected,
+                task={
+                    "slug": task.slug,
+                    "description": task.description,
+                    "goal": task.goal,
+                    "task_type": task.task_type,
+                    "initial_user_intent": task.initial_user_intent,
+                    "evaluation_focus": task.evaluation_focus,
+                    "required_backend_effects": task.required_backend_effects,
+                    "allowed_tools_hint": task.allowed_tools_hint,
                 },
+                customer_context=customer_context,
                 transcript=[asdict(entry) for entry in recorder.entries],
-                pending_messages=pending_messages,
                 latest_assistant_message=latest_agent_message,
             )
 
             if decision.action == "done":
                 break
+
             if decision.action == "wait":
+                baseline_agent_count = recorder.agent_count()
                 if not recorder.wait_for_agent_activity(response_timeout_seconds):
                     remote_conversation = _poll_for_remote_turn_completion(
                         settings,
                         conversation_id,
-                        baseline_agent_count=recorder.agent_count(),
+                        baseline_agent_count=baseline_agent_count,
                         timeout_seconds=max(settle_timeout_seconds, 8.0),
                     )
-                    if not _has_meaningful_remote_agent_turn(remote_conversation, recorder.agent_count()):
+                    if recorder.agent_count() > baseline_agent_count:
+                        continue
+                    if not _has_meaningful_remote_agent_turn(remote_conversation, baseline_agent_count):
                         break
                 continue
 
             if decision.action == "reply":
                 if decision.message is None:
                     raise RuntimeError("Customer simulator requested a reply without a message.")
-                if pending_messages and decision.message == pending_messages[0]:
-                    next_message = pending_messages.pop(0)
-                else:
-                    next_message = decision.message
-                    if next_message in pending_messages:
-                        pending_messages.remove(next_message)
+                customer_reply_count += 1
                 baseline_agent_count = recorder.agent_count()
-                recorder.add_user_message(next_message)
-                agent.send(next_message)
+                recorder.add_user_message(decision.message)
+                agent.send(decision.message)
                 if not _wait_for_agent_turn(
                     recorder,
                     settings,
@@ -606,9 +648,9 @@ def run_scenario(
                     baseline_agent_count=baseline_agent_count,
                     timeout_seconds=response_timeout_seconds,
                     settle_timeout_seconds=settle_timeout_seconds,
-                    initial_message=next_message,
+                    initial_message=decision.message,
                 ):
-                    raise RuntimeError(f"Timed out waiting for the agent response after user message: {next_message}")
+                    raise RuntimeError(f"Timed out waiting for the agent response after user message: {decision.message}")
                 continue
 
             raise RuntimeError(f"Unsupported customer simulator action: {decision.action}")
@@ -616,7 +658,7 @@ def run_scenario(
         conversation_id = agent.conversation_id or conversation_id
         agent.stop()
 
-    finished_at = datetime.now(UTC).isoformat()
+    finished_at = datetime.now(timezone.utc).isoformat()
     conversation_data = _fetch_finalized_conversation_history(
         settings,
         conversation_id,
@@ -627,22 +669,27 @@ def run_scenario(
     tool_trace = _extract_tool_trace(compact_conversation)
     final_agent_message = _extract_final_agent_message(compact_conversation, transcript)
     booking_reference = _extract_booking_reference(final_agent_message, transcript, tool_trace)
+    verification_reference = booking_reference or customer_context.get("booking_reference")
+    post_snapshot = _fetch_booking_snapshot(settings, verification_reference)
     turn_metrics = _build_turn_metrics(compact_conversation, transcript)
     stats = _build_stats(transcript, tool_trace, compact_conversation)
-    assertions = _build_assertions(scenario, transcript, final_agent_message, tool_trace, booking_reference)
-    backend_verification = _fetch_backend_verification(settings, booking_reference) if scenario.mutation_expected else None
-    output_path = _outputs_dir() / f"{_timestamp()}_{scenario.slug}.json"
+    backend_verification = _build_backend_verification(
+        task,
+        verification_reference=verification_reference,
+        before_snapshot=pre_snapshot if task.required_backend_effects else None,
+        after_snapshot=post_snapshot if task.required_backend_effects else None,
+    )
+
     payload = {
-        "scenario": {
-            "slug": scenario.slug,
-            "description": scenario.description,
-            "messages": scenario.messages,
-            "expected_tools": scenario.expected_tools,
-            "expected_outcome": scenario.expected_outcome,
-            "expected_keywords": scenario.expected_keywords,
-            "mutation_expected": scenario.mutation_expected,
-            "booking_reference_expected": scenario.booking_reference_expected,
-            "follow_up_question_expected": scenario.follow_up_question_expected,
+        "task": {
+            "slug": task.slug,
+            "description": task.description,
+            "goal": task.goal,
+            "task_type": task.task_type,
+            "initial_user_intent": task.initial_user_intent,
+            "evaluation_focus": task.evaluation_focus,
+            "required_backend_effects": task.required_backend_effects,
+            "allowed_tools_hint": task.allowed_tools_hint,
         },
         "run": {
             "started_at": started_at,
@@ -653,42 +700,59 @@ def run_scenario(
             "git_commit_hash": _git_commit_hash(),
             "prompt_metadata": _prompt_metadata(),
         },
+        "customer_context": customer_context,
         "transcript": transcript,
         "final_agent_message": final_agent_message,
         "booking_reference_detected": booking_reference,
         "tool_trace": tool_trace,
         "turn_metrics": turn_metrics,
         "stats": stats,
-        "assertions": assertions,
         "backend_verification": backend_verification,
         "elevenlabs_conversation": compact_conversation,
     }
+
+    try:
+        critique = evaluate_artifact(payload, model=review_model)
+        root_cause = evaluate_root_cause(payload, critique=critique, model=review_model)
+        payload["evaluator_verdict"] = critique.model_dump(mode="json")
+        payload["root_cause"] = root_cause.model_dump(mode="json")
+        payload["evaluation_error"] = None
+    except Exception as exc:  # pragma: no cover - runtime integration failure path
+        payload["evaluator_verdict"] = None
+        payload["root_cause"] = None
+        payload["evaluation_error"] = str(exc)
+
+    output_path = _outputs_dir() / f"{_timestamp()}_{task.slug}.json"
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return output_path
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run scripted ElevenLabs conversation tests and store transcripts.")
-    parser.add_argument("--scenario", help="Scenario slug to run. If omitted, all scenarios are run.")
-    parser.add_argument("--message-delay", type=float, default=1.0, help="Delay between scripted user turns.")
+    parser = argparse.ArgumentParser(description="Run AI-driven capability-task tests and store conversation artifacts.")
+    parser.add_argument("--task", help="Capability task slug to run. If omitted, all tasks are run.")
+    parser.add_argument("--scenario", help=argparse.SUPPRESS)
+    parser.add_argument("--message-delay", type=float, default=1.0, help="Delay before the first user turn.")
     parser.add_argument("--response-timeout", type=float, default=20.0, help="How long to wait for agent output after each message.")
     parser.add_argument("--settle-timeout", type=float, default=6.0, help="How long to wait for final agent output after the last message.")
     parser.add_argument("--quiet-window", type=float, default=2.0, help="How long the conversation must stay idle before the current turn is considered complete.")
-    parser.add_argument("--quiet", action="store_true", help="Disable live console printing while the scenario runs.")
+    parser.add_argument("--quiet", action="store_true", help="Disable live console printing while the task runs.")
+    parser.add_argument("--review-model", default="openai:gpt-4o-mini", help="Model used for the customer simulator and post-run evaluation.")
     args = parser.parse_args()
 
-    scenarios = [get_scenario(args.scenario)] if args.scenario else list(SCENARIOS)
+    selected_task = args.task or args.scenario
+    tasks = [get_task(selected_task)] if selected_task else list(TASKS)
     results: list[dict[str, str]] = []
-    for scenario in scenarios:
-        output_path = run_scenario(
-            scenario,
+    for task in tasks:
+        output_path = run_task(
+            task,
             message_delay_seconds=args.message_delay,
             response_timeout_seconds=args.response_timeout,
             settle_timeout_seconds=args.settle_timeout,
             quiet_window_seconds=args.quiet_window,
             live_output=not args.quiet,
+            review_model=args.review_model,
         )
-        results.append({"scenario": scenario.slug, "output": str(output_path)})
+        results.append({"task": task.slug, "output": str(output_path)})
 
     print(json.dumps(results, indent=2))
 
