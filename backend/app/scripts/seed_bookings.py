@@ -7,7 +7,8 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.session import SessionLocal
+from app.db.flight_schema import ensure_flight_seat_columns
+from app.db.session import SessionLocal, engine
 from app.models.booking import Booking, BookingStatus, RefundStatus
 from app.models.booking_event import BookingEvent, BookingEventType
 from app.models.booking_extra import BookingExtra, ExtraType
@@ -270,6 +271,7 @@ def build_booking_events(seed: BookingSeed, booking_id: int) -> list[BookingEven
 
 
 def main() -> None:
+    ensure_flight_seat_columns(engine)
     session = SessionLocal()
     try:
         existing_refs = set(session.scalars(select(Booking.booking_reference)))

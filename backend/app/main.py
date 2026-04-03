@@ -6,6 +6,8 @@ from app.api.routes.chat import router as chat_router
 from app.api.routes.bookings import router as bookings_router
 from app.api.routes.flights import router as flights_router
 from app.api.routes.knowledge import router as knowledge_router
+from app.db.flight_schema import ensure_flight_seat_columns
+from app.db.session import engine
 from app.config import get_settings
 
 
@@ -24,6 +26,11 @@ app.include_router(chat_router, prefix=settings.api_prefix)
 app.include_router(flights_router, prefix=settings.api_prefix)
 app.include_router(bookings_router, prefix=settings.api_prefix)
 app.include_router(knowledge_router, prefix=settings.api_prefix)
+
+
+@app.on_event("startup")
+def repair_flight_schema() -> None:
+    ensure_flight_seat_columns(engine)
 
 
 @app.get("/health")

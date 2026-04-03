@@ -6,7 +6,8 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from app.db.session import SessionLocal
+from app.db.flight_schema import ensure_flight_seat_columns
+from app.db.session import SessionLocal, engine
 from app.models.flight import Flight, FlightStatus, SeatClass
 
 
@@ -185,6 +186,7 @@ def build_seed_flights() -> Iterable[Flight]:
 
 
 def main() -> None:
+    ensure_flight_seat_columns(engine)
     session = SessionLocal()
     try:
         existing_keys = {
