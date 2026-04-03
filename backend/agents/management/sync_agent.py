@@ -6,10 +6,10 @@ from pathlib import Path
 from elevenlabs import ElevenLabs
 
 from agents.config import get_agent_settings
-from agents.tool_definitions import build_tool_definitions
+from agents.tools.definitions import build_tool_definitions
 
 
-PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "flight_booking_agent.md"
+PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "flight_booking_agent.md"
 
 
 def _extract_tools(response: object) -> list[object]:
@@ -62,7 +62,7 @@ def main() -> None:
     missing_tools = [name for name in desired_tool_names if not tool_id_by_name.get(name)]
     if missing_tools:
         raise ValueError(
-            "The following tools do not exist in ElevenLabs yet. Run `python -m agents.sync_tools` first: "
+            "The following tools do not exist in ElevenLabs yet. Run `python -m agents.tools.sync` first: "
             + ", ".join(missing_tools)
         )
 

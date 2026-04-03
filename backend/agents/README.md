@@ -9,17 +9,28 @@ This package contains the backend-side ElevenLabs integration layer for the Tech
 - Shared environment-based configuration
 - Python SDK-based webhook tool provisioning
 
-## Files
+## Structure
 
-- `config.py`: loads ElevenLabs and backend public URL settings from `.env`
-- `elevenlabs_chat.py`: wraps the ElevenLabs chat-mode conversation session
-- `cli.py`: starts a local terminal chat session against the configured agent
-- `chat/`: higher-level chat session abstractions and a CLI entrypoint
-- `tool_definitions.py`: central source of truth for the ElevenLabs webhook tool configurations
-- `sync_tools.py`: creates or updates the webhook tools in ElevenLabs using the Python SDK
-- `sync_agent.py`: updates the configured ElevenLabs agent with the local prompt and synced tool ids
-- `publish_agent.py`: deploys the current agent branch through the ElevenLabs SDK
-- `prompts/flight_booking_agent.md`: working prompt draft for the airline assistant
+- `config.py`
+  Loads ElevenLabs and backend public URL settings from `.env`.
+- `cli.py`
+  Thin wrapper that forwards to the chat CLI.
+- `chat/`
+  Chat runtime code:
+  - `elevenlabs.py`: low-level ElevenLabs conversation wrapper
+  - `session.py`: higher-level chat session abstraction
+  - `cli.py`: local terminal chat entrypoint
+  - `messages.py`, `events.py`: chat domain models
+- `tools/`
+  Tool-related code:
+  - `definitions.py`: central source of truth for webhook tool definitions
+  - `sync.py`: creates or updates tools in ElevenLabs via the Python SDK
+- `management/`
+  Agent management scripts:
+  - `sync_agent.py`: attaches the local prompt and tool ids to the configured agent
+  - `publish_agent.py`: publishes the configured agent branch
+- `prompts/`
+  Prompt files used by the agent, currently `flight_booking_agent.md`
 
 ## Setup
 
@@ -49,25 +60,19 @@ python -m agents.cli
 To create or update the webhook tools in ElevenLabs:
 
 ```bash
-python -m agents.sync_tools
+python -m agents.tools.sync
 ```
 
 To attach the synced tools and local prompt to the configured ElevenLabs agent:
 
 ```bash
-python -m agents.sync_agent
+python -m agents.management.sync_agent
 ```
 
 To publish the current configured branch of the agent:
 
 ```bash
-python -m agents.publish_agent
-```
-
-To run the full sync/publish flow in one step:
-
-```bash
-bash agents/update_agent.sh
+python -m agents.management.publish_agent
 ```
 
 To run the new chat session CLI:
@@ -78,5 +83,8 @@ python -m agents.chat.cli
 
 ## Next step
 
-The next implementation phase is to attach the uploaded tool ids to the ElevenLabs agent configuration and keep the
-prompt aligned with the available backend capabilities.
+The package is now split by responsibility so a future coding/refinement agent can target:
+- `chat/` for runtime conversation behavior
+- `tools/` for tool configuration
+- `management/` for agent sync/publish flows
+- `prompts/` for prompt changes

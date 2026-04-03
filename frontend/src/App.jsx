@@ -828,20 +828,23 @@ function App() {
                   <span>{testingRuns.length}</span>
                 </div>
                 {testingRuns.length ? (
-                  <div className="testing-run-list">
-                    {testingRuns.map((run) => (
-                      <button
-                        type="button"
-                        key={run.id}
-                        className={selectedTestingRunId === run.id ? "testing-run testing-run--active" : "testing-run"}
-                        onClick={() => setSelectedTestingRunId(run.id)}
-                      >
-                        <strong>{run.id}</strong>
-                        <span>{run.description}</span>
-                        <small>{formatTimestamp(run.started_at)}</small>
-                      </button>
-                    ))}
-                  </div>
+                  <label className="testing-field">
+                    <span>Select run</span>
+                    <select
+                      className="testing-select testing-select--full"
+                      value={selectedTestingRunId || ""}
+                      onChange={(event) => setSelectedTestingRunId(event.target.value || null)}
+                    >
+                      <option value="" disabled>
+                        Choose a run
+                      </option>
+                      {testingRuns.map((run) => (
+                        <option key={run.id} value={run.id}>
+                          {run.id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 ) : (
                   <div className="testing-empty">
                     <span className="material-symbols-outlined">experiment</span>
@@ -884,138 +887,12 @@ function App() {
                       )}
                     </article>
 
-                    <section className="testing-hero">
-                      <div>
-                        <span className="eyebrow">Test ID</span>
-                        <h2>{selectedTestingRun.scenario?.slug}:{selectedTestingRun.run?.conversation_id || "pending"}</h2>
-                        <p>{selectedTestingRun.scenario?.description}</p>
-                      </div>
-                      <div className="testing-hero__stats">
-                        <div><span>Outcome</span><strong>{selectedTestingRun.scenario?.expected_outcome || "—"}</strong></div>
-                        <div><span>Duration</span><strong>{selectedTestingRun.stats?.total_duration_secs ?? "—"}s</strong></div>
-                        <div><span>Tool calls</span><strong>{selectedTestingRun.stats?.tool_call_count ?? 0}</strong></div>
-                        <div><span>Conversation</span><strong>{selectedTestingRun.run?.conversation_id || "—"}</strong></div>
-                      </div>
-                    </section>
-
                     <article className="testing-card testing-card--wide">
                       <div className="testing-card__header">
                         <h3>Raw JSON</h3>
                       </div>
                       <pre className="testing-pre">{safeJson(selectedTestingRun)}</pre>
                     </article>
-
-                    <section className="testing-grid">
-                      <article className="testing-card">
-                        <div className="testing-card__header">
-                          <h3>Assertions</h3>
-                        </div>
-                        <div className="testing-kv">
-                          {Object.entries(selectedTestingRun.assertions || {}).map(([key, value]) => (
-                            <div key={key} className="testing-kv__row">
-                              <span>{key}</span>
-                              <strong>{typeof value === "boolean" ? (value ? "true" : "false") : formatJson(value)}</strong>
-                            </div>
-                          ))}
-                        </div>
-                      </article>
-
-                      <article className="testing-card">
-                        <div className="testing-card__header">
-                          <h3>Run Metadata</h3>
-                        </div>
-                        <div className="testing-kv">
-                          <div className="testing-kv__row"><span>Started</span><strong>{formatTimestamp(selectedTestingRun.run?.started_at)}</strong></div>
-                          <div className="testing-kv__row"><span>Finished</span><strong>{formatTimestamp(selectedTestingRun.run?.finished_at)}</strong></div>
-                          <div className="testing-kv__row"><span>Agent</span><strong>{selectedTestingRun.run?.agent_id || "—"}</strong></div>
-                          <div className="testing-kv__row"><span>Branch</span><strong>{selectedTestingRun.run?.branch_id || "—"}</strong></div>
-                          <div className="testing-kv__row"><span>Commit</span><strong>{selectedTestingRun.run?.git_commit_hash || "—"}</strong></div>
-                        </div>
-                      </article>
-
-                      <article className="testing-card testing-card--wide">
-                        <div className="testing-card__header">
-                          <h3>Final Agent Message</h3>
-                        </div>
-                        <pre className="testing-pre">{selectedTestingRun.final_agent_message || "—"}</pre>
-                      </article>
-
-                      <article className="testing-card testing-card--wide">
-                        <div className="testing-card__header">
-                          <h3>Tool Trace</h3>
-                        </div>
-                        {selectedTestingRun.tool_trace?.length ? (
-                          <div className="testing-trace">
-                            {selectedTestingRun.tool_trace.map((item, index) => (
-                              <div key={`${item.kind}-${item.request_id || index}`} className="testing-trace__item">
-                                <div className="testing-trace__meta">
-                                  <span>{item.kind}</span>
-                                  <strong>{item.tool_name}</strong>
-                                  <small>turn {item.turn_index}</small>
-                                </div>
-                                <pre className="testing-pre">{formatJson(item.kind === "tool_call" ? item.params : item.result)}</pre>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="testing-muted">No tool activity captured for this run.</p>
-                        )}
-                      </article>
-
-                      <article className="testing-card testing-card--wide">
-                        <div className="testing-card__header">
-                          <h3>Conversation Timeline</h3>
-                        </div>
-                        <div className="testing-timeline">
-                          {(selectedTestingRun.elevenlabs_conversation?.transcript || []).map((item, index) => (
-                            <div key={`${item.role}-${index}`} className="testing-turn">
-                              <div className="testing-turn__head">
-                                <strong>{item.role}</strong>
-                                <span>{item.time_in_call_secs ?? 0}s</span>
-                              </div>
-                              {item.message ? <p>{item.message}</p> : null}
-                              {item.original_message ? <pre className="testing-pre">{item.original_message}</pre> : null}
-                              {item.tool_calls?.length ? (
-                                <div className="testing-inline-list">
-                                  {item.tool_calls.map((toolCall) => (
-                                    <span key={toolCall.request_id} className="testing-chip">{toolCall.tool_name}</span>
-                                  ))}
-                                </div>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      </article>
-
-                      <article className="testing-card">
-                        <div className="testing-card__header">
-                          <h3>Backend Verification</h3>
-                        </div>
-                        {selectedTestingRun.backend_verification ? (
-                          <div className="testing-kv">
-                            {Object.entries(selectedTestingRun.backend_verification).map(([key, value]) => (
-                              <div key={key} className="testing-kv__row">
-                                <span>{key}</span>
-                                <strong>{formatJson(value)}</strong>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="testing-muted">No backend verification for this run.</p>
-                        )}
-                      </article>
-
-                      <article className="testing-card">
-                        <div className="testing-card__header">
-                          <h3>Analysis Summary</h3>
-                        </div>
-                        <div className="testing-kv">
-                          <div className="testing-kv__row"><span>Call successful</span><strong>{selectedTestingRun.elevenlabs_conversation?.analysis?.call_successful || "—"}</strong></div>
-                          <div className="testing-kv__row"><span>Summary title</span><strong>{selectedTestingRun.elevenlabs_conversation?.analysis?.call_summary_title || "—"}</strong></div>
-                        </div>
-                        <pre className="testing-pre">{selectedTestingRun.elevenlabs_conversation?.analysis?.transcript_summary || "—"}</pre>
-                      </article>
-                    </section>
                   </>
                 ) : (
                   <div className="testing-empty testing-empty--large">

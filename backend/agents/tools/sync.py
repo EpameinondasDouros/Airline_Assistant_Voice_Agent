@@ -5,7 +5,7 @@ import json
 from elevenlabs import ElevenLabs, ToolRequestModel
 
 from agents.config import get_agent_settings
-from agents.tool_definitions import build_tool_definitions
+from agents.tools.definitions import build_tool_definitions
 
 
 def _extract_tools(response: object) -> list[object]:

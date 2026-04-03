@@ -115,6 +115,36 @@ SCENARIOS: list[Scenario] = [
         booking_reference_expected=True,
     ),
     Scenario(
+        slug="booking_with_window_seat",
+        description="Book a flight with a window seat and verify seat-specific inventory handling.",
+        messages=[
+            "I want the next available flight from ATH to LHR in economy with a window seat.",
+            "Book option 1.",
+            "Passenger name is Marina Theodorou. Contact email is marina.theodorou@example.com. Date of birth is 1993-03-11.",
+            "No extras.",
+        ],
+        expected_tools=["find_flights_with_seat_preference", "get_seat_inventory", "create_flight_booking"],
+        expected_outcome="booking_created",
+        expected_keywords=["booking", "reference", "window"],
+        mutation_expected=True,
+        booking_reference_expected=True,
+    ),
+    Scenario(
+        slug="booking_with_extra_legroom",
+        description="Book a flight with extra legroom and verify the agent uses the seat inventory.",
+        messages=[
+            "Find the next available flight from JFK to ATH in business with extra legroom.",
+            "Book option 1.",
+            "Passenger name is Nikos Vardis. Contact email is nikos.vardis@example.com. Date of birth is 1984-10-02.",
+            "No extras.",
+        ],
+        expected_tools=["find_flights_with_seat_preference", "get_seat_inventory", "create_flight_booking"],
+        expected_outcome="booking_created",
+        expected_keywords=["booking", "reference", "extra legroom"],
+        mutation_expected=True,
+        booking_reference_expected=True,
+    ),
+    Scenario(
         slug="add_extra_bag",
         description="Add an extra bag or special item to an existing booking.",
         messages=[
@@ -128,6 +158,19 @@ SCENARIOS: list[Scenario] = [
         booking_reference_expected=True,
     ),
     Scenario(
+        slug="add_special_item",
+        description="Add a special item to an existing booking and verify the booking is updated.",
+        messages=[
+            "Add a pram to booking reference TMX4A92K.",
+            "Yes, confirm it.",
+        ],
+        expected_tools=["get_booking_by_reference", "add_booking_extras"],
+        expected_outcome="booking_updated",
+        expected_keywords=["pram", "booking"],
+        mutation_expected=True,
+        booking_reference_expected=True,
+    ),
+    Scenario(
         slug="flight_operations_status",
         description="Enquire about check-in times, gate information, or flight status.",
         messages=[
@@ -136,6 +179,17 @@ SCENARIOS: list[Scenario] = [
         expected_tools=["get_booking_by_reference", "get_flight_details"],
         expected_outcome="booking_lookup",
         expected_keywords=["check-in", "gate", "status"],
+        follow_up_question_expected=False,
+    ),
+    Scenario(
+        slug="flight_details_lookup",
+        description="Ask for terminal, gate, check-in windows, and boarding times from a booking reference.",
+        messages=[
+            "For booking reference TMX4A92K, give me the terminal, gate, check-in times, and boarding times.",
+        ],
+        expected_tools=["get_booking_by_reference", "get_flight_details"],
+        expected_outcome="booking_lookup",
+        expected_keywords=["terminal", "gate", "check-in", "boarding"],
         follow_up_question_expected=False,
     ),
     Scenario(
@@ -152,6 +206,32 @@ SCENARIOS: list[Scenario] = [
         expected_keywords=["booking", "reference"],
         mutation_expected=True,
         booking_reference_expected=True,
+    ),
+    Scenario(
+        slug="special_assistance_wheelchair",
+        description="Request wheelchair assistance and confirm the agent captures the assistance details.",
+        messages=[
+            "Book the next available flight from ATH to JFK in business for one adult and arrange wheelchair assistance from check-in to boarding.",
+            "Book option 1.",
+            "Passenger name is Eleni Markou. Contact email is eleni.markou@example.com. Date of birth is 1979-05-22.",
+            "No extras.",
+        ],
+        expected_tools=["find_next_available_flight", "create_flight_booking"],
+        expected_outcome="booking_created",
+        expected_keywords=["booking", "reference", "wheelchair"],
+        mutation_expected=True,
+        booking_reference_expected=True,
+    ),
+    Scenario(
+        slug="pets_policy_followup",
+        description="Ask about pets and verify the assistant asks for the missing aircraft or cabin conditions only if needed.",
+        messages=[
+            "Can I bring my cat on board?",
+        ],
+        expected_tools=["get_airline_policy"],
+        expected_outcome="policy_answer",
+        expected_keywords=["pet", "carrier"],
+        follow_up_question_expected=True,
     ),
 ]
 
