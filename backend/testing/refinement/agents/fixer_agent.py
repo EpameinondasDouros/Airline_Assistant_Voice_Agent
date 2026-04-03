@@ -7,10 +7,10 @@ from typing import Any
 from dotenv import load_dotenv
 
 from .critic import evaluate_artifact, load_artifact
-from .debug_output import print_agent_json
-from .models import BoundedFixPlan, CritiqueVerdict
 from .root_cause_evaluator import evaluate_root_cause
-from .section_editors import (
+from ..core.debug_output import print_agent_json
+from ..core.models import BoundedFixPlan, CritiqueVerdict
+from ..core.section_editors import (
     candidate_paths_for_category,
     get_policy,
     read_target_file,
@@ -153,4 +153,3 @@ def generate_fix_plan_from_artifact(
     payload = load_artifact(artifact_path)
     plan, critique, root_cause = generate_fix_plan(payload, model=model)
     return payload, plan, critique, root_cause
-

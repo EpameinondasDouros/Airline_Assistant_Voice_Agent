@@ -7,8 +7,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from .critic import evaluate_artifact, load_artifact
-from .fixer_agent import generate_fix_plan_from_artifact
 from .models import (
     AcceptanceDecision,
     AppliedSectionChange,
@@ -18,8 +16,10 @@ from .models import (
     RootCauseVerdict,
     VerificationResult,
 )
-from .root_cause_evaluator import evaluate_root_cause
 from .section_editors import apply_section_edit
+from ..agents.critic import evaluate_artifact, load_artifact
+from ..agents.fixer_agent import generate_fix_plan_from_artifact
+from ..agents.root_cause_evaluator import evaluate_root_cause
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]

@@ -7,8 +7,8 @@ from typing import Any
 from dotenv import load_dotenv
 
 from .critic import evaluate_artifact
-from .debug_output import print_agent_json
-from .models import CritiqueVerdict, RootCauseVerdict
+from ..core.debug_output import print_agent_json
+from ..core.models import CritiqueVerdict, RootCauseVerdict
 
 try:
     from pydantic_ai import Agent
@@ -92,4 +92,3 @@ def evaluate_root_cause(
     result = agent.run_sync(_artifact_prompt(payload, critique_payload))
     print_agent_json("root_cause", result.output)
     return result.output
-

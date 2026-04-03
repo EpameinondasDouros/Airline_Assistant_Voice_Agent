@@ -4,8 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
-from .critic import load_artifact
-from .workflow import REPORTS_ROOT, create_fix_plan_report
+from ..agents.critic import load_artifact
+from ..agents.root_cause_evaluator import evaluate_root_cause
 
 
 def _latest_artifact(outputs_dir: Path) -> Path:
@@ -17,7 +17,7 @@ def _latest_artifact(outputs_dir: Path) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Generate a bounded-section fix plan for a testing artifact."
+        description="Analyze one testing artifact and identify the most likely root cause of failure."
     )
     parser.add_argument("--artifact", help="Path to a testing artifact JSON file. Defaults to latest output.")
     parser.add_argument("--model", default="openai:gpt-4o-mini", help="Pydantic AI model string.")
@@ -25,19 +25,14 @@ def main() -> None:
 
     outputs_dir = Path(__file__).resolve().parents[1] / "outputs"
     artifact_path = Path(args.artifact) if args.artifact else _latest_artifact(outputs_dir)
-    report, report_path = create_fix_plan_report(artifact_path, model=args.model)
+    payload = load_artifact(artifact_path)
+    verdict = evaluate_root_cause(payload, model=args.model)
 
-    print(
-        json.dumps(
-            {
-                "artifact_path": str(artifact_path),
-                "report_path": str(report_path),
-                "reports_root": str(REPORTS_ROOT),
-                "fix_plan": report.fix_plan.model_dump(mode="json"),
-            },
-            indent=2,
-        )
-    )
+    output = {
+        "artifact_path": str(artifact_path),
+        "root_cause": verdict.model_dump(mode="json"),
+    }
+    print(json.dumps(output, indent=2))
 
 
 if __name__ == "__main__":

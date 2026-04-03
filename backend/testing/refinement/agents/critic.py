@@ -6,8 +6,8 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from .debug_output import print_agent_json
-from .models import CritiqueVerdict
+from ..core.debug_output import print_agent_json
+from ..core.models import CritiqueVerdict
 
 try:
     from pydantic_ai import Agent
@@ -83,4 +83,3 @@ def evaluate_artifact(payload: dict[str, Any], *, model: str = "openai:gpt-4o-mi
 def load_artifact(path: str | Path) -> dict[str, Any]:
     artifact_path = Path(path)
     return json.loads(artifact_path.read_text(encoding="utf-8"))
-

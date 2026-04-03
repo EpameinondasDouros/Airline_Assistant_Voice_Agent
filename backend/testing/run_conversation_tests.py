@@ -23,9 +23,9 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from agents.chat.elevenlabs import ElevenLabsChatAgent  # noqa: E402
 from agents.config import get_agent_settings  # noqa: E402
-from testing.refinement.critic import evaluate_artifact  # noqa: E402
-from testing.refinement.customer_agent import CustomerSimulator  # noqa: E402
-from testing.refinement.root_cause_evaluator import evaluate_root_cause  # noqa: E402
+from testing.refinement.agents.critic import evaluate_artifact  # noqa: E402
+from testing.refinement.agents.customer_agent import CustomerSimulator  # noqa: E402
+from testing.refinement.agents.root_cause_evaluator import evaluate_root_cause  # noqa: E402
 from testing.tasks import CapabilityTask, TASKS, get_task  # noqa: E402
 
 

@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .workflow import apply_report
+from ..core.workflow import apply_report
 
 
 def main() -> None:

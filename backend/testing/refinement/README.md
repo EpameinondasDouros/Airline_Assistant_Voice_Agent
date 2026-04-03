@@ -15,29 +15,29 @@ Example:
 ```bash
 cd /Users/epameinondasdouros/Personal/TechMellon/Task-1/Airline_Assistant_Voice_Agent/backend
 source .venv/bin/activate
-python -m testing.refinement.review_test_run --artifact testing/outputs/<artifact>.json
+python -m testing.refinement.cli.review_test_run --artifact testing/outputs/<artifact>.json
 ```
 
 Then analyze the root cause:
 
 ```bash
-python -m testing.refinement.analyze_root_cause --artifact testing/outputs/<artifact>.json
+python -m testing.refinement.cli.analyze_root_cause --artifact testing/outputs/<artifact>.json
 ```
 
 Generate a bounded fix plan:
 
 ```bash
-python -m testing.refinement.generate_fix_plan --artifact testing/outputs/<artifact>.json
+python -m testing.refinement.cli.generate_fix_plan --artifact testing/outputs/<artifact>.json
 ```
 
 Apply a generated plan report:
 
 ```bash
-python -m testing.refinement.apply_fix_plan testing/refinement/reports/<report>.json
+python -m testing.refinement.cli.apply_fix_plan testing/refinement/reports/<report>.json
 ```
 
 Or run the whole loop:
 
 ```bash
-python -m testing.refinement.run_refinement_cycle --artifact testing/outputs/<artifact>.json --apply
+python -m testing.refinement.cli.run_refinement_cycle --artifact testing/outputs/<artifact>.json --apply
 ```

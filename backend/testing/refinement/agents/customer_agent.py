@@ -7,7 +7,7 @@ from typing import Literal
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
-from .debug_output import print_agent_json
+from ..core.debug_output import print_agent_json
 
 try:
     from pydantic_ai import Agent
@@ -91,4 +91,3 @@ class CustomerSimulator:
         )
         print_agent_json("customer_agent", result.output)
         return result.output
-

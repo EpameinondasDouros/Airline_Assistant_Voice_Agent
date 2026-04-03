@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .critic import evaluate_artifact, load_artifact
+from ..agents.critic import evaluate_artifact, load_artifact
 
 
 def _latest_artifact(outputs_dir: Path) -> Path:
@@ -34,4 +34,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
