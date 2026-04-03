@@ -8,10 +8,12 @@ class Settings(BaseSettings):
     app_env: str = "development"
     api_prefix: str = "/api"
     database_url: str = "sqlite:///./techmellon_airline.db"
-    cors_allow_origins: str = "http://localhost:8000,http://127.0.0.1:8000"
+    cors_allow_origins: str = "*"
 
     @property
     def cors_allow_origins_list(self) -> list[str]:
+        if self.cors_allow_origins.strip() == "*":
+            return ["*"]
         return [origin.strip() for origin in self.cors_allow_origins.split(",") if origin.strip()]
 
     model_config = SettingsConfigDict(

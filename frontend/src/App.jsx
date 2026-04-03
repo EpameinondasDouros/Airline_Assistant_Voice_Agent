@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  getHealth,
   listFlights,
   listKnowledgeTopics,
   searchFlights,
@@ -18,7 +17,8 @@ const quickPills = [
 
 function App() {
   const [screen, setScreen] = useState("search");
-  const [health, setHealth] = useState("Checking...");
+  const [health, setHealth] = useState("Ready");
+  const [flightStatus, setFlightStatus] = useState("Loading flights...");
   const [flights, setFlights] = useState([]);
   const [selectedFlight, setSelectedFlight] = useState(null);
   const [topics, setTopics] = useState([]);
@@ -54,16 +54,18 @@ function App() {
   const [chatStatus, setChatStatus] = useState("Idle");
 
   useEffect(() => {
-    getHealth()
-      .then((payload) => setHealth(payload.status ?? payload.message ?? "Healthy"))
-      .catch((error) => setHealth(error.message));
-
     listFlights(3)
       .then((items) => {
         setFlights(items);
         setSelectedFlight(items[0] ?? null);
+        setFlightStatus(items.length ? `Loaded ${items.length} flights` : "No flights returned");
       })
-      .catch(() => setFlights([]));
+      .catch((error) => {
+        setFlights([]);
+        setSelectedFlight(null);
+        setFlightStatus(error.message);
+        setHealth("Flight API unavailable");
+      });
 
     listKnowledgeTopics()
       .then(setTopics)
@@ -98,8 +100,12 @@ function App() {
       .then((items) => {
         setFlights(items);
         setSelectedFlight(items[0] ?? null);
+        setFlightStatus(items.length ? `Loaded ${items.length} flights` : "No flights returned");
       })
-      .catch((error) => setHealth(error.message));
+      .catch((error) => {
+        setFlightStatus(error.message);
+        setHealth("Flight search failed");
+      });
   }
 
   function runKnowledgeSearch(event) {
@@ -163,7 +169,8 @@ function App() {
             <header className="page-header">
               <h1>Where will luxury take you?</h1>
               <p>Explore destinations with high-hospitality aviation, tailored for the modern voyager.</p>
-              <div className="status-pill">API status: {health}</div>
+              <div className="status-pill">Flight API status: {flightStatus}</div>
+              <div className="status-pill">Backend: {health}</div>
             </header>
 
             <section className="search-bar">
