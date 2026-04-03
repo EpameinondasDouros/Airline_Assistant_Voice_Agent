@@ -649,41 +649,46 @@ function App() {
                                 </div>
                               ) : null}
                               <div className="seat-row__label">{row}</div>
+                              {(() => {
+                                const cabin = getCabinForRow(row);
+                                const columns = cabin === "business" ? ["A", "B", "C", "D"] : FULL_PLANE_COLUMNS;
+                                const seatColumns = columns.length;
+                                return (
                               <div
-                                className="seat-row__seats"
-                                style={{
-                                  "--seat-columns": FULL_PLANE_COLUMNS.length,
-                                }}
-                              >
-                                {FULL_PLANE_COLUMNS.map((column) => {
-                                  const planeSeat = getSeatAvailabilityForPlane(row, column, selectedFlight.seat_class);
-                                  const seatNumber = planeSeat.exists ? buildSeatNumber(selectedFlight.seat_class, row, column) || `${row}${column}` : "";
-                                  const meta = seatMetadata(selectedFlight.seat_class, seatNumber);
-                                  const selected = bookingDraft.seat_number === seatNumber;
-                                  return (
-                                    <button
-                                      key={`${row}${column}`}
-                                      type="button"
-                                      className={[
-                                        "seat",
-                                        planeSeat.active ? "" : "seat--inactive",
-                                        meta.window ? "seat--window" : "",
-                                        meta.aisle ? "seat--aisle" : "",
-                                        planeSeat.extraLegroom ? "seat--extra" : "",
-                                        selected ? "seat--selected" : "",
-                                      ]
-                                        .filter(Boolean)
-                                        .join(" ")}
-                                      onClick={() => planeSeat.active && seatNumber ? selectSeat(seatNumber) : null}
-                                      aria-pressed={selected}
-                                      aria-label={seatNumber ? `Seat ${seatNumber}` : `Unavailable seat ${row}${column}`}
-                                      disabled={!planeSeat.active || !seatNumber}
-                                    >
-                                      {planeSeat.exists ? column : ""}
-                                    </button>
-                                  );
-                                })}
-                              </div>
+                                  className={`seat-row__seats ${cabin === "business" ? "seat-row__seats--business" : ""}`}
+                                  style={{ "--seat-columns": seatColumns }}
+                                >
+                                  {columns.map((column) => {
+                                    const planeSeat = getSeatAvailabilityForPlane(row, column, selectedFlight.seat_class);
+                                    const seatNumber = planeSeat.exists ? buildSeatNumber(selectedFlight.seat_class, row, column) || `${row}${column}` : "";
+                                    const meta = seatMetadata(selectedFlight.seat_class, seatNumber);
+                                    const selected = bookingDraft.seat_number === seatNumber;
+                                    return (
+                                      <button
+                                        key={`${row}${column}`}
+                                        type="button"
+                                        className={[
+                                          "seat",
+                                          planeSeat.active ? "" : "seat--inactive",
+                                          meta.window ? "seat--window" : "",
+                                          meta.aisle ? "seat--aisle" : "",
+                                          planeSeat.extraLegroom ? "seat--extra" : "",
+                                          selected ? "seat--selected" : "",
+                                        ]
+                                          .filter(Boolean)
+                                          .join(" ")}
+                                        onClick={() => planeSeat.active && seatNumber ? selectSeat(seatNumber) : null}
+                                        aria-pressed={selected}
+                                        aria-label={seatNumber ? `Seat ${seatNumber}` : `Unavailable seat ${row}${column}`}
+                                        disabled={!planeSeat.active || !seatNumber}
+                                      >
+                                        {planeSeat.exists ? column : ""}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                );
+                              })()}
                             </div>
                           ))}
                         </div>

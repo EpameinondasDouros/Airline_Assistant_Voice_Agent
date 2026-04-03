@@ -394,6 +394,9 @@ button, input { font: inherit; }
   grid-template-columns: repeat(var(--seat-columns, 4), minmax(0, 1fr));
   gap: 0.45rem;
 }
+.seat-row__seats--business {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
 .seat {
   border: 1px solid rgba(124, 138, 137, 0.18);
   border-radius: 0.72rem;
