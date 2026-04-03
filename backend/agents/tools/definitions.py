@@ -31,6 +31,7 @@ def _tool(
     description: str,
     url: str,
     method: str,
+    tool_error_handling_mode: str = "auto",
     path_params_schema: dict[str, dict[str, Any]] | None = None,
     query_params_schema: dict[str, Any] | None = None,
     request_body_schema: dict[str, Any] | None = None,
@@ -43,7 +44,7 @@ def _tool(
         "disable_interruptions": False,
         "force_pre_tool_speech": False,
         "tool_call_sound_behavior": "auto",
-        "tool_error_handling_mode": "auto",
+        "tool_error_handling_mode": tool_error_handling_mode,
         "execution_mode": "immediate",
         "api_schema": {
             "url": url,
@@ -161,6 +162,7 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
             ),
             url=f"{api_base}/api/bookings",
             method="POST",
+            tool_error_handling_mode="passthrough",
             request_body_schema={
                 "type": "object",
                 "properties": {
@@ -231,6 +233,7 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
             path_params_schema={
                 "booking_reference": _llm_string("The booking reference to cancel.")
             },
+            tool_error_handling_mode="passthrough",
             request_body_schema={
                 "type": "object",
                 "properties": {
@@ -251,6 +254,7 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
             path_params_schema={
                 "booking_reference": _llm_string("The booking reference to reschedule.")
             },
+            tool_error_handling_mode="passthrough",
             request_body_schema={
                 "type": "object",
                 "properties": {
@@ -270,6 +274,7 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
             path_params_schema={
                 "booking_reference": _llm_string("The booking reference to update.")
             },
+            tool_error_handling_mode="passthrough",
             request_body_schema={
                 "type": "object",
                 "properties": {
