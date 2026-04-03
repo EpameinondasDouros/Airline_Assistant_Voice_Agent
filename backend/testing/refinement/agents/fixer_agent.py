@@ -26,7 +26,7 @@ else:
     _IMPORT_ERROR = None
 
 
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 
 PROMPT = """You are a bounded-section code fixer for the testing layer of an airline agent repository.

@@ -403,6 +403,43 @@ def _latest_agent_message(entries: list[TranscriptEntry]) -> str | None:
     return None
 
 
+def _ensure_fresh_agent_turn(
+    recorder: TranscriptRecorder,
+    settings,
+    conversation_id: str | None,
+    *,
+    last_seen_agent_count: int,
+    response_timeout_seconds: float,
+    settle_timeout_seconds: float,
+    quiet_window_seconds: float,
+) -> int | None:
+    current_agent_count = recorder.agent_count()
+    if current_agent_count > last_seen_agent_count:
+        recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
+        return current_agent_count
+
+    if recorder.wait_for_agent_activity(response_timeout_seconds):
+        recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
+        current_agent_count = recorder.agent_count()
+        return current_agent_count if current_agent_count > last_seen_agent_count else None
+
+    remote_conversation = _poll_for_remote_turn_completion(
+        settings,
+        conversation_id,
+        baseline_agent_count=last_seen_agent_count,
+        timeout_seconds=max(settle_timeout_seconds, 8.0),
+    )
+    current_agent_count = recorder.agent_count()
+    if current_agent_count > last_seen_agent_count:
+        recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
+        return current_agent_count
+    if _has_meaningful_remote_agent_turn(remote_conversation, last_seen_agent_count):
+        recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
+        current_agent_count = recorder.agent_count()
+        return current_agent_count if current_agent_count > last_seen_agent_count else None
+    return None
+
+
 def _wait_for_agent_turn(
     recorder: TranscriptRecorder,
     settings,
@@ -597,8 +634,21 @@ def run_task(
         ):
             raise RuntimeError(f"Timed out waiting for the agent response after user message: {first_message}")
 
+        last_seen_agent_count = recorder.agent_count()
         while customer_reply_count < max_customer_replies:
-            recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
+            fresh_agent_count = _ensure_fresh_agent_turn(
+                recorder,
+                settings,
+                conversation_id,
+                last_seen_agent_count=last_seen_agent_count,
+                response_timeout_seconds=response_timeout_seconds,
+                settle_timeout_seconds=settle_timeout_seconds,
+                quiet_window_seconds=quiet_window_seconds,
+            )
+            if fresh_agent_count is None:
+                break
+            last_seen_agent_count = fresh_agent_count
+
             latest_agent_message = _latest_agent_message(recorder.entries)
             decision = customer.decide(
                 task={
@@ -620,18 +670,6 @@ def run_task(
                 break
 
             if decision.action == "wait":
-                baseline_agent_count = recorder.agent_count()
-                if not recorder.wait_for_agent_activity(response_timeout_seconds):
-                    remote_conversation = _poll_for_remote_turn_completion(
-                        settings,
-                        conversation_id,
-                        baseline_agent_count=baseline_agent_count,
-                        timeout_seconds=max(settle_timeout_seconds, 8.0),
-                    )
-                    if recorder.agent_count() > baseline_agent_count:
-                        continue
-                    if not _has_meaningful_remote_agent_turn(remote_conversation, baseline_agent_count):
-                        break
                 continue
 
             if decision.action == "reply":
@@ -651,6 +689,7 @@ def run_task(
                     initial_message=decision.message,
                 ):
                     raise RuntimeError(f"Timed out waiting for the agent response after user message: {decision.message}")
+                last_seen_agent_count = recorder.agent_count()
                 continue
 
             raise RuntimeError(f"Unsupported customer simulator action: {decision.action}")

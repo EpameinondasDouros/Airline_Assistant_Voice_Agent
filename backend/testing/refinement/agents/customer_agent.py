@@ -18,7 +18,7 @@ else:
     _IMPORT_ERROR = None
 
 
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 
 CustomerAction = Literal["reply", "wait", "done"]
@@ -50,6 +50,7 @@ Rules:
 - Do not volunteer extra information unless the assistant asks for it or it is needed to unblock the task.
 - For search-only tasks, do not turn the conversation into a booking unless the task explicitly requires booking.
 - If the assistant is still searching, using tools, or obviously mid-turn, usually return wait.
+- Never reply twice in a row without a fresh assistant response in between.
 - Keep replies short, natural, and consistent with earlier customer answers in the transcript.
 """
 

@@ -19,7 +19,7 @@ else:
     _IMPORT_ERROR = None
 
 
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 
 PROMPT = """You are a root-cause evaluator for an airline agent capability-testing loop.
