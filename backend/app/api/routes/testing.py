@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from agents.config import get_agent_settings
 from app.schemas.testing import (
     TestingRunExecutionRead,
     TestingRunRead,
@@ -111,6 +112,18 @@ def run_testing_scenarios(request: TestingRunRequest) -> TestingRunExecutionRead
             get_scenario(request.scenario)
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    settings = get_agent_settings()
+    if not settings.elevenlabs_api_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Testing requires ELEVENLABS_API_KEY to run conversation scenarios.",
+        )
+    if not settings.elevenlabs_agent_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Testing requires ELEVENLABS_AGENT_ID to run conversation scenarios.",
+        )
 
     command = [
         sys.executable,

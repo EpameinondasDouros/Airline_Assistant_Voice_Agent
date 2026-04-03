@@ -1,0 +1,265 @@
+{
+  "scenario": {
+    "slug": "pets_policy",
+    "description": "Enquire whether pets are permitted on board and under what conditions.",
+    "messages": [
+      "Are pets permitted on board and under what conditions?"
+    ],
+    "expected_tools": [
+      "get_airline_policy"
+    ],
+    "expected_outcome": "policy_answer",
+    "expected_keywords": [
+      "pets",
+      "carrier",
+      "cabin"
+    ],
+    "mutation_expected": false,
+    "booking_reference_expected": false,
+    "follow_up_question_expected": true
+  },
+  "run": {
+    "started_at": "2026-04-03T14:03:57.393060+00:00",
+    "finished_at": "2026-04-03T14:04:15.136354+00:00",
+    "agent_id": "agent_5701kn80jnmfesbbmwer1sraq5yx",
+    "branch_id": "agtbrch_1401kn80jpkxecwaee0f6bmv5qne",
+    "conversation_id": "conv_0101kn9tgraaef5tf7p4q9nypd5x",
+    "git_commit_hash": "d34140c19016f41bd0752d85261f472bf468a9e9",
+    "prompt_metadata": {
+      "prompt_path": "/Users/epameinondasdouros/Personal/TechMellon/Task-1/Airline_Assistant_Voice_Agent/backend/agents/prompts/flight_booking_agent.md",
+      "prompt_length_chars": 5162,
+      "prompt_updated_at": "2026-04-02T23:22:55.525786+00:00"
+    }
+  },
+  "transcript": [
+    {
+      "role": "agent",
+      "text": "Hello! How can I help you today?",
+      "timestamp": "2026-04-03T14:03:57.471045+00:00"
+    },
+    {
+      "role": "user",
+      "text": "Are pets permitted on board and under what conditions?",
+      "timestamp": "2026-04-03T14:03:59.527786+00:00"
+    },
+    {
+      "role": "agent",
+      "text": "Small cats and dogs are allowed in the cabin if their combined weight with the carrier is not over 8 kg. The pet must stay in an approved soft-sided carrier under the seat. Cabin pet space is limited and needs to be requested in advance.\n\nLarger pets can be transported as checked special handling items on certain routes in an airline-approved hard carrier. This is subject to temperature and operational restrictions. Trained assistance dogs can travel free with proper documentation.",
+      "timestamp": "2026-04-03T14:04:11.606751+00:00"
+    }
+  ],
+  "final_agent_message": "Small cats and dogs are allowed in the cabin if their combined weight with the carrier is not over 8 kg. The pet must stay in an approved soft-sided carrier under the seat. Cabin pet space is limited and needs to be requested in advance.\n\nLarger pets can be transported as checked special handling items on certain routes in an airline-approved hard carrier. This is subject to temperature and operational restrictions. Trained assistance dogs can travel free with proper documentation.",
+  "booking_reference_detected": null,
+  "tool_trace": [
+    {
+      "kind": "tool_call",
+      "turn_index": 3,
+      "role": "agent",
+      "tool_name": "get_airline_policy",
+      "request_id": "call_RBBnpUZtnfbkaikFTk7Y2dM0",
+      "params": {
+        "topic": "pets"
+      },
+      "tool_has_been_called": true,
+      "type": "webhook"
+    },
+    {
+      "kind": "tool_result",
+      "turn_index": 4,
+      "role": "agent",
+      "tool_name": "get_airline_policy",
+      "request_id": "call_RBBnpUZtnfbkaikFTk7Y2dM0",
+      "result": [
+        {
+          "id": 3,
+          "topic": "pets",
+          "title": "Pet Policy for Cabin Travel",
+          "content": "Small cats and dogs are permitted in the cabin when the combined weight of pet and carrier does not exceed 8 kg. The pet must remain in an approved soft-sided carrier that fits under the seat for the full journey. Cabin pet space is capacity-controlled and must be requested before departure.",
+          "version": 1,
+          "is_active": true
+        },
+        {
+          "id": 4,
+          "topic": "pets",
+          "title": "Pet Policy for Hold Transport and Restrictions",
+          "content": "Larger pets may travel as checked special handling items on selected routes if they are transported in an airline-approved hard carrier. Pets are not accepted in the hold on routes where local temperature or operational restrictions make transport unsafe. Trained assistance dogs travel free of charge subject to documentation checks.",
+          "version": 1,
+          "is_active": true
+        }
+      ],
+      "is_error": false,
+      "error_type": "",
+      "tool_latency_secs": 0.3183862309997494,
+      "tool_has_been_called": true
+    }
+  ],
+  "turn_metrics": [
+    {
+      "turn_index": 1,
+      "role": "agent",
+      "message": "Hello! How can I help you today?",
+      "has_tool_activity": false,
+      "tool_call_count": 0,
+      "tool_result_count": 0,
+      "interrupted": false,
+      "time_in_call_secs": 0
+    },
+    {
+      "turn_index": 2,
+      "role": "user",
+      "message": "Are pets permitted on board and under what conditions?",
+      "has_tool_activity": false,
+      "tool_call_count": 0,
+      "tool_result_count": 0,
+      "interrupted": false,
+      "time_in_call_secs": 2
+    },
+    {
+      "turn_index": 3,
+      "role": "agent",
+      "message": null,
+      "has_tool_activity": true,
+      "tool_call_count": 1,
+      "tool_result_count": 0,
+      "interrupted": false,
+      "time_in_call_secs": 3
+    },
+    {
+      "turn_index": 4,
+      "role": "agent",
+      "message": null,
+      "has_tool_activity": true,
+      "tool_call_count": 0,
+      "tool_result_count": 1,
+      "interrupted": false,
+      "time_in_call_secs": 3
+    },
+    {
+      "turn_index": 5,
+      "role": "agent",
+      "message": "Small cats and dogs are allowed in the cabin if their combined weight with the carrier is not over 8 kg. The pet must stay in an approved soft-sided carrier under the seat. Cabin pet space is limited and needs to be requested in advance.\n\nLarger pets can be transported as checked special handling items on certain routes in an airline-approved hard carrier. This is subject to temperature and operational restrictions. Trained assistance dogs can travel free with proper documentation.",
+      "has_tool_activity": false,
+      "tool_call_count": 0,
+      "tool_result_count": 0,
+      "interrupted": false,
+      "time_in_call_secs": 3
+    }
+  ],
+  "stats": {
+    "user_turn_count": 1,
+    "agent_turn_count": 2,
+    "tool_call_count": 1,
+    "tool_result_count": 1,
+    "interruption_count": 0,
+    "total_duration_secs": 19
+  },
+  "assertions": {
+    "used_expected_tools": true,
+    "called_tools": [
+      "get_airline_policy"
+    ],
+    "tool_call_count": 1,
+    "agent_replied_after_user_message": true,
+    "final_agent_message_present": true,
+    "final_message_contains_expected_keywords": true,
+    "booking_reference_detected": false,
+    "follow_up_question_detected": false
+  },
+  "backend_verification": null,
+  "elevenlabs_conversation": {
+    "agent_id": "agent_5701kn80jnmfesbbmwer1sraq5yx",
+    "agent_name": "Airline_Agent_V1",
+    "conversation_id": "conv_0101kn9tgraaef5tf7p4q9nypd5x",
+    "status": "done",
+    "branch_id": "agtbrch_1401kn80jpkxecwaee0f6bmv5qne",
+    "version_id": "agtvrsn_5401kn87f799e7f9pdq7prdh9z59",
+    "environment": "production",
+    "metadata": {
+      "call_duration_secs": 19,
+      "cost": 68,
+      "termination_reason": "Client disconnected: 1000",
+      "main_language": "en",
+      "text_only": true,
+      "conversation_initiation_source": "python_sdk"
+    },
+    "analysis": {
+      "call_successful": "success",
+      "call_summary_title": "Airline Pet Policy",
+      "transcript_summary": "The user inquired about the airline's pet policy. The agent retrieved information detailing conditions for pets traveling in the cabin (small cats/dogs, under 8kg with carrier, soft-sided carrier under seat, capacity-controlled) and in the hold (larger pets, hard carrier, route restrictions). It also noted that trained assistance dogs travel free with documentation."
+    },
+    "transcript": [
+      {
+        "role": "agent",
+        "message": "Hello! How can I help you today?",
+        "original_message": null,
+        "time_in_call_secs": 0,
+        "interrupted": false,
+        "tool_calls": [],
+        "tool_results": []
+      },
+      {
+        "role": "user",
+        "message": "Are pets permitted on board and under what conditions?",
+        "original_message": null,
+        "time_in_call_secs": 2,
+        "interrupted": false,
+        "tool_calls": [],
+        "tool_results": []
+      },
+      {
+        "role": "agent",
+        "message": null,
+        "original_message": null,
+        "time_in_call_secs": 3,
+        "interrupted": false,
+        "tool_calls": [
+          {
+            "tool_name": "get_airline_policy",
+            "params_as_json": "{\"topic\":\"pets\"}",
+            "type": "webhook",
+            "request_id": "call_RBBnpUZtnfbkaikFTk7Y2dM0",
+            "tool_has_been_called": true,
+            "tool_details": {
+              "type": "webhook",
+              "method": "GET",
+              "url": "https://airlineassistantvoiceagent.up.railway.app/api/knowledge/{topic}",
+              "path_params": {
+                "topic": "pets"
+              },
+              "query_params": {}
+            }
+          }
+        ],
+        "tool_results": []
+      },
+      {
+        "role": "agent",
+        "message": null,
+        "original_message": null,
+        "time_in_call_secs": 3,
+        "interrupted": false,
+        "tool_calls": [],
+        "tool_results": [
+          {
+            "tool_name": "get_airline_policy",
+            "request_id": "call_RBBnpUZtnfbkaikFTk7Y2dM0",
+            "tool_has_been_called": true,
+            "is_error": false,
+            "tool_latency_secs": 0.3183862309997494,
+            "error_type": "",
+            "result_value": "[{\"id\":3,\"topic\":\"pets\",\"title\":\"Pet Policy for Cabin Travel\",\"content\":\"Small cats and dogs are permitted in the cabin when the combined weight of pet and carrier does not exceed 8 kg. The pet must remain in an approved soft-sided carrier that fits under the seat for the full journey. Cabin pet space is capacity-controlled and must be requested before departure.\",\"version\":1,\"is_active\":true},{\"id\":4,\"topic\":\"pets\",\"title\":\"Pet Policy for Hold Transport and Restrictions\",\"content\":\"Larger pets may travel as checked special handling items on selected routes if they are transported in an airline-approved hard carrier. Pets are not accepted in the hold on routes where local temperature or operational restrictions make transport unsafe. Trained assistance dogs travel free of charge subject to documentation checks.\",\"version\":1,\"is_active\":true}]"
+          }
+        ]
+      },
+      {
+        "role": "agent",
+        "message": "Small cats and dogs are allowed in the cabin if their combined weight with the carrier is not over 8 kg. The pet must stay in an approved soft-sided carrier under the seat. Cabin pet space is limited and needs to be requested in advance.\n\nLarger pets can be transported as checked special handling items on certain routes in an airline-approved hard carrier. This is subject to temperature and operational restrictions. Trained assistance dogs can travel free with proper documentation.",
+        "original_message": null,
+        "time_in_call_secs": 3,
+        "interrupted": false,
+        "tool_calls": [],
+        "tool_results": []
+      }
+    ]
+  }
+}

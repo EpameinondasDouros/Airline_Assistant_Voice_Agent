@@ -95,6 +95,10 @@ class TranscriptRecorder:
         with self._lock:
             return any(entry.role == "agent" for entry in self.entries)
 
+    def agent_count(self) -> int:
+        with self._lock:
+            return sum(1 for entry in self.entries if entry.role == "agent")
+
 
 def _outputs_dir() -> Path:
     output_dir = TESTING_ROOT / "outputs"
@@ -195,6 +199,71 @@ def _fetch_conversation_history(settings, conversation_id: str | None) -> dict |
     client = ElevenLabs(api_key=settings.elevenlabs_api_key)
     conversation = client.conversational_ai.conversations.get(conversation_id)
     return _model_to_jsonable(conversation)
+
+
+def _has_meaningful_remote_agent_turn(conversation: dict | None, baseline_agent_count: int) -> bool:
+    if not conversation:
+        return False
+    transcript = conversation.get("transcript") or []
+    agent_items = [item for item in transcript if item.get("role") == "agent"]
+    if len(agent_items) <= baseline_agent_count:
+        return False
+    for item in agent_items[baseline_agent_count:]:
+        if item.get("message") or item.get("original_message") or item.get("tool_calls") or item.get("tool_results"):
+            return True
+    return False
+
+
+def _poll_for_remote_turn_completion(
+    settings,
+    conversation_id: str | None,
+    *,
+    baseline_agent_count: int,
+    timeout_seconds: float,
+    poll_interval_seconds: float = 1.0,
+) -> dict | None:
+    if not conversation_id:
+        return None
+
+    deadline = time.time() + timeout_seconds
+    last_conversation: dict | None = None
+    while time.time() < deadline:
+        conversation = _fetch_conversation_history(settings, conversation_id)
+        if conversation:
+            last_conversation = conversation
+            if _has_meaningful_remote_agent_turn(conversation, baseline_agent_count):
+                return conversation
+        time.sleep(poll_interval_seconds)
+    return last_conversation
+
+
+def _fetch_finalized_conversation_history(
+    settings,
+    conversation_id: str | None,
+    *,
+    timeout_seconds: float = 20.0,
+    poll_interval_seconds: float = 1.0,
+) -> dict | None:
+    if not conversation_id:
+        return None
+
+    deadline = time.time() + timeout_seconds
+    last_conversation: dict | None = None
+    while time.time() < deadline:
+        conversation = _fetch_conversation_history(settings, conversation_id)
+        if conversation:
+            last_conversation = conversation
+            transcript = conversation.get("transcript") or []
+            status = str(conversation.get("status") or "").lower()
+            if status in {"done", "completed"} and transcript:
+                return conversation
+            if transcript and any(
+                item.get("message") or item.get("original_message") or item.get("tool_calls") or item.get("tool_results")
+                for item in transcript
+            ) and status not in {"in-progress", "queued"}:
+                return conversation
+        time.sleep(poll_interval_seconds)
+    return last_conversation
 
 
 def _safe_json_loads(value: str | None) -> object:
@@ -421,27 +490,50 @@ def run_scenario(
 
     agent.start()
     started_at = datetime.now(UTC).isoformat()
+    conversation_id = agent.conversation_id
 
     try:
         if recorder.wait_for_agent_activity(message_delay_seconds):
             recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
 
         for message in scenario.messages:
+            baseline_agent_count = recorder.agent_count()
             recorder.add_user_message(message)
             agent.send(message)
             got_agent_response = recorder.wait_for_agent_activity(response_timeout_seconds)
-            if got_agent_response:
-                recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
+            if not got_agent_response and recorder.agent_count() > baseline_agent_count:
+                got_agent_response = True
+            if not got_agent_response:
+                remote_conversation = _poll_for_remote_turn_completion(
+                    settings,
+                    conversation_id,
+                    baseline_agent_count=baseline_agent_count,
+                    timeout_seconds=max(settle_timeout_seconds, 8.0),
+                )
+                if recorder.agent_count() > baseline_agent_count:
+                    got_agent_response = True
+                elif not _has_meaningful_remote_agent_turn(remote_conversation, baseline_agent_count):
+                    raise RuntimeError(
+                        f"Timed out waiting for the agent response after user message: {message}"
+                    )
+                else:
+                    got_agent_response = True
+
+            recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
             time.sleep(message_delay_seconds)
 
         if recorder.has_agent_entries():
             recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
     finally:
-        conversation_id = agent.conversation_id
+        conversation_id = agent.conversation_id or conversation_id
         agent.stop()
 
     finished_at = datetime.now(UTC).isoformat()
-    conversation_data = _fetch_conversation_history(settings, conversation_id)
+    conversation_data = _fetch_finalized_conversation_history(
+        settings,
+        conversation_id,
+        timeout_seconds=max(response_timeout_seconds + settle_timeout_seconds + 5.0, 15.0),
+    )
     compact_conversation = _compact_conversation_history(conversation_data)
     transcript = [asdict(entry) for entry in recorder.entries]
     tool_trace = _extract_tool_trace(compact_conversation)
@@ -491,9 +583,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run scripted ElevenLabs conversation tests and store transcripts.")
     parser.add_argument("--scenario", help="Scenario slug to run. If omitted, all scenarios are run.")
     parser.add_argument("--message-delay", type=float, default=1.0, help="Delay between scripted user turns.")
-    parser.add_argument("--response-timeout", type=float, default=8.0, help="How long to wait for agent output after each message.")
-    parser.add_argument("--settle-timeout", type=float, default=3.0, help="How long to wait for final agent output after the last message.")
-    parser.add_argument("--quiet-window", type=float, default=1.5, help="How long the conversation must stay idle before the current turn is considered complete.")
+    parser.add_argument("--response-timeout", type=float, default=20.0, help="How long to wait for agent output after each message.")
+    parser.add_argument("--settle-timeout", type=float, default=6.0, help="How long to wait for final agent output after the last message.")
+    parser.add_argument("--quiet-window", type=float, default=2.0, help="How long the conversation must stay idle before the current turn is considered complete.")
     parser.add_argument("--quiet", action="store_true", help="Disable live console printing while the scenario runs.")
     args = parser.parse_args()
 

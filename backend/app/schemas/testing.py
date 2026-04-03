@@ -36,11 +36,10 @@ class TestingRunRead(BaseModel):
 class TestingRunRequest(BaseModel):
     scenario: str | None = None
     message_delay: float = 1.0
-    response_timeout: float = 8.0
-    settle_timeout: float = 3.0
-    quiet_window: float = 1.5
+    response_timeout: float = 20.0
+    settle_timeout: float = 6.0
+    quiet_window: float = 2.0
 
 
 class TestingRunExecutionRead(BaseModel):
     results: list[TestingRunSummaryRead]
-

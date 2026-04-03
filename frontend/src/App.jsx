@@ -45,6 +45,40 @@ function normalizeChatHistory(items) {
   return items.map((item) => ({ role: item.role, text: item.content, createdAt: item.created_at }));
 }
 
+function getTestingConversationTurns(run) {
+  const topLevelTranscript = run?.transcript;
+  if (Array.isArray(topLevelTranscript) && topLevelTranscript.length) {
+    return topLevelTranscript.map((item, index) => ({
+      key: `${item.role || "turn"}-${item.timestamp || index}`,
+      role: item.role || "unknown",
+      text: item.text || item.message || item.original_message || "",
+      time: item.timestamp || item.time_in_call_secs || null,
+      meta: Array.isArray(item.tool_calls) ? item.tool_calls.map((toolCall) => toolCall.tool_name).filter(Boolean) : [],
+    }));
+  }
+
+  const elevenLabsTranscript = run?.elevenlabs_conversation?.transcript;
+  if (Array.isArray(elevenLabsTranscript) && elevenLabsTranscript.length) {
+    return elevenLabsTranscript.map((item, index) => ({
+      key: `${item.role || "turn"}-${item.time_in_call_secs ?? index}`,
+      role: item.role || "unknown",
+      text: item.message || item.original_message || "",
+      time: item.time_in_call_secs ?? null,
+      meta: Array.isArray(item.tool_calls) ? item.tool_calls.map((toolCall) => toolCall.tool_name).filter(Boolean) : [],
+    }));
+  }
+
+  return [];
+}
+
+function safeJson(value) {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 const SEAT_LAYOUTS = {
   economy: {
     rows: Array.from({ length: 20 }, (_, index) => index + 1),
@@ -218,6 +252,7 @@ function App() {
   const [selectedScenarioSlug, setSelectedScenarioSlug] = useState("");
   const [testingBusy, setTestingBusy] = useState(false);
   const visibleFlights = useMemo(() => uniqueFlights(flights), [flights]);
+  const testingConversationTurns = useMemo(() => getTestingConversationTurns(selectedTestingRun), [selectedTestingRun]);
 
   useEffect(() => {
     listFlights(3)
@@ -818,6 +853,37 @@ function App() {
               <div className="testing-content">
                 {selectedTestingRun ? (
                   <>
+                    <article className="testing-card testing-card--wide">
+                      <div className="testing-card__header">
+                        <h3>Conversation</h3>
+                        <span className="testing-muted">{testingConversationTurns.length ? `${testingConversationTurns.length} turns` : "No transcript found"}</span>
+                      </div>
+                      {testingConversationTurns.length ? (
+                        <div className="testing-conversation">
+                          {testingConversationTurns.map((turn) => (
+                            <div key={turn.key} className="testing-turn testing-turn--compact">
+                              <div className="testing-turn__head">
+                                <strong>{turn.role}</strong>
+                                <span>{turn.time ?? "—"}</span>
+                              </div>
+                              {turn.text ? <p>{turn.text}</p> : null}
+                              {turn.meta?.length ? (
+                                <div className="testing-inline-list">
+                                  {turn.meta.map((toolName) => (
+                                    <span key={toolName} className="testing-chip">
+                                      {toolName}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="testing-muted">No conversation transcript is available for this run.</p>
+                      )}
+                    </article>
+
                     <section className="testing-hero">
                       <div>
                         <span className="eyebrow">Test ID</span>
@@ -831,6 +897,13 @@ function App() {
                         <div><span>Conversation</span><strong>{selectedTestingRun.run?.conversation_id || "—"}</strong></div>
                       </div>
                     </section>
+
+                    <article className="testing-card testing-card--wide">
+                      <div className="testing-card__header">
+                        <h3>Raw JSON</h3>
+                      </div>
+                      <pre className="testing-pre">{safeJson(selectedTestingRun)}</pre>
+                    </article>
 
                     <section className="testing-grid">
                       <article className="testing-card">
