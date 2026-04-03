@@ -1,5 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import IntegrityError
+from fastapi.responses import JSONResponse
 
 from app.api.routes.admin import router as admin_router
 from app.api.routes.chat import router as chat_router
@@ -7,6 +9,7 @@ from app.api.routes.bookings import router as bookings_router
 from app.api.routes.flights import router as flights_router
 from app.api.routes.knowledge import router as knowledge_router
 from app.api.routes.testing import router as testing_router
+from app.api.errors import integrity_error_response
 from app.db.flight_schema import ensure_flight_seat_columns
 from app.db.seat_inventory import sync_seat_inventory
 from app.db.session import engine
@@ -29,6 +32,11 @@ app.include_router(flights_router, prefix=settings.api_prefix)
 app.include_router(bookings_router, prefix=settings.api_prefix)
 app.include_router(knowledge_router, prefix=settings.api_prefix)
 app.include_router(testing_router, prefix=settings.api_prefix)
+
+
+@app.exception_handler(IntegrityError)
+def handle_integrity_error(request: Request, exc: IntegrityError) -> JSONResponse:
+    return integrity_error_response(exc)
 
 
 @app.on_event("startup")
