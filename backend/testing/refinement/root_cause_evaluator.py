@@ -7,6 +7,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from .critic import evaluate_artifact
+from .debug_output import print_agent_json
 from .models import RootCauseVerdict
 
 try:
@@ -108,4 +109,5 @@ def evaluate_root_cause(
     critique = evaluate_artifact(payload, model=model).model_dump(mode="json")
     agent = _build_agent(model)
     result = agent.run_sync(_artifact_prompt(payload, critique))
+    print_agent_json("root_cause", result.output)
     return result.output

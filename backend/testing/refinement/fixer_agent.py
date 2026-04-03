@@ -7,6 +7,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from .critic import evaluate_artifact, load_artifact
+from .debug_output import print_agent_json
 from .models import BoundedFixPlan
 from .root_cause_evaluator import evaluate_root_cause
 from .section_editors import (
@@ -131,6 +132,7 @@ def generate_fix_plan(
     root_cause = evaluate_root_cause(payload, model=model).model_dump(mode="json")
     agent = _build_agent(model)
     result = agent.run_sync(_artifact_prompt(payload, critique, root_cause))
+    print_agent_json("fixer_agent", result.output)
     return result.output, critique, root_cause
 
 
