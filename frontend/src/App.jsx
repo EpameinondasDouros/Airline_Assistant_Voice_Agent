@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   createBooking,
   getChatHistory,
+  getTestingRunRefinement,
   getTestingRun,
   listFlights,
   listTestingTasks,
@@ -81,6 +82,48 @@ function getTestingVerdict(run) {
 
 function getTestingRootCause(run) {
   return run?.root_cause || null;
+}
+
+function getRefinementLoop(refinement) {
+  if (!refinement) return [];
+  return [
+    {
+      title: "Critique",
+      status: refinement.critique ? "done" : "pending",
+      body: refinement.critique
+        ? `${refinement.critique.verdict || "No verdict"} · score ${refinement.critique.overall_score ?? "—"}`
+        : "Not available",
+    },
+    {
+      title: "Root cause",
+      status: refinement.root_cause ? "done" : "pending",
+      body: refinement.root_cause
+        ? `${refinement.root_cause.root_cause_category || "—"} · ${refinement.root_cause.primary_root_cause || "No summary"}`
+        : "Not available",
+    },
+    {
+      title: "Fix plan",
+      status: refinement.fix_plan ? "done" : "pending",
+      body: refinement.fix_plan?.summary || "Not available",
+    },
+    {
+      title: "Applied changes",
+      status: refinement.applied_changes?.length ? "done" : "pending",
+      body: refinement.applied_changes?.length ? `${refinement.applied_changes.length} change(s) applied` : "No changes applied",
+    },
+    {
+      title: "Verification",
+      status: refinement.verification ? "done" : "pending",
+      body: refinement.verification?.success === true ? "Verification passed" : refinement.verification ? "Verification failed" : "Not available",
+    },
+    {
+      title: "Acceptance",
+      status: refinement.acceptance ? "done" : "pending",
+      body: refinement.acceptance
+        ? `${refinement.acceptance.accepted ? "Accepted" : "Rejected"} · ${refinement.acceptance.reason}`
+        : "Not available",
+    },
+  ];
 }
 
 function safeJson(value) {
@@ -261,10 +304,12 @@ function App() {
   const [testingRuns, setTestingRuns] = useState([]);
   const [selectedTestingRunId, setSelectedTestingRunId] = useState(null);
   const [selectedTestingRun, setSelectedTestingRun] = useState(null);
+  const [selectedTestingRefinement, setSelectedTestingRefinement] = useState(null);
   const [selectedTaskSlug, setSelectedTaskSlug] = useState("");
   const [testingBusy, setTestingBusy] = useState(false);
   const visibleFlights = useMemo(() => uniqueFlights(flights), [flights]);
   const testingConversationTurns = useMemo(() => getTestingConversationTurns(selectedTestingRun), [selectedTestingRun]);
+  const testingRefinementSteps = useMemo(() => getRefinementLoop(selectedTestingRefinement), [selectedTestingRefinement]);
   const selectedTestingTask = useMemo(() => getTestingTask(selectedTestingRun), [selectedTestingRun]);
   const selectedTestingVerdict = useMemo(() => getTestingVerdict(selectedTestingRun), [selectedTestingRun]);
   const selectedTestingRootCause = useMemo(() => getTestingRootCause(selectedTestingRun), [selectedTestingRun]);
@@ -311,6 +356,7 @@ function App() {
   useEffect(() => {
     if (!selectedTestingRunId) {
       setSelectedTestingRun(null);
+      setSelectedTestingRefinement(null);
       return;
     }
     getTestingRun(selectedTestingRunId)
@@ -319,6 +365,13 @@ function App() {
       })
       .catch((error) => {
         setTestingStatus(error.message);
+      });
+    getTestingRunRefinement(selectedTestingRunId)
+      .then((response) => {
+        setSelectedTestingRefinement(response);
+      })
+      .catch(() => {
+        setSelectedTestingRefinement(null);
       });
   }, [selectedTestingRunId]);
 
@@ -931,14 +984,61 @@ function App() {
                       )}
                     </article>
 
-                    <article className="testing-card">
+                    <article className="testing-card testing-card--wide">
                       <div className="testing-card__header">
-                        <h3>Backend Effects</h3>
+                        <h3>Refinement Loop</h3>
+                        <span className="testing-muted">{selectedTestingRefinement ? "Loaded" : "No refinement report"}</span>
                       </div>
-                      {selectedTestingRun.backend_verification ? (
-                        <pre className="testing-pre">{safeJson(selectedTestingRun.backend_verification)}</pre>
+                      {selectedTestingRefinement ? (
+                        <div className="testing-refinement">
+                          <div className="testing-refinement__steps">
+                            {testingRefinementSteps.map((step) => (
+                              <div key={step.title} className={`testing-refinement__step testing-refinement__step--${step.status}`}>
+                                <strong>{step.title}</strong>
+                                <p>{step.body}</p>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="testing-refinement__grid">
+                            <div className="testing-refinement__panel">
+                              <h4>Code Changes</h4>
+                              {selectedTestingRefinement.applied_changes?.length ? (
+                                <div className="testing-refinement__changes">
+                                  {selectedTestingRefinement.applied_changes.map((change, index) => (
+                                    <details key={`${change.path}-${index}`} className="testing-refinement__change">
+                                      <summary>
+                                        <strong>{change.path}</strong>
+                                        <span>{change.applied ? "applied" : change.blocked ? "blocked" : "pending"}</span>
+                                      </summary>
+                                      <p><strong>Selector:</strong> {change.selector_type}:{change.selector_value}</p>
+                                      {change.reason ? <p><strong>Reason:</strong> {change.reason}</p> : null}
+                                      {change.before_content ? <pre className="testing-pre">{change.before_content}</pre> : null}
+                                      {change.after_content ? <pre className="testing-pre">{change.after_content}</pre> : null}
+                                      {change.error ? <p className="testing-muted">{change.error}</p> : null}
+                                    </details>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="testing-muted">No code changes were applied for this run.</p>
+                              )}
+                            </div>
+                            <div className="testing-refinement__panel">
+                              <h4>Verification</h4>
+                              {selectedTestingRefinement.verification ? (
+                                <>
+                                  <p><strong>Command:</strong> {selectedTestingRefinement.verification.command}</p>
+                                  <p><strong>Result:</strong> {selectedTestingRefinement.verification.success ? "Passed" : "Failed"}</p>
+                                  {selectedTestingRefinement.verification.stdout ? <pre className="testing-pre">{selectedTestingRefinement.verification.stdout}</pre> : null}
+                                  {selectedTestingRefinement.verification.stderr ? <pre className="testing-pre">{selectedTestingRefinement.verification.stderr}</pre> : null}
+                                </>
+                              ) : (
+                                <p className="testing-muted">No verification run recorded yet.</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       ) : (
-                        <p className="testing-muted">No backend verification was required for this task.</p>
+                        <p className="testing-muted">No refinement report is available for this run.</p>
                       )}
                     </article>
 

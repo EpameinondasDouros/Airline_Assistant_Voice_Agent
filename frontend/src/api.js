@@ -91,6 +91,10 @@ export function getTestingRun(runId) {
   return request(`/api/testing/runs/${encodeURIComponent(runId)}`);
 }
 
+export function getTestingRunRefinement(runId) {
+  return request(`/api/testing/runs/${encodeURIComponent(runId)}/refinement`);
+}
+
 export function runTestingTask(payload = {}) {
   return request("/api/testing/run", {
     method: "POST",

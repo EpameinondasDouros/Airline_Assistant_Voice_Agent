@@ -665,6 +665,83 @@ button, input { font: inherit; }
   padding: 1.2rem;
   border-radius: 1.45rem;
 }
+.testing-refinement {
+  display: grid;
+  gap: 1rem;
+}
+.testing-refinement__steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.testing-refinement__step {
+  padding: 0.9rem 0.95rem;
+  border-radius: 1rem;
+  background: rgba(246, 243, 235, 0.82);
+  border: 1px solid rgba(124, 138, 137, 0.12);
+}
+.testing-refinement__step strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--ink);
+}
+.testing-refinement__step p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+.testing-refinement__step--done {
+  border-color: rgba(0, 101, 101, 0.2);
+}
+.testing-refinement__step--pending {
+  opacity: 0.75;
+}
+.testing-refinement__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+.testing-refinement__panel {
+  padding: 1rem;
+  border-radius: 1rem;
+  background: rgba(246, 243, 235, 0.68);
+}
+.testing-refinement__panel h4 {
+  margin: 0 0 0.75rem;
+  color: var(--ink);
+}
+.testing-refinement__changes {
+  display: grid;
+  gap: 0.65rem;
+}
+.testing-refinement__change {
+  border: 1px solid rgba(124, 138, 137, 0.12);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 0.7rem 0.8rem;
+}
+.testing-refinement__change summary {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+.testing-refinement__change summary strong {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.testing-refinement__change summary span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.testing-refinement__change p {
+  margin: 0.55rem 0 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
 .testing-metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -802,6 +879,10 @@ button, input { font: inherit; }
   .modal-card {
     padding: 1.25rem;
     border-radius: 1.5rem;
+  }
+  .testing-refinement__steps,
+  .testing-refinement__grid {
+    grid-template-columns: 1fr;
   }
 }
 

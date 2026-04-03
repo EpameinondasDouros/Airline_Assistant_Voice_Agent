@@ -24,6 +24,7 @@ router = APIRouter(prefix="/testing", tags=["testing"])
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 TESTING_ROOT = BACKEND_ROOT / "testing"
 OUTPUTS_ROOT = TESTING_ROOT / "outputs"
+REFINEMENT_REPORTS_ROOT = TESTING_ROOT / "refinement" / "reports"
 
 
 def _task_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -83,6 +84,26 @@ def _find_run_path(run_id: str) -> Path:
     raise HTTPException(status_code=404, detail=f"Testing run '{run_id}' was not found.")
 
 
+def _find_refinement_report_path(run_id: str) -> Path:
+    run_path = _find_run_path(run_id)
+    if not REFINEMENT_REPORTS_ROOT.exists():
+        raise HTTPException(status_code=404, detail=f"No refinement report found for testing run '{run_id}'.")
+
+    matching_reports: list[Path] = []
+    for path in sorted(REFINEMENT_REPORTS_ROOT.glob("*.json"), key=lambda candidate: candidate.stat().st_mtime, reverse=True):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        artifact_path = str(payload.get("artifact_path") or "")
+        if artifact_path.endswith(run_path.name):
+            matching_reports.append(path)
+
+    if not matching_reports:
+        raise HTTPException(status_code=404, detail=f"No refinement report found for testing run '{run_id}'.")
+    return matching_reports[0]
+
+
 def _task_slug_from_request(request: TestingRunRequest) -> str | None:
     return request.task or request.scenario
 
@@ -127,6 +148,12 @@ def get_testing_run(run_id: str) -> TestingRunRead:
     path = _find_run_path(run_id)
     payload = _load_run_payload(path)
     return TestingRunRead(payload=payload)
+
+
+@router.get("/runs/{run_id:path}/refinement")
+def get_testing_run_refinement_report(run_id: str) -> dict[str, Any]:
+    path = _find_refinement_report_path(run_id)
+    return _load_run_payload(path)
 
 
 @router.post("/run", response_model=TestingRunExecutionRead)
@@ -188,4 +215,3 @@ def run_testing_tasks(request: TestingRunRequest) -> TestingRunExecutionRead:
         payload = _load_run_payload(output_path)
         summaries.append(_build_summary(output_path, payload))
     return TestingRunExecutionRead(results=summaries)
-
