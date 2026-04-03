@@ -7,6 +7,7 @@ if [[ -n "${RAILWAY_VOLUME_MOUNT_PATH:-}" ]]; then
 fi
 
 alembic upgrade head
+python -m app.scripts.reset_data
 python -m app.scripts.seed_flights
 python -m app.scripts.seed_bookings
 python -m app.scripts.seed_knowledge

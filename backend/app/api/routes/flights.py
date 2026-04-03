@@ -39,7 +39,8 @@ def list_flights(
 def search_flights(
     origin: str | None = Query(default=None, min_length=3, max_length=3),
     destination: str | None = Query(default=None, min_length=3, max_length=3),
-    departure_date: date | None = None,
+    departure_date_from: date | None = None,
+    departure_date_to: date | None = None,
     max_price: float | None = Query(default=None, ge=0),
     seat_class: SeatClass | None = None,
     seat_preference: SeatPreference | None = None,
@@ -52,7 +53,8 @@ def search_flights(
     flights = service.search_flights(
         origin=origin,
         destination=destination,
-        departure_date=departure_date,
+        departure_date_from=departure_date_from,
+        departure_date_to=departure_date_to,
         max_price=max_price,
         seat_class=seat_class,
         seat_preference=seat_preference,

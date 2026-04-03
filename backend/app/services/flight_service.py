@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
@@ -24,7 +24,8 @@ class FlightService:
         *,
         origin: str | None = None,
         destination: str | None = None,
-        departure_date: date | None = None,
+        departure_date_from: date | None = None,
+        departure_date_to: date | None = None,
         max_price: float | None = None,
         seat_class: SeatClass | None = None,
         seat_preference: SeatPreference | None = None,
@@ -38,10 +39,12 @@ class FlightService:
             statement = statement.where(Flight.origin_airport == origin.upper())
         if destination:
             statement = statement.where(Flight.destination_airport == destination.upper())
-        if departure_date:
-            start = datetime.combine(departure_date, time.min)
-            end = start + timedelta(days=1)
-            statement = statement.where(Flight.departure_time >= start, Flight.departure_time < end)
+        if departure_date_from:
+            start = datetime.combine(departure_date_from, time.min)
+            statement = statement.where(Flight.departure_time >= start)
+        if departure_date_to:
+            end = datetime.combine(departure_date_to, time.max)
+            statement = statement.where(Flight.departure_time <= end)
         if max_price is not None:
             statement = statement.where(Flight.price <= max_price)
         if seat_class:

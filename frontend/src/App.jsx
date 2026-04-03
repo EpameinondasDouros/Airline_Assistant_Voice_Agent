@@ -15,6 +15,18 @@ const quickPills = [
   "Request wheelchair assistance",
 ];
 
+function uniqueFlights(items) {
+  const byKey = new Map();
+  for (const item of items) {
+    const key = `${item.flight_number}:${item.departure_time}`;
+    const existing = byKey.get(key);
+    if (!existing || Number(item.price) < Number(existing.price)) {
+      byKey.set(key, item);
+    }
+  }
+  return Array.from(byKey.values());
+}
+
 function App() {
   const [screen, setScreen] = useState("search");
   const [health, setHealth] = useState("Ready");
@@ -27,7 +39,8 @@ function App() {
   const [flightFilters, setFlightFilters] = useState({
     origin: "NYC",
     destination: "LHR",
-    departure_date: "2024-10-12",
+    departure_date_from: "2024-10-12",
+    departure_date_to: "2024-10-28",
     max_price: "2500",
     seat_class: "business",
     seat_preference: "",
@@ -52,13 +65,15 @@ function App() {
     },
   ]);
   const [chatStatus, setChatStatus] = useState("Idle");
+  const visibleFlights = useMemo(() => uniqueFlights(flights), [flights]);
 
   useEffect(() => {
     listFlights(3)
       .then((items) => {
         setFlights(items);
-        setSelectedFlight(items[0] ?? null);
-        setFlightStatus(items.length ? `Loaded ${items.length} flights` : "No flights returned");
+        const deduped = uniqueFlights(items);
+        setSelectedFlight(deduped[0] ?? null);
+        setFlightStatus(deduped.length ? `Loaded ${deduped.length} flights` : "No flights returned");
       })
       .catch((error) => {
         setFlights([]);
@@ -72,16 +87,16 @@ function App() {
       .catch(() => setTopics([]));
   }, []);
 
-  const recommendedFlight = flights[0];
-  const cheapestFlight = useMemo(() => flights.slice().sort((a, b) => a.price - b.price)[0], [flights]);
+  const recommendedFlight = visibleFlights[0];
+  const cheapestFlight = useMemo(() => visibleFlights.slice().sort((a, b) => a.price - b.price)[0], [visibleFlights]);
   const fastestFlight = useMemo(
     () =>
-      flights.slice().sort((a, b) => {
+      visibleFlights.slice().sort((a, b) => {
         const aMinutes = (a.arrival_minutes ?? 0) - (a.departure_minutes ?? 0);
         const bMinutes = (b.arrival_minutes ?? 0) - (b.departure_minutes ?? 0);
         return aMinutes - bMinutes;
       })[0],
-    [flights],
+    [visibleFlights],
   );
   const flightToShow = selectedFlight ?? recommendedFlight;
 
@@ -89,7 +104,8 @@ function App() {
     searchFlights({
       origin: flightFilters.origin,
       destination: flightFilters.destination,
-      departure_date: flightFilters.departure_date,
+      departure_date_from: flightFilters.departure_date_from,
+      departure_date_to: flightFilters.departure_date_to,
       max_price: flightFilters.max_price,
       seat_class: flightFilters.seat_class,
       seat_preference: flightFilters.seat_preference,
@@ -99,8 +115,9 @@ function App() {
     })
       .then((items) => {
         setFlights(items);
-        setSelectedFlight(items[0] ?? null);
-        setFlightStatus(items.length ? `Loaded ${items.length} flights` : "No flights returned");
+        const deduped = uniqueFlights(items);
+        setSelectedFlight(deduped[0] ?? null);
+        setFlightStatus(deduped.length ? `Loaded ${deduped.length} flights` : "No flights returned");
       })
       .catch((error) => {
         setFlightStatus(error.message);
@@ -211,14 +228,30 @@ function App() {
               <label className="search-field search-field--input">
                 <span className="material-symbols-outlined">calendar_month</span>
                 <div>
-                  <small>Date</small>
+                  <small>From</small>
                   <input
                     type="date"
-                    value={flightFilters.departure_date}
+                    value={flightFilters.departure_date_from}
                     onChange={(event) =>
                       setFlightFilters((current) => ({
                         ...current,
-                        departure_date: event.target.value,
+                        departure_date_from: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </label>
+              <label className="search-field search-field--input">
+                <span className="material-symbols-outlined">calendar_month</span>
+                <div>
+                  <small>To</small>
+                  <input
+                    type="date"
+                    value={flightFilters.departure_date_to}
+                    onChange={(event) =>
+                      setFlightFilters((current) => ({
+                        ...current,
+                        departure_date_to: event.target.value,
                       }))
                     }
                   />
@@ -373,7 +406,7 @@ function App() {
                   </div>
                 </div>
 
-                {flights.slice(0, 2).map((flight) => (
+                {visibleFlights.slice(0, 2).map((flight) => (
                   <button
                     type="button"
                     className={selectedFlight?.id === flight.id ? "flight-card flight-card--selected" : "flight-card flight-card--button"}
