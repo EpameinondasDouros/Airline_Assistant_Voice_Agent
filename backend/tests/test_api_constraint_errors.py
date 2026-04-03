@@ -89,3 +89,31 @@ def test_integrity_error_returns_constraint_details(client, monkeypatch):
         "constraint": "ck_bookings_reschedule_reference_requires_confirmed_status",
         "database_error": "CHECK constraint failed: ck_bookings_reschedule_reference_requires_confirmed_status",
     }
+
+
+def test_request_validation_error_returns_details(client):
+    response = client.post(
+        "/api/bookings",
+        json={
+            "flight_id": 179,
+            "contact_name": "Test Contact",
+            "contact_email": "test@example.com",
+            "passengers": [
+                {
+                    "first_name": "Eleni",
+                    "last_name": "Pappas",
+                }
+            ],
+            "extras": [],
+        },
+    )
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error"] == "validation_error"
+    assert body["error_code"] == "request_validation_error"
+    assert body["message"] == "The request body failed validation."
+    assert any(
+        error["loc"] == ["body", "passengers", 0, "date_of_birth"]
+        for error in body["details"]
+    )

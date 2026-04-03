@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.exc import IntegrityError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 from app.api.routes.admin import router as admin_router
 from app.api.routes.chat import router as chat_router
@@ -37,6 +38,19 @@ app.include_router(testing_router, prefix=settings.api_prefix)
 @app.exception_handler(IntegrityError)
 def handle_integrity_error(request: Request, exc: IntegrityError) -> JSONResponse:
     return integrity_error_response(exc)
+
+
+@app.exception_handler(RequestValidationError)
+def handle_request_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "validation_error",
+            "error_code": "request_validation_error",
+            "message": "The request body failed validation.",
+            "details": exc.errors(),
+        },
+    )
 
 
 @app.on_event("startup")
