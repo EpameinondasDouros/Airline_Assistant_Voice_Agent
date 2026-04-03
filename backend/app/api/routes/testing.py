@@ -22,11 +22,7 @@ router = APIRouter(prefix="/testing", tags=["testing"])
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 TESTING_ROOT = PROJECT_ROOT / "testing"
 OUTPUTS_ROOT = TESTING_ROOT / "outputs"
-
-if str(TESTING_ROOT) not in sys.path:
-    sys.path.insert(0, str(TESTING_ROOT))
-
-from scenarios import SCENARIOS, get_scenario  # noqa: E402
+from app.testing_catalog import SCENARIOS, get_scenario
 
 
 def _run_id_from_payload(payload: dict[str, Any], fallback_name: str) -> str:
@@ -152,4 +148,3 @@ def run_testing_scenarios(request: TestingRunRequest) -> TestingRunExecutionRead
         payload = _load_run_payload(output_path)
         summaries.append(_build_summary(output_path, payload))
     return TestingRunExecutionRead(results=summaries)
-
