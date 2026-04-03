@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event, Lock
-from typing import Literal
+from typing import Callable, Literal
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
@@ -41,12 +41,13 @@ class TranscriptEntry:
 
 
 class TranscriptRecorder:
-    def __init__(self, *, live_output: bool = True) -> None:
+    def __init__(self, *, live_output: bool = True, event_sink: Callable[[dict], None] | None = None) -> None:
         self.entries: list[TranscriptEntry] = []
         self._lock = Lock()
         self._agent_event = Event()
         self._last_agent_count = 0
         self._live_output = live_output
+        self._event_sink = event_sink
         self._last_entry_ts = time.time()
 
     def add_user_message(self, text: str) -> None:
@@ -60,17 +61,27 @@ class TranscriptRecorder:
         self._append("user_transcript", text)
 
     def _append(self, role: Role, text: str) -> None:
+        timestamp = datetime.now(timezone.utc).isoformat()
         with self._lock:
             self.entries.append(
                 TranscriptEntry(
                     role=role,
                     text=text,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    timestamp=timestamp,
                 )
             )
             self._last_entry_ts = time.time()
         if self._live_output:
             print(f"{role}: {text}")
+        if self._event_sink:
+            self._event_sink(
+                {
+                    "type": "transcript_turn",
+                    "role": role,
+                    "text": text,
+                    "timestamp": timestamp,
+                }
+            )
 
     def wait_for_agent_activity(self, timeout_seconds: float) -> bool:
         with self._lock:
@@ -494,6 +505,12 @@ def _prompt_metadata() -> dict:
     }
 
 
+def _emit_event(event_sink: Callable[[dict], None] | None, event_type: str, **payload: object) -> None:
+    if not event_sink:
+        return
+    event_sink({"type": event_type, **payload})
+
+
 def _customer_context(task: CapabilityTask) -> dict:
     if task.slug == "book_flight":
         return {
@@ -597,9 +614,10 @@ def run_task(
     quiet_window_seconds: float,
     live_output: bool,
     review_model: str,
+    event_sink: Callable[[dict], None] | None = None,
 ) -> Path:
     settings = get_agent_settings()
-    recorder = TranscriptRecorder(live_output=live_output)
+    recorder = TranscriptRecorder(live_output=live_output, event_sink=event_sink)
     customer = CustomerSimulator(model=review_model)
     customer_context = _customer_context(task)
     pre_snapshot = _fetch_booking_snapshot(settings, customer_context.get("booking_reference"))
@@ -614,12 +632,14 @@ def run_task(
     conversation_id = agent.conversation_id
     customer_reply_count = 0
     max_customer_replies = 8
+    _emit_event(event_sink, "task_started", task=task.slug, conversation_id=conversation_id)
 
     try:
         if recorder.wait_for_agent_activity(message_delay_seconds):
             recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
 
         first_message = task.initial_user_intent
+        _emit_event(event_sink, "user_turn", message=first_message, turn_index=1)
         baseline_agent_count = recorder.agent_count()
         recorder.add_user_message(first_message)
         agent.send(first_message)
@@ -676,6 +696,7 @@ def run_task(
                 if decision.message is None:
                     raise RuntimeError("Customer simulator requested a reply without a message.")
                 customer_reply_count += 1
+                _emit_event(event_sink, "customer_reply", message=decision.message, reply_index=customer_reply_count)
                 baseline_agent_count = recorder.agent_count()
                 recorder.add_user_message(decision.message)
                 agent.send(decision.message)
@@ -751,14 +772,17 @@ def run_task(
 
     try:
         critique = evaluate_artifact(payload, model=review_model)
+        _emit_event(event_sink, "evaluation_started", task=task.slug)
         root_cause = evaluate_root_cause(payload, critique=critique, model=review_model)
         payload["evaluator_verdict"] = critique.model_dump(mode="json")
         payload["root_cause"] = root_cause.model_dump(mode="json")
         payload["evaluation_error"] = None
+        _emit_event(event_sink, "evaluation_complete", task=task.slug)
     except Exception as exc:  # pragma: no cover - runtime integration failure path
         payload["evaluator_verdict"] = None
         payload["root_cause"] = None
         payload["evaluation_error"] = str(exc)
+        _emit_event(event_sink, "evaluation_error", task=task.slug, error=str(exc))
 
     output_path = _outputs_dir() / f"{_timestamp()}_{task.slug}.json"
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -774,12 +798,21 @@ def main() -> None:
     parser.add_argument("--settle-timeout", type=float, default=6.0, help="How long to wait for final agent output after the last message.")
     parser.add_argument("--quiet-window", type=float, default=2.0, help="How long the conversation must stay idle before the current turn is considered complete.")
     parser.add_argument("--quiet", action="store_true", help="Disable live console printing while the task runs.")
+    parser.add_argument("--stream-events", action="store_true", help="Emit structured JSON lines for live streaming consumers.")
     parser.add_argument("--review-model", default="openai:gpt-4o-mini", help="Model used for the customer simulator and post-run evaluation.")
     args = parser.parse_args()
 
     selected_task = args.task or args.scenario
     tasks = [get_task(selected_task)] if selected_task else list(TASKS)
     results: list[dict[str, str]] = []
+
+    def emit_event(event: dict) -> None:
+        if args.stream_events:
+            print(json.dumps(event), flush=True)
+
+    if args.stream_events:
+        emit_event({"type": "run_started", "task_count": len(tasks), "selected_task": selected_task})
+
     for task in tasks:
         output_path = run_task(
             task,
@@ -789,10 +822,17 @@ def main() -> None:
             quiet_window_seconds=args.quiet_window,
             live_output=not args.quiet,
             review_model=args.review_model,
+            event_sink=emit_event if args.stream_events else None,
         )
         results.append({"task": task.slug, "output": str(output_path)})
 
-    print(json.dumps(results, indent=2))
+        if args.stream_events:
+            emit_event({"type": "task_finished", "task": task.slug, "output": str(output_path)})
+
+    if args.stream_events:
+        emit_event({"type": "run_finished", "results": results})
+    else:
+        print(json.dumps(results, indent=2))
 
 
 if __name__ == "__main__":

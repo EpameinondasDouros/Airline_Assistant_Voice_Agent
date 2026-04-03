@@ -102,6 +102,54 @@ export function runTestingTask(payload = {}) {
   });
 }
 
+export async function runTestingTaskLive(payload = {}, onEvent = () => {}) {
+  const response = await fetch(`${getApiBase()}/api/testing/run/live`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok || !response.body) {
+    let detail = `Request failed with status ${response.status}`;
+    try {
+      const errorPayload = await response.json();
+      detail = errorPayload.detail || errorPayload.message || detail;
+    } catch {
+      // keep fallback text
+    }
+    throw new Error(detail);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        onEvent(JSON.parse(line));
+      } catch {
+        onEvent({ type: "log", message: line });
+      }
+    }
+  }
+  if (buffer.trim()) {
+    try {
+      onEvent(JSON.parse(buffer));
+    } catch {
+      onEvent({ type: "log", message: buffer });
+    }
+  }
+  return true;
+}
+
 export function listTestingScenarios() {
   return listTestingTasks();
 }

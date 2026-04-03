@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 from agents.config import get_agent_settings
 from app.schemas.testing import (
@@ -124,6 +126,47 @@ def _task_reads() -> list[TestingTaskRead]:
     ]
 
 
+def _build_run_command(request: TestingRunRequest, selected_task: str | None) -> list[str]:
+    command = [
+        sys.executable,
+        "-u",
+        "-m",
+        "testing.run_conversation_tests",
+        "--quiet",
+        "--message-delay",
+        str(request.message_delay),
+        "--response-timeout",
+        str(request.response_timeout),
+        "--settle-timeout",
+        str(request.settle_timeout),
+        "--quiet-window",
+        str(request.quiet_window),
+    ]
+    if selected_task:
+        command.extend(["--task", selected_task])
+    return command
+
+
+def _build_live_run_command(request: TestingRunRequest, selected_task: str | None) -> list[str]:
+    command = _build_run_command(request, selected_task)
+    command.append("--stream-events")
+    return command
+
+
+def _validate_testing_settings() -> None:
+    settings = get_agent_settings()
+    if not settings.elevenlabs_api_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Testing requires ELEVENLABS_API_KEY to run capability-task conversations.",
+        )
+    if not settings.elevenlabs_agent_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Testing requires ELEVENLABS_AGENT_ID to run capability-task conversations.",
+        )
+
+
 @router.get("/tasks", response_model=list[TestingTaskRead])
 def list_testing_tasks() -> list[TestingTaskRead]:
     return _task_reads()
@@ -165,34 +208,8 @@ def run_testing_tasks(request: TestingRunRequest) -> TestingRunExecutionRead:
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    settings = get_agent_settings()
-    if not settings.elevenlabs_api_key:
-        raise HTTPException(
-            status_code=400,
-            detail="Testing requires ELEVENLABS_API_KEY to run capability-task conversations.",
-        )
-    if not settings.elevenlabs_agent_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Testing requires ELEVENLABS_AGENT_ID to run capability-task conversations.",
-        )
-
-    command = [
-        sys.executable,
-        "-m",
-        "testing.run_conversation_tests",
-        "--quiet",
-        "--message-delay",
-        str(request.message_delay),
-        "--response-timeout",
-        str(request.response_timeout),
-        "--settle-timeout",
-        str(request.settle_timeout),
-        "--quiet-window",
-        str(request.quiet_window),
-    ]
-    if selected_task:
-        command.extend(["--task", selected_task])
+    _validate_testing_settings()
+    command = _build_run_command(request, selected_task)
 
     completed = subprocess.run(
         command,
@@ -215,3 +232,45 @@ def run_testing_tasks(request: TestingRunRequest) -> TestingRunExecutionRead:
         payload = _load_run_payload(output_path)
         summaries.append(_build_summary(output_path, payload))
     return TestingRunExecutionRead(results=summaries)
+
+
+@router.post("/run/live")
+def run_testing_tasks_live(request: TestingRunRequest) -> StreamingResponse:
+    selected_task = _task_slug_from_request(request)
+    if selected_task:
+        try:
+            get_task(selected_task)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    _validate_testing_settings()
+    command = _build_live_run_command(request, selected_task)
+
+    def event_stream() -> Any:
+        process = subprocess.Popen(
+            command,
+            cwd=BACKEND_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+        )
+        assert process.stdout is not None
+        yield f"{json.dumps({'type': 'status', 'message': 'started'})}\n"
+        for raw_line in process.stdout:
+            line = raw_line.rstrip("\n")
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                payload = {"type": "log", "message": line}
+            yield f"{json.dumps(payload)}\n"
+        exit_code = process.wait()
+        if exit_code != 0:
+            yield f"{json.dumps({'type': 'error', 'message': f'Testing runner exited with code {exit_code}'})}\n"
+            return
+        yield f"{json.dumps({'type': 'complete', 'message': 'Testing run complete.'})}\n"
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")

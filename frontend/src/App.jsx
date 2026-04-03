@@ -7,7 +7,7 @@ import {
   listFlights,
   listTestingTasks,
   listTestingRuns,
-  runTestingTask,
+  runTestingTaskLive,
   searchFlights,
   sendChatMessage,
 } from "./api";
@@ -307,6 +307,8 @@ function App() {
   const [selectedTestingRefinement, setSelectedTestingRefinement] = useState(null);
   const [selectedTaskSlug, setSelectedTaskSlug] = useState("");
   const [testingBusy, setTestingBusy] = useState(false);
+  const [testingLiveLines, setTestingLiveLines] = useState([]);
+  const [testingLiveActive, setTestingLiveActive] = useState(false);
   const visibleFlights = useMemo(() => uniqueFlights(flights), [flights]);
   const testingConversationTurns = useMemo(() => getTestingConversationTurns(selectedTestingRun), [selectedTestingRun]);
   const testingRefinementSteps = useMemo(() => getRefinementLoop(selectedTestingRefinement), [selectedTestingRefinement]);
@@ -508,20 +510,76 @@ function App() {
 
   function executeTestingRun(payload = {}) {
     setTestingBusy(true);
+    setTestingLiveActive(true);
+    setTestingLiveLines([]);
     setTestingStatus("Running testing task...");
-    runTestingTask(payload)
-      .then((response) => {
-        const preferredRunId = response.results[0]?.id || null;
-        return refreshTestingRuns(preferredRunId).then(() => {
-          const scope = payload.task ? `task ${payload.task}` : "all tasks";
-          setTestingStatus(`Completed ${scope}. Generated ${response.results.length} run${response.results.length === 1 ? "" : "s"}.`);
-        });
-      })
+    runTestingTaskLive(payload, (event) => {
+      if (!event || typeof event !== "object") return;
+      if (event.type === "status") {
+        setTestingStatus(event.message || "Running testing task...");
+        setTestingLiveLines((current) => [...current, { tag: "status", text: event.message || "started" }]);
+        return;
+      }
+      if (event.type === "run_started") {
+        setTestingLiveLines((current) => [...current, { tag: "run", text: `Started ${event.task_count} task${event.task_count === 1 ? "" : "s"}.` }]);
+        return;
+      }
+      if (event.type === "task_started") {
+        setTestingLiveLines((current) => [...current, { tag: "task", text: `Task ${event.task} started.` }]);
+        return;
+      }
+      if (event.type === "user_turn") {
+        setTestingLiveLines((current) => [...current, { tag: "user", text: event.message }]);
+        return;
+      }
+      if (event.type === "customer_reply") {
+        setTestingLiveLines((current) => [...current, { tag: "customer", text: event.message }]);
+        return;
+      }
+      if (event.type === "transcript_turn") {
+        const text = String(event.text || "").trim();
+        if (text) {
+          setTestingLiveLines((current) => [...current, { tag: event.role || "turn", text }]);
+        }
+        return;
+      }
+      if (event.type === "evaluation_started") {
+        setTestingLiveLines((current) => [...current, { tag: "eval", text: `Evaluating ${event.task}.` }]);
+        return;
+      }
+      if (event.type === "evaluation_complete") {
+        setTestingLiveLines((current) => [...current, { tag: "eval", text: `Evaluation complete for ${event.task}.` }]);
+        return;
+      }
+      if (event.type === "evaluation_error") {
+        setTestingLiveLines((current) => [...current, { tag: "error", text: event.error || "Evaluation failed." }]);
+        return;
+      }
+      if (event.type === "task_finished") {
+        setTestingLiveLines((current) => [...current, { tag: "task", text: `Task ${event.task} finished.` }]);
+        return;
+      }
+      if (event.type === "run_finished") {
+        setTestingLiveLines((current) => [...current, { tag: "run", text: "Run finished." }]);
+        const scope = payload.task ? `task ${payload.task}` : "all tasks";
+        setTestingStatus(`Completed ${scope}.`);
+        refreshTestingRuns(selectedTestingRunId);
+        return;
+      }
+      if (event.type === "error") {
+        setTestingStatus(event.message || "Testing failed.");
+        setTestingLiveLines((current) => [...current, { tag: "error", text: event.message || "Testing failed." }]);
+        return;
+      }
+      setTestingLiveLines((current) => [...current, { tag: event.type || "log", text: event.message ? String(event.message) : safeJson(event) }]);
+    })
       .catch((error) => {
         setTestingStatus(error.message);
+        setTestingLiveLines((current) => [...current, { tag: "error", text: error.message }]);
       })
       .finally(() => {
         setTestingBusy(false);
+        setTestingLiveActive(false);
       });
   }
 
@@ -848,6 +906,28 @@ function App() {
               </form>
               <p className="status-pill status-pill--center">AeroMellon AI Concierge • {chatStatus}</p>
             </section>
+
+            {testingLiveActive || testingLiveLines.length ? (
+              <section className="testing-live">
+                <div className="testing-live__header">
+                  <div>
+                    <span className="eyebrow">Live output</span>
+                    <strong>Streaming test run</strong>
+                  </div>
+                  <span className="status-pill status-pill--center">{testingBusy ? "Running..." : "Complete"}</span>
+                </div>
+                <pre className="testing-live__console" aria-live="polite">
+                  {testingLiveLines.length
+                    ? testingLiveLines
+                        .map((line) => {
+                          const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                          return `[${stamp}] [${String(line.tag).toUpperCase()}] ${line.text}`;
+                        })
+                        .join("\n")
+                    : "[waiting] No live output yet."}
+                </pre>
+              </section>
+            ) : null}
           </>
         ) : (
           <>

@@ -587,6 +587,41 @@ button, input { font: inherit; }
   flex: 1 1 22rem;
   max-width: 28rem;
 }
+.testing-live {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1.1rem 1.2rem 1.2rem;
+  border-radius: 1.4rem;
+  border: 1px solid rgba(124, 138, 137, 0.14);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: var(--shadow);
+}
+.testing-live__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+.testing-live__header strong {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 1.1rem;
+}
+.testing-live__console {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  min-height: 14rem;
+  border-radius: 1rem;
+  background: #111814;
+  color: #dce9e6;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+}
 .testing-select--full {
   width: 100%;
   min-width: 0;
