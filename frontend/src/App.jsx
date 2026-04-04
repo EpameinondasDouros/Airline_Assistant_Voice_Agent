@@ -301,13 +301,47 @@ function App() {
     fixer_model: "openai:gpt-5.4-mini",
     require_manual_approval: true,
   });
+  const [testingConversation, setTestingConversation] = useState([]);
   const [testingLiveEvents, setTestingLiveEvents] = useState([]);
   const [testingLogLines, setTestingLogLines] = useState([]);
+  const [testingRefinementEvents, setTestingRefinementEvents] = useState([]);
   const [testingLiveActive, setTestingLiveActive] = useState(false);
+  const transcriptConsoleRef = useRef(null);
   const liveConsoleRef = useRef(null);
-  const logConsoleRef = useRef(null);
   const pipelineConsoleRef = useRef(null);
   const visibleFlights = useMemo(() => uniqueFlights(flights), [flights]);
+  const refinementSections = useMemo(() => {
+    const evaluation = [];
+    const rootCause = [];
+    const fixPlan = [];
+    const fixerEdits = [];
+    const completion = [];
+
+    for (const event of testingRefinementEvents) {
+      if (!event) continue;
+      if (event.kind === "evaluation" || event.kind === "criterion" || event.kind === "finding") {
+        evaluation.push(event);
+        continue;
+      }
+      if (event.kind === "root_cause") {
+        rootCause.push(event);
+        continue;
+      }
+      if (event.kind === "fixer") {
+        if (/edit/i.test(event.title || "") || /edit/i.test(event.body || "")) {
+          fixerEdits.push(event);
+        } else {
+          fixPlan.push(event);
+        }
+        continue;
+      }
+      if (event.kind === "completion") {
+        completion.push(event);
+      }
+    }
+
+    return { evaluation, rootCause, fixPlan, fixerEdits, completion };
+  }, [testingRefinementEvents]);
   const bookedTripSummary = useMemo(() => {
     const passengerCount = bookedTrips.reduce((total, trip) => total + (trip.passengers?.length || 0), 0);
     const nextDeparture = bookedTrips
@@ -387,12 +421,6 @@ function App() {
       liveConsoleRef.current.scrollTop = liveConsoleRef.current.scrollHeight;
     }
   }, [testingLiveEvents, testingLiveActive]);
-
-  useEffect(() => {
-    if (logConsoleRef.current) {
-      logConsoleRef.current.scrollTop = logConsoleRef.current.scrollHeight;
-    }
-  }, [testingLogLines]);
 
   useEffect(() => {
     if (pipelineConsoleRef.current) {
@@ -677,6 +705,7 @@ function App() {
     setTestingLiveActive(true);
     setTestingLiveEvents([{ tag: "status", text: "Connecting to live test runner..." }]);
     setTestingLogLines([]);
+    setTestingRefinementEvents([]);
     setTestingStatus("Running testing task...");
     runTestingTaskLive(payload, (event) => {
       if (!event || typeof event !== "object") return;
@@ -702,6 +731,20 @@ function App() {
       if (event.type === "transcript_turn") {
         const text = String(event.text || "").trim();
         if (text) {
+          setTestingConversation((current) => {
+            const last = current[current.length - 1];
+            if (last && last.role === event.role && last.text === text) {
+              return current;
+            }
+            return [
+              ...current,
+              {
+                role: event.role || "turn",
+                text,
+                timestamp: event.timestamp || null,
+              },
+            ];
+          });
           setTestingLiveEvents((current) => {
             const last = current[current.length - 1];
             if (last && last.tag === event.role && last.text === text) {
@@ -714,22 +757,146 @@ function App() {
       }
       if (event.type === "evaluation_started") {
         setTestingLiveEvents((current) => [...current, { tag: "eval", text: `Evaluating ${event.task}.` }]);
+        setTestingRefinementEvents((current) => [
+          ...current,
+          {
+            kind: "evaluation",
+            title: "Evaluation started",
+            subtitle: event.task || "task",
+            timestamp: new Date().toISOString(),
+            body: `Evaluation started for ${event.task || "the selected task"}.`,
+          },
+        ]);
         return;
       }
       if (event.type === "evaluation_complete") {
         setTestingLiveEvents((current) => [...current, { tag: "eval", text: `Evaluation complete for ${event.task}.` }]);
+        setTestingRefinementEvents((current) => [
+          ...current,
+          {
+            kind: "evaluation",
+            title: "Evaluation complete",
+            subtitle: event.task || "task",
+            timestamp: new Date().toISOString(),
+            body: [
+              event.verdict ? `Verdict: ${event.verdict}` : null,
+              typeof event.overall_score !== "undefined" ? `Score: ${event.overall_score}` : null,
+              typeof event.goal_achieved !== "undefined" ? `Goal achieved: ${event.goal_achieved ? "yes" : "no"}` : null,
+              event.answer_quality ? `Answer quality: ${event.answer_quality}` : null,
+              event.suggested_next_step ? `Next step: ${event.suggested_next_step}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          },
+        ]);
+        return;
+      }
+      if (event.type === "evaluation_criterion") {
+        setTestingRefinementEvents((current) => [
+          ...current,
+          {
+            kind: "criterion",
+            title: String(event.criterion || "Evaluation criterion"),
+            subtitle: event.task || "task",
+            timestamp: new Date().toISOString(),
+            score: event.score,
+            body: event.summary || "",
+            details: event.evidence_quotes || [],
+          },
+        ]);
+        return;
+      }
+      if (event.type === "evaluation_finding") {
+        setTestingRefinementEvents((current) => [
+          ...current,
+          {
+            kind: "finding",
+            title: String(event.title || "Finding"),
+            subtitle: String(event.severity || "finding"),
+            timestamp: new Date().toISOString(),
+            body: event.detail || "",
+          },
+        ]);
+        return;
+      }
+      if (event.type === "root_cause" || event.type === "root_cause_complete") {
+        setTestingRefinementEvents((current) => [
+          ...current,
+          {
+            kind: "root_cause",
+            title: "Root cause",
+            subtitle: event.root_cause_category || event.category || event.task || "analysis",
+            timestamp: new Date().toISOString(),
+            body: [
+              event.primary_root_cause || event.summary || event.message || null,
+              event.confidence ? `Confidence: ${event.confidence}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          },
+        ]);
+        return;
+      }
+      if (event.type === "fix_plan_ready" || event.type === "fixer_summary" || event.type === "fixer_expected_improvement" || event.type === "fixer_edit") {
+        setTestingRefinementEvents((current) => [
+          ...current,
+          {
+            kind: "fixer",
+            title:
+              event.type === "fix_plan_ready"
+                ? "Fix plan ready"
+                : event.type === "fixer_summary"
+                  ? "Fixer summary"
+                  : event.type === "fixer_expected_improvement"
+                    ? "Expected improvement"
+                    : "Fixer edit",
+            subtitle: event.task || event.section || "fixer",
+            timestamp: new Date().toISOString(),
+            body: event.message || event.summary || event.expected_improvement || event.detail || safeJson(event),
+          },
+        ]);
         return;
       }
       if (event.type === "evaluation_error") {
         setTestingLiveEvents((current) => [...current, { tag: "error", text: event.error || "Evaluation failed." }]);
+        setTestingRefinementEvents((current) => [
+          ...current,
+          {
+            kind: "error",
+            title: "Evaluation error",
+            subtitle: event.task || "task",
+            timestamp: new Date().toISOString(),
+            body: event.error || "Evaluation failed.",
+          },
+        ]);
         return;
       }
       if (event.type === "task_finished") {
         setTestingLiveEvents((current) => [...current, { tag: "task", text: `Task ${event.task} finished.` }]);
+        setTestingRefinementEvents((current) => [
+          ...current,
+          {
+            kind: "completion",
+            title: "Task finished",
+            subtitle: event.task || "task",
+            timestamp: new Date().toISOString(),
+            body: `Task ${event.task || "task"} finished.`,
+          },
+        ]);
         return;
       }
       if (event.type === "run_finished") {
         setTestingLiveEvents((current) => [...current, { tag: "run", text: "Run finished." }]);
+        setTestingRefinementEvents((current) => [
+          ...current,
+          {
+            kind: "completion",
+            title: "Run finished",
+            subtitle: payload.task ? `task ${payload.task}` : "all tasks",
+            timestamp: new Date().toISOString(),
+            body: "Live test run completed.",
+          },
+        ]);
         const scope = payload.task ? `task ${payload.task}` : "all tasks";
         setTestingStatus(`Completed ${scope}.`);
         refreshTestingRuns(selectedTestingRunId).catch(() => {});
@@ -1173,7 +1340,6 @@ function App() {
             <header className="page-header">
               <h1>Testing Observatory</h1>
               <p>Run AI-driven capability tasks against the ElevenLabs agent, then inspect evaluator verdicts, root-cause classifications, tool traces, and backend effects per test id.</p>
-              <div className="status-pill">Testing: {testingStatus}</div>
             </header>
 
             <section className="testing-toolbar">
@@ -1253,38 +1419,152 @@ function App() {
                     </div>
                   </div>
                 </section>
-              </div>
+                <section className="testing-refinement">
+                  <section className="testing-refinement__card">
+                    <div className="testing-refinement__head">
+                      <div>
+                        <span className="eyebrow">Refinement</span>
+                        <strong>Evaluation and fixer flow</strong>
+                      </div>
+                      <span className="status-pill status-pill--center">{testingBusy ? "Running..." : testingLiveActive ? "Streaming..." : "Idle"}</span>
+                    </div>
+                    <div className="testing-refinement__timeline">
+                      {testingRefinementEvents.length ? (
+                        testingRefinementEvents.map((item, index) => (
+                          <article
+                            key={`${item.kind}-${item.timestamp || index}-${index}`}
+                            className={`refinement-event refinement-event--${item.kind || "note"}`}
+                          >
+                            <div className="refinement-event__meta">
+                              <span>{item.subtitle || "refinement"}</span>
+                              <time>{formatTimestamp(item.timestamp)}</time>
+                            </div>
+                            <div className="refinement-event__title-row">
+                              <strong>{item.title}</strong>
+                              {typeof item.score !== "undefined" ? <span className="refinement-event__score">Score {item.score}</span> : null}
+                            </div>
+                            {item.body ? <p>{item.body}</p> : null}
+                            {Array.isArray(item.details) && item.details.length ? (
+                              <details className="refinement-event__details">
+                                <summary>Details</summary>
+                                <div>
+                                  {item.details.map((detail, detailIndex) => (
+                                    <div key={`${item.title}-${detailIndex}`}>{typeof detail === "string" ? detail : safeJson(detail)}</div>
+                                  ))}
+                                </div>
+                              </details>
+                            ) : null}
+                          </article>
+                        ))
+                      ) : (
+                        <p className="testing-muted">Waiting for evaluation and fixer output...</p>
+                      )}
+                    </div>
+                  </section>
 
-              <div className="testing-workspace__right">
-                <section className="testing-summary">
-                  <div className="testing-summary__head">
-                    <span className="eyebrow">Refinement</span>
-                    <strong>Evaluation output</strong>
-                  </div>
-                  <div className="testing-summary__grid">
-                    <div>
-                      <span>Task</span>
-                      <strong>{selectedTaskSlug || "—"}</strong>
-                    </div>
-                    <div>
-                      <span>Status</span>
-                      <strong>{testingBusy ? "Running" : testingLiveActive ? "Streaming" : "Idle"}</strong>
-                    </div>
-                    <div className="testing-summary__full">
-                      <span>Latest evaluation</span>
-                      <strong>{selectedTestingRunSummary?.evaluator_verdict || "No evaluation yet."}</strong>
-                    </div>
-                  </div>
-                </section>
+                  <section className="testing-refinement__stack">
+                    <article className="testing-refinement__mini">
+                      <div className="testing-refinement__mini-head">
+                        <span className="eyebrow">Evaluation</span>
+                        <strong>{refinementSections.evaluation.length ? `${refinementSections.evaluation.length} event${refinementSections.evaluation.length === 1 ? "" : "s"}` : "Waiting"}</strong>
+                      </div>
+                      {refinementSections.evaluation.length ? (
+                        refinementSections.evaluation.map((item, index) => (
+                          <div className="refinement-snippet" key={`evaluation-${index}`}>
+                            <div className="refinement-snippet__head">
+                              <strong>{item.title}</strong>
+                              <time>{formatTimestamp(item.timestamp)}</time>
+                            </div>
+                            {item.body ? <p>{item.body}</p> : null}
+                            {Array.isArray(item.details) && item.details.length ? <small>{item.details.length} detail item{item.details.length === 1 ? "" : "s"}</small> : null}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="testing-muted">No evaluation events yet.</p>
+                      )}
+                    </article>
 
-                <section className="testing-summary">
-                  <div className="testing-summary__head">
-                    <span className="eyebrow">Logs</span>
-                    <strong>Raw agent output</strong>
-                  </div>
-                  <pre className="testing-live__console testing-live__console--logs" ref={logConsoleRef} aria-live="polite">
-                    {testingLogLines.length ? testingLogLines.join("\n") : "[waiting] No raw log output yet."}
-                  </pre>
+                    <article className="testing-refinement__mini">
+                      <div className="testing-refinement__mini-head">
+                        <span className="eyebrow">Root cause</span>
+                        <strong>{refinementSections.rootCause.length ? "Detected" : "Waiting"}</strong>
+                      </div>
+                      {refinementSections.rootCause.length ? (
+                        refinementSections.rootCause.map((item, index) => (
+                          <div className="refinement-snippet" key={`root-${index}`}>
+                            <div className="refinement-snippet__head">
+                              <strong>{item.title}</strong>
+                              <time>{formatTimestamp(item.timestamp)}</time>
+                            </div>
+                            {item.subtitle ? <small>{item.subtitle}</small> : null}
+                            {item.body ? <p>{item.body}</p> : null}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="testing-muted">No root-cause analysis yet.</p>
+                      )}
+                    </article>
+
+                    <article className="testing-refinement__mini">
+                      <div className="testing-refinement__mini-head">
+                        <span className="eyebrow">Fix plan</span>
+                        <strong>{refinementSections.fixPlan.length ? "Ready" : "Waiting"}</strong>
+                      </div>
+                      {refinementSections.fixPlan.length ? (
+                        refinementSections.fixPlan.map((item, index) => (
+                          <div className="refinement-snippet" key={`fix-${index}`}>
+                            <div className="refinement-snippet__head">
+                              <strong>{item.title}</strong>
+                              <time>{formatTimestamp(item.timestamp)}</time>
+                            </div>
+                            {item.body ? <p>{item.body}</p> : null}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="testing-muted">No fix plan yet.</p>
+                      )}
+                    </article>
+
+                    <article className="testing-refinement__mini">
+                      <div className="testing-refinement__mini-head">
+                        <span className="eyebrow">Fixer edits</span>
+                        <strong>{refinementSections.fixerEdits.length ? "Captured" : "Waiting"}</strong>
+                      </div>
+                      {refinementSections.fixerEdits.length ? (
+                        refinementSections.fixerEdits.map((item, index) => (
+                          <div className="refinement-snippet" key={`edit-${index}`}>
+                            <div className="refinement-snippet__head">
+                              <strong>{item.title}</strong>
+                              <time>{formatTimestamp(item.timestamp)}</time>
+                            </div>
+                            {item.body ? <p>{item.body}</p> : null}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="testing-muted">No fixer edits yet.</p>
+                      )}
+                    </article>
+
+                    <article className="testing-refinement__mini">
+                      <div className="testing-refinement__mini-head">
+                        <span className="eyebrow">Completion</span>
+                        <strong>{refinementSections.completion.length ? "Done" : "Waiting"}</strong>
+                      </div>
+                      {refinementSections.completion.length ? (
+                        refinementSections.completion.map((item, index) => (
+                          <div className="refinement-snippet" key={`completion-${index}`}>
+                            <div className="refinement-snippet__head">
+                              <strong>{item.title}</strong>
+                              <time>{formatTimestamp(item.timestamp)}</time>
+                            </div>
+                            {item.body ? <p>{item.body}</p> : null}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="testing-muted">No completion event yet.</p>
+                      )}
+                    </article>
+                  </section>
                 </section>
               </div>
             </section>

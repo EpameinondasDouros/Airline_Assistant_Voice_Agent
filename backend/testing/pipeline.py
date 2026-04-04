@@ -827,30 +827,19 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
     if _all_tasks_meet_threshold(task_results, int(manifest["target_score"])):
         iteration["status"] = "completed"
         iteration["finished_at"] = _now()
-        if iteration_number >= int(manifest["max_iterations"]):
-            _mark_completed(
-                pipeline_id,
-                f"All selected tasks reached goal achieved and score >= {manifest['target_score']}.",
-                manifest=manifest,
-            )
-            return False
-
-        manifest["status"] = "running"
-        manifest["stage"] = "iteration_complete"
-        manifest["stop_reason"] = None
-        _save_manifest(manifest)
         _append_event(
             pipeline_id,
             "iteration_complete",
-            (
-                f"Iteration {iteration_number} met the target, but the pipeline will continue "
-                f"until iteration {manifest['max_iterations']}."
-            ),
+            f"Iteration {iteration_number} met the target score for all selected tasks.",
             iteration=iteration_number,
             target_score=manifest["target_score"],
-            max_iterations=manifest["max_iterations"],
         )
-        return True
+        _mark_completed(
+            pipeline_id,
+            f"All selected tasks reached goal achieved and score >= {manifest['target_score']}.",
+            manifest=manifest,
+        )
+        return False
 
     selected = _select_refinement_target(task_results)
     if selected is None:
