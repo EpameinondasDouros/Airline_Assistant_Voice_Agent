@@ -277,10 +277,16 @@ def reset_local_fixtures() -> dict[str, Any]:
         results.append(result)
         if not result["success"]:
             break
+    failed_result = next((result for result in results if not result["success"]), None)
     return {
         "mode": "local",
         "success": all(result["success"] for result in results),
         "results": results,
+        "error": (
+            f"Command failed: {failed_result['command']}"
+            if failed_result
+            else None
+        ),
     }
 
 
@@ -297,7 +303,22 @@ def reset_staging_fixtures() -> dict[str, Any]:
     try:
         response = _call_json_endpoint(url, method="POST", headers=headers)
         return {"mode": "remote", "success": True, "url": url, "response": response}
-    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+    except HTTPError as exc:
+        detail = None
+        try:
+            payload = json.loads(exc.read().decode("utf-8"))
+            detail = payload.get("detail") if isinstance(payload, dict) else payload
+        except Exception:
+            detail = None
+        return {
+            "mode": "remote",
+            "success": False,
+            "url": url,
+            "status_code": exc.code,
+            "error": str(exc),
+            "detail": detail,
+        }
+    except (URLError, TimeoutError, json.JSONDecodeError) as exc:
         return {"mode": "remote", "success": False, "url": url, "error": str(exc)}
 
 

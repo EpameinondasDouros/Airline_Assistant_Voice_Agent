@@ -214,7 +214,8 @@ def _validate_pipeline_token(x_testing_pipeline_token: str | None) -> None:
     if settings.testing_pipeline_token:
         if x_testing_pipeline_token != settings.testing_pipeline_token:
             raise HTTPException(status_code=403, detail="Invalid testing pipeline token.")
-    if not settings.elevenlabs_agent_id:
+    agent_settings = get_agent_settings()
+    if not agent_settings.elevenlabs_agent_id:
         raise HTTPException(
             status_code=400,
             detail="Testing requires ELEVENLABS_AGENT_ID to run capability-task conversations.",
