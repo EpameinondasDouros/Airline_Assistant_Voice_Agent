@@ -10,6 +10,7 @@ class TestingTaskRead(BaseModel):
     description: str
     goal: str
     task_type: str
+    reset_mode: str
     initial_user_intent: str
     evaluation_focus: str
     required_backend_effects: list[str]
@@ -74,6 +75,8 @@ class TestingPipelineIterationRead(BaseModel):
     status: str
     started_at: str | None = None
     finished_at: str | None = None
+    fixture_reset_mode: str | None = None
+    fixture_reset_applied: bool | None = None
     task_results: list[TestingPipelineIterationTaskRead] = Field(default_factory=list)
     selected_artifact_path: str | None = None
     selected_task_slug: str | None = None

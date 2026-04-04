@@ -164,6 +164,7 @@ def _task_reads() -> list[TestingTaskRead]:
             description=task.description,
             goal=task.goal,
             task_type=task.task_type,
+            reset_mode=task.reset_mode,
             initial_user_intent=task.initial_user_intent,
             evaluation_focus=task.evaluation_focus,
             required_backend_effects=task.required_backend_effects,

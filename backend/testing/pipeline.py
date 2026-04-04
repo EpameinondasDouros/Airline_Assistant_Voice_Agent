@@ -177,6 +177,33 @@ def _pipeline_task_event_sink(pipeline_id: str, iteration_number: int, task_slug
     return sink
 
 
+def _iteration_reset_policy(task_slugs: list[str], iteration_number: int) -> dict[str, Any]:
+    modes = {get_task(task_slug).reset_mode for task_slug in task_slugs}
+    if "always" in modes:
+        return {
+            "reset_mode": "always",
+            "should_reset": True,
+            "reason": "At least one selected task requires clean fixtures on every iteration.",
+        }
+    if "once_per_pipeline" in modes:
+        if iteration_number == 1:
+            return {
+                "reset_mode": "once_per_pipeline",
+                "should_reset": True,
+                "reason": "Selected task state should start clean once, then persist across later iterations.",
+            }
+        return {
+            "reset_mode": "once_per_pipeline",
+            "should_reset": False,
+            "reason": "Skipping fixture reset so state from the first iteration is preserved.",
+        }
+    return {
+        "reset_mode": "never",
+        "should_reset": False,
+        "reason": "Selected task preserves staging state across all iterations.",
+    }
+
+
 def _list_manifest_paths() -> list[Path]:
     if not PIPELINES_ROOT.exists():
         return []
@@ -699,12 +726,32 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
     iteration["started_at"] = _now()
     _save_manifest(manifest)
     _append_event(pipeline_id, "iteration_started", f"Iteration {iteration_number} started.", iteration=iteration_number)
-    _append_event(pipeline_id, "testing_started", "Resetting staging fixtures and running task suite.", iteration=iteration_number)
+    _append_event(pipeline_id, "testing_started", "Preparing staging fixtures and running task suite.", iteration=iteration_number)
 
     iteration_dir = _iteration_dir(pipeline_id, iteration_number)
     iteration_dir.mkdir(parents=True, exist_ok=True)
 
-    reset_result = reset_staging_fixtures()
+    reset_policy = _iteration_reset_policy(list(manifest["task_slugs"]), iteration_number)
+    iteration["fixture_reset_mode"] = reset_policy["reset_mode"]
+    iteration["fixture_reset_applied"] = bool(reset_policy["should_reset"])
+    _append_event(
+        pipeline_id,
+        "testing_started",
+        reset_policy["reason"],
+        iteration=iteration_number,
+        reset_mode=reset_policy["reset_mode"],
+        reset_applied=reset_policy["should_reset"],
+    )
+
+    if reset_policy["should_reset"]:
+        reset_result = reset_staging_fixtures()
+    else:
+        reset_result = {
+            "mode": "skipped",
+            "success": True,
+            "reset_mode": reset_policy["reset_mode"],
+            "reason": reset_policy["reason"],
+        }
     (iteration_dir / "reset_result.json").write_text(json.dumps(reset_result, indent=2), encoding="utf-8")
     if not reset_result.get("success"):
         iteration["status"] = "failed"
@@ -718,13 +765,22 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
             manifest=manifest,
         )
         return False
-    _append_event(
-        pipeline_id,
-        "testing_started",
-        f"Fixture reset completed via {reset_result.get('mode', 'unknown')} mode.",
-        iteration=iteration_number,
-        reset_mode=reset_result.get("mode"),
-    )
+    if reset_policy["should_reset"]:
+        _append_event(
+            pipeline_id,
+            "testing_started",
+            f"Fixture reset completed via {reset_result.get('mode', 'unknown')} mode.",
+            iteration=iteration_number,
+            reset_mode=reset_result.get("mode"),
+        )
+    else:
+        _append_event(
+            pipeline_id,
+            "fixture_reset_skipped",
+            reset_policy["reason"],
+            iteration=iteration_number,
+            reset_mode=reset_policy["reset_mode"],
+        )
 
     task_results: list[dict[str, Any]] = []
     for task_slug in manifest["task_slugs"]:
