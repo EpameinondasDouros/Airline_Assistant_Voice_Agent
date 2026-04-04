@@ -38,6 +38,8 @@ BLOCKED_EDIT_ROOTS = (
     "backend/app/db/",
     "backend/alembic/",
 )
+AGENT_EDIT_ROOT = "backend/agents/"
+APP_EDIT_ROOT = "backend/app/"
 
 
 def _now() -> str:
@@ -280,12 +282,13 @@ def _python_compile(paths: list[str]) -> dict[str, Any]:
 
 
 def _agent_sync_commands(changed_paths: list[str]) -> list[list[str]]:
-    commands: list[list[str]] = []
-    if any(path.startswith("backend/agents/tools/") for path in changed_paths):
-        commands.append([sys.executable, "-m", "agents.tools.sync"])
-    if any(path.startswith("backend/agents/") for path in changed_paths):
-        commands.append([sys.executable, "-m", "agents.management.sync_agent"])
-    return commands
+    if any(path.startswith(AGENT_EDIT_ROOT) for path in changed_paths):
+        return [["bash", "./update_agent.sh"]]
+    return []
+
+
+def _requires_remote_deploy(changed_paths: list[str]) -> bool:
+    return any(path.startswith(APP_EDIT_ROOT) for path in changed_paths)
 
 
 def _run_sync_commands(changed_paths: list[str]) -> list[dict[str, Any]]:
@@ -874,7 +877,8 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
         return False
 
     branch_name = manifest["branch_name"]
-    checkout_result = _git_checkout_branch(branch_name, create=manifest["latest_commit_sha"] is None)
+    first_pipeline_commit = manifest["latest_commit_sha"] is None
+    checkout_result = _git_checkout_branch(branch_name, create=first_pipeline_commit)
     if not checkout_result["success"]:
         ( _iteration_dir(pipeline_id, iteration_number) / "git_result.json").write_text(json.dumps(checkout_result, indent=2), encoding="utf-8")
         _mark_failed(
@@ -971,13 +975,51 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
         branch_name=branch_name,
         commit_sha=commit_sha,
     )
-
-    push_result = _git_push(branch_name, set_upstream=manifest["latest_commit_sha"] is None)
-    git_payload["push"] = push_result
-    git_result_path.write_text(json.dumps(git_payload, indent=2), encoding="utf-8")
     iteration["git_result_path"] = str(git_result_path)
     iteration["git_commit_sha"] = commit_sha
     manifest["latest_commit_sha"] = commit_sha
+
+    if not _requires_remote_deploy(changed_paths):
+        git_payload["push"] = {
+            "success": True,
+            "skipped": True,
+            "reason": "Only backend/agents changes were applied; remote deploy is not required.",
+        }
+        git_result_path.write_text(json.dumps(git_payload, indent=2), encoding="utf-8")
+        iteration["deploy_status"] = "skipped"
+        iteration["deploy_commit_sha"] = None
+        manifest["approval_pending_iteration"] = None
+        manifest["status"] = "running"
+        manifest["stage"] = "iteration_complete"
+        iteration["status"] = "completed"
+        iteration["finished_at"] = _now()
+        _save_manifest(manifest)
+        _append_event(
+            pipeline_id,
+            "git_push_skipped",
+            "Skipping git push because the approved fix only changed backend/agents.",
+            iteration=iteration_number,
+            branch_name=branch_name,
+            commit_sha=commit_sha,
+        )
+        _append_event(
+            pipeline_id,
+            "deploy_skipped",
+            "Agent update completed without Railway redeploy.",
+            iteration=iteration_number,
+            changed_paths=changed_paths,
+        )
+        _append_event(
+            pipeline_id,
+            "iteration_complete",
+            f"Iteration {iteration_number} completed after local agent sync. Starting the next testing cycle.",
+            iteration=iteration_number,
+        )
+        return True
+
+    push_result = _git_push(branch_name, set_upstream=first_pipeline_commit)
+    git_payload["push"] = push_result
+    git_result_path.write_text(json.dumps(git_payload, indent=2), encoding="utf-8")
 
     if not push_result["success"]:
         _mark_failed(
