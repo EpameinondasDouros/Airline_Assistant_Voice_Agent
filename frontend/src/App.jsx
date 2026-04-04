@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createBooking,
   getChatHistory,
@@ -59,6 +59,10 @@ function formatJson(value) {
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "string") return value;
   return JSON.stringify(value, null, 2);
+}
+
+function stripAnsi(value) {
+  return String(value || "").replace(/\u001b\[[0-9;]*m/g, "");
 }
 
 function normalizeChatHistory(items) {
@@ -273,8 +277,11 @@ function App() {
   const [selectedTestingRunId, setSelectedTestingRunId] = useState(null);
   const [selectedTaskSlug, setSelectedTaskSlug] = useState("");
   const [testingBusy, setTestingBusy] = useState(false);
-  const [testingLiveLines, setTestingLiveLines] = useState([]);
+  const [testingLiveEvents, setTestingLiveEvents] = useState([]);
+  const [testingLogLines, setTestingLogLines] = useState([]);
   const [testingLiveActive, setTestingLiveActive] = useState(false);
+  const liveConsoleRef = useRef(null);
+  const logConsoleRef = useRef(null);
   const visibleFlights = useMemo(() => uniqueFlights(flights), [flights]);
   const bookedTripSummary = useMemo(() => {
     const passengerCount = bookedTrips.reduce((total, trip) => total + (trip.passengers?.length || 0), 0);
@@ -331,6 +338,18 @@ function App() {
         setTestingStatus(error.message);
       });
   }, []);
+
+  useEffect(() => {
+    if (liveConsoleRef.current) {
+      liveConsoleRef.current.scrollTop = liveConsoleRef.current.scrollHeight;
+    }
+  }, [testingLiveEvents, testingLiveActive]);
+
+  useEffect(() => {
+    if (logConsoleRef.current) {
+      logConsoleRef.current.scrollTop = logConsoleRef.current.scrollHeight;
+    }
+  }, [testingLogLines]);
 
   useEffect(() => {
     if (screen === "trips") {
@@ -493,56 +512,61 @@ function App() {
   function executeTestingRun(payload = {}) {
     setTestingBusy(true);
     setTestingLiveActive(true);
-    setTestingLiveLines([{ tag: "status", text: "Connecting to live test runner..." }]);
+    setTestingLiveEvents([{ tag: "status", text: "Connecting to live test runner..." }]);
+    setTestingLogLines([]);
     setTestingStatus("Running testing task...");
     runTestingTaskLive(payload, (event) => {
       if (!event || typeof event !== "object") return;
       if (event.type === "status") {
         setTestingStatus(event.message || "Running testing task...");
-        setTestingLiveLines((current) => [...current, { tag: "status", text: event.message || "started" }]);
+        setTestingLiveEvents((current) => [...current, { tag: "status", text: event.message || "started" }]);
         return;
       }
       if (event.type === "run_started") {
-        setTestingLiveLines((current) => [...current, { tag: "run", text: `Started ${event.task_count} task${event.task_count === 1 ? "" : "s"}.` }]);
+        setTestingLiveEvents((current) => [...current, { tag: "run", text: `Started ${event.task_count} task${event.task_count === 1 ? "" : "s"}.` }]);
         return;
       }
       if (event.type === "task_started") {
-        setTestingLiveLines((current) => [...current, { tag: "task", text: `Task ${event.task} started.` }]);
+        setTestingLiveEvents((current) => [...current, { tag: "task", text: `Task ${event.task} started.` }]);
         return;
       }
       if (event.type === "user_turn") {
-        setTestingLiveLines((current) => [...current, { tag: "user", text: event.message }]);
         return;
       }
       if (event.type === "customer_reply") {
-        setTestingLiveLines((current) => [...current, { tag: "customer", text: event.message }]);
         return;
       }
       if (event.type === "transcript_turn") {
         const text = String(event.text || "").trim();
         if (text) {
-          setTestingLiveLines((current) => [...current, { tag: event.role || "turn", text }]);
+          setTestingLiveEvents((current) => {
+            const last = current[current.length - 1];
+            if (last && last.tag === event.role && last.text === text) {
+              return current;
+            }
+            return [...current, { tag: event.role || "turn", text }];
+          });
         }
         return;
       }
       if (event.type === "evaluation_started") {
-        setTestingLiveLines((current) => [...current, { tag: "eval", text: `Evaluating ${event.task}.` }]);
+        setTestingLiveEvents((current) => [...current, { tag: "eval", text: `Evaluating ${event.task}.` }]);
         return;
       }
       if (event.type === "evaluation_complete") {
-        setTestingLiveLines((current) => [...current, { tag: "eval", text: `Evaluation complete for ${event.task}.` }]);
+        setTestingLiveEvents((current) => [...current, { tag: "eval", text: `Evaluation complete for ${event.task}.` }]);
         return;
       }
       if (event.type === "evaluation_error") {
-        setTestingLiveLines((current) => [...current, { tag: "error", text: event.error || "Evaluation failed." }]);
+        setTestingLiveEvents((current) => [...current, { tag: "error", text: event.error || "Evaluation failed." }]);
         return;
       }
       if (event.type === "task_finished") {
-        setTestingLiveLines((current) => [...current, { tag: "task", text: `Task ${event.task} finished.` }]);
+        setTestingLiveEvents((current) => [...current, { tag: "task", text: `Task ${event.task} finished.` }]);
         return;
       }
       if (event.type === "run_finished") {
-        setTestingLiveLines((current) => [...current, { tag: "run", text: "Run finished." }]);
+        setTestingLiveEvents((current) => [...current, { tag: "run", text: "Run finished." }]);
         const scope = payload.task ? `task ${payload.task}` : "all tasks";
         setTestingStatus(`Completed ${scope}.`);
         refreshTestingRuns(selectedTestingRunId).catch(() => {});
@@ -550,14 +574,21 @@ function App() {
       }
       if (event.type === "error") {
         setTestingStatus(event.message || "Testing failed.");
-        setTestingLiveLines((current) => [...current, { tag: "error", text: event.message || "Testing failed." }]);
+        setTestingLiveEvents((current) => [...current, { tag: "error", text: event.message || "Testing failed." }]);
         return;
       }
-      setTestingLiveLines((current) => [...current, { tag: event.type || "log", text: event.message ? String(event.message) : safeJson(event) }]);
+      if (event.type === "log") {
+        const cleaned = stripAnsi(event.message || "");
+        if (cleaned && cleaned !== "{" && cleaned !== "}") {
+          setTestingLogLines((current) => [...current, cleaned]);
+        }
+        return;
+      }
+      setTestingLiveEvents((current) => [...current, { tag: event.type || "log", text: event.message ? String(event.message) : safeJson(event) }]);
     })
       .catch((error) => {
         setTestingStatus(error.message);
-        setTestingLiveLines((current) => [...current, { tag: "error", text: error.message }]);
+        setTestingLiveEvents((current) => [...current, { tag: "error", text: error.message }]);
       })
       .finally(() => {
         setTestingBusy(false);
@@ -856,6 +887,90 @@ function App() {
               </div>
             ) : null}
           </>
+        ) : screen === "trips" ? (
+          <>
+            <header className="page-header">
+              <h1>All Trips Booked</h1>
+              <p>Confirmed trips for every passenger load here automatically, with flight details, seats, and contact records in one place.</p>
+              <div className="status-pill">Trips: {tripsStatus}</div>
+            </header>
+
+            <section className="trips-summary">
+              <article className="trip-stat-card">
+                <small>Booked trips</small>
+                <strong>{bookedTripSummary.trips}</strong>
+              </article>
+              <article className="trip-stat-card">
+                <small>Total passengers</small>
+                <strong>{bookedTripSummary.passengers}</strong>
+              </article>
+              <article className="trip-stat-card">
+                <small>Next departure</small>
+                <strong>{bookedTripSummary.nextDeparture ? `${formatFlightDate(bookedTripSummary.nextDeparture)} · ${formatFlightTime(bookedTripSummary.nextDeparture)}` : "No future trips"}</strong>
+              </article>
+            </section>
+
+            <section className="trips-toolbar">
+              <button type="button" className="button button--primary" onClick={() => loadBookedTrips()} disabled={tripsLoading}>
+                <span className="material-symbols-outlined">refresh</span>
+                {tripsLoading ? "Refreshing..." : "Refresh trips"}
+              </button>
+              <p className="testing-muted">This view always pulls the latest confirmed bookings from the backend.</p>
+            </section>
+
+            <section className="trips-grid">
+              {bookedTrips.length ? bookedTrips.map((trip) => (
+                <article className="trip-card" key={trip.booking_reference}>
+                  <div className="trip-card__header">
+                    <div>
+                      <span className="eyebrow">Booking {trip.booking_reference}</span>
+                      <h3>{trip.flight.flight_number} · {trip.flight.origin_airport} → {trip.flight.destination_airport}</h3>
+                      <p>{formatFlightDate(trip.flight.departure_time)} · {formatFlightTime(trip.flight.departure_time)} to {formatFlightTime(trip.flight.arrival_time)} · {formatSeatClass(trip.flight.seat_class)}</p>
+                    </div>
+                    <div className="trip-card__price">
+                      <span>{trip.passengers.length} passenger{trip.passengers.length === 1 ? "" : "s"}</span>
+                      <strong>{formatCurrency(trip.total_price)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="trip-card__meta">
+                    <span>Contact {trip.contact_name}</span>
+                    <span>{trip.contact_email}</span>
+                    <span>Terminal {trip.flight.terminal ?? "TBA"} · Gate {trip.flight.departure_gate ?? "TBA"}</span>
+                    <span>Booked {formatTimestamp(trip.created_at)} · {formatSeatClass(trip.status)}</span>
+                  </div>
+
+                  <div className="trip-card__passengers">
+                    {trip.passengers.map((passenger) => (
+                      <article
+                        className="trip-passenger"
+                        key={`${trip.booking_reference}-${passenger.id ?? `${passenger.first_name}-${passenger.last_name}`}`}
+                      >
+                        <strong>{passenger.first_name} {passenger.last_name}</strong>
+                        <span>{formatSeatClass(passenger.passenger_type)} · Seat {passenger.seat_number ?? "TBA"}</span>
+                        <span>{passenger.seat_preference ? `${formatSeatClass(passenger.seat_preference)} preference` : "No seat preference"}</span>
+                      </article>
+                    ))}
+                  </div>
+
+                  {trip.extras?.length ? (
+                    <div className="trip-card__extras">
+                      {trip.extras.map((extra) => (
+                        <span className="trip-extra" key={`${trip.booking_reference}-${extra.id}`}>
+                          {formatSeatClass(extra.extra_type)} x{extra.quantity}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              )) : (
+                <div className="flight-detail">
+                  <h3>No booked trips yet</h3>
+                  <p>Bookings confirmed from the flight search flow will appear here automatically.</p>
+                </div>
+              )}
+            </section>
+          </>
         ) : screen === "concierge" ? (
           <>
             <header className="concierge-intro">
@@ -930,7 +1045,7 @@ function App() {
               </button>
             </section>
 
-            {testingLiveActive || testingLiveLines.length ? (
+            {testingLiveActive || testingLiveEvents.length ? (
               <section className="testing-live">
                 <div className="testing-live__header">
                   <div>
@@ -939,16 +1054,33 @@ function App() {
                   </div>
                   <span className="status-pill status-pill--center">{testingBusy ? "Running..." : "Complete"}</span>
                 </div>
-                <pre className="testing-live__console" aria-live="polite">
-                  {testingLiveLines.length
-                    ? testingLiveLines
-                        .map((line) => {
-                          const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-                          return `[${stamp}] [${String(line.tag).toUpperCase()}] ${line.text}`;
-                        })
-                        .join("\n")
-                    : "[waiting] No live output yet."}
-                </pre>
+                <div className="testing-live__panels">
+                  <div className="testing-live__panel">
+                    <div className="testing-live__panel-head">
+                      <span className="eyebrow">Steps</span>
+                      <strong>Execution flow</strong>
+                    </div>
+                    <pre className="testing-live__console" ref={liveConsoleRef} aria-live="polite">
+                      {testingLiveEvents.length
+                        ? testingLiveEvents
+                            .map((line) => {
+                              const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                              return `[${stamp}] [${String(line.tag).toUpperCase()}] ${line.text}`;
+                            })
+                            .join("\n")
+                        : "[waiting] No live output yet."}
+                    </pre>
+                  </div>
+                  <div className="testing-live__panel">
+                    <div className="testing-live__panel-head">
+                      <span className="eyebrow">Logs</span>
+                      <strong>Raw agent output</strong>
+                    </div>
+                    <pre className="testing-live__console testing-live__console--logs" ref={logConsoleRef} aria-live="polite">
+                      {testingLogLines.length ? testingLogLines.join("\n") : "[waiting] No raw log output yet."}
+                    </pre>
+                  </div>
+                </div>
               </section>
             ) : null}
           </>
@@ -959,6 +1091,10 @@ function App() {
         <button type="button" className={screen === "search" ? "mobile-nav__item active" : "mobile-nav__item"} onClick={() => setScreen("search")}>
           <span className="material-symbols-outlined">flight_takeoff</span>
           <span>Search</span>
+        </button>
+        <button type="button" className={screen === "trips" ? "mobile-nav__item active" : "mobile-nav__item"} onClick={() => setScreen("trips")}>
+          <span className="material-symbols-outlined">badge</span>
+          <span>Trips</span>
         </button>
         <button type="button" className={screen === "concierge" ? "mobile-nav__item active" : "mobile-nav__item"} onClick={() => setScreen("concierge")}>
           <span className="material-symbols-outlined">concierge</span>

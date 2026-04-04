@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ..agents.critic import load_artifact
 from ..agents.root_cause_evaluator import evaluate_root_cause
+from ..core.debug_output import set_debug_output_enabled
 
 
 def _latest_artifact(outputs_dir: Path) -> Path:
@@ -21,12 +22,23 @@ def main() -> None:
     )
     parser.add_argument("--artifact", help="Path to a testing artifact JSON file. Defaults to latest output.")
     parser.add_argument("--model", default="openai:gpt-4o-mini", help="Pydantic AI model string.")
+    parser.add_argument("--verbose", action="store_true", help="Print raw agent JSON and the full final JSON payload.")
     args = parser.parse_args()
 
+    set_debug_output_enabled(args.verbose)
     outputs_dir = Path(__file__).resolve().parents[1] / "outputs"
     artifact_path = Path(args.artifact) if args.artifact else _latest_artifact(outputs_dir)
     payload = load_artifact(artifact_path)
     verdict = evaluate_root_cause(payload, model=args.model)
+
+    if not args.verbose:
+        print(f"Artifact: {artifact_path}")
+        print(f"Task: {verdict.task_slug}")
+        print(f"Failure detected: {'yes' if verdict.failure_detected else 'no'}")
+        print(f"Category: {verdict.root_cause_category}")
+        print(f"Root cause: {verdict.primary_root_cause}")
+        print(f"Next step: {verdict.suggested_next_step}")
+        return
 
     output = {
         "artifact_path": str(artifact_path),

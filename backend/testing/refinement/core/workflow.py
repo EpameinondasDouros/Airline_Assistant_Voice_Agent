@@ -52,7 +52,19 @@ def _sync_commands_for_paths(paths: list[str]) -> list[str]:
     return []
 
 
-def _run_command(command: str, *, logger: Logger | None = None) -> VerificationResult:
+def _compact_command_output(text: str, *, label: str) -> list[str]:
+    stripped = text.strip()
+    if not stripped:
+        return []
+    lines = stripped.splitlines()
+    preview = lines[0]
+    if len(preview) > 180:
+        preview = preview[:177] + "..."
+    suffix = "" if len(lines) == 1 else f" (+{len(lines) - 1} more line{'s' if len(lines) - 1 != 1 else ''})"
+    return [f"[{label}] {preview}{suffix}"]
+
+
+def _run_command(command: str, *, logger: Logger | None = None, verbose: bool = False) -> VerificationResult:
     active_logger = logger or _default_logger
     active_logger(f"[run] {command}")
     completed = subprocess.run(
@@ -62,12 +74,18 @@ def _run_command(command: str, *, logger: Logger | None = None) -> VerificationR
         capture_output=True,
     )
     active_logger(f"[run] exit_code={completed.returncode}")
-    if completed.stdout.strip():
-        active_logger("[stdout]")
-        active_logger(completed.stdout.rstrip())
-    if completed.stderr.strip():
-        active_logger("[stderr]")
-        active_logger(completed.stderr.rstrip())
+    if verbose:
+        if completed.stdout.strip():
+            active_logger("[stdout]")
+            active_logger(completed.stdout.rstrip())
+        if completed.stderr.strip():
+            active_logger("[stderr]")
+            active_logger(completed.stderr.rstrip())
+    else:
+        for line in _compact_command_output(completed.stdout, label="stdout"):
+            active_logger(line)
+        for line in _compact_command_output(completed.stderr, label="stderr"):
+            active_logger(line)
     produced_artifact_path = None
     if completed.returncode == 0:
         try:
@@ -127,6 +145,7 @@ def create_fix_plan_report(
     *,
     model: str = "openai:gpt-4o-mini",
     logger: Logger | None = None,
+    verbose: bool = False,
 ) -> tuple[RefinementReport, Path]:
     active_logger = logger or _default_logger
     active_logger(f"[1/5] loading artifact: {artifact_path}")
@@ -142,7 +161,15 @@ def create_fix_plan_report(
         f"{len(plan.section_edits)} section edit(s)"
     )
     for index, edit in enumerate(plan.section_edits, start=1):
-        active_logger(f"  - edit {index}: {edit.path} | {edit.selector_type}:{edit.selector_value}")
+        message = f"  - edit {index}: {edit.path} | {edit.selector_type}:{edit.selector_value}"
+        if verbose:
+            active_logger(message)
+        elif index == 1:
+            active_logger(message)
+        elif index == 2:
+            remaining = len(plan.section_edits) - 1
+            active_logger(f"  - and {remaining} more edit{'s' if remaining != 1 else ''}")
+            break
     report = RefinementReport(
         artifact_path=str(Path(artifact_path)),
         critique=CritiqueVerdict.model_validate(critique_data),
@@ -166,6 +193,7 @@ def apply_report(
     *,
     model: str = "openai:gpt-4o-mini",
     logger: Logger | None = None,
+    verbose: bool = False,
 ) -> RefinementReport:
     active_logger = logger or _default_logger
     path = Path(report_path)
@@ -194,7 +222,7 @@ def apply_report(
         active_logger("[sync] no sync commands needed")
 
     for command in sync_commands:
-        sync_result = _run_command(command, logger=active_logger)
+        sync_result = _run_command(command, logger=active_logger, verbose=verbose)
         if not sync_result.success:
             report.verification = sync_result
             report.acceptance = AcceptanceDecision(
@@ -207,7 +235,7 @@ def apply_report(
 
     verification_command = _normalize_verification_command(report.fix_plan)
     active_logger(f"[verify] rerunning validation with: {verification_command}")
-    verification = _run_command(verification_command, logger=active_logger)
+    verification = _run_command(verification_command, logger=active_logger, verbose=verbose)
     report.verification = verification
 
     if not verification.success or not verification.produced_artifact_path:

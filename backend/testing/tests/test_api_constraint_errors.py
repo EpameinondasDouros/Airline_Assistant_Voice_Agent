@@ -221,3 +221,68 @@ def test_double_booking_via_api_returns_clear_conflict(booking_api_db):
         assert second_response.json() == {
             "detail": "Passenger Eleni Pappas (1992-04-16) already has a booking on this flight."
         }
+
+
+def test_all_trips_booked_returns_confirmed_bookings_with_flight_and_passenger_details(booking_api_db):
+    _db, flight_id = booking_api_db
+
+    with TestClient(app) as client:
+        confirmed_response = client.post(
+            "/api/bookings",
+            json={
+                "flight_id": flight_id,
+                "contact_name": "Julian Vane",
+                "contact_email": "julian@example.com",
+                "passengers": [
+                    {
+                        "first_name": "Julian",
+                        "last_name": "Vane",
+                        "date_of_birth": "1990-02-14",
+                        "seat_preference": "window",
+                    }
+                ],
+                "extras": [],
+            },
+        )
+        assert confirmed_response.status_code == 201, confirmed_response.text
+
+        cancelled_response = client.post(
+            "/api/bookings",
+            json={
+                "flight_id": flight_id,
+                "contact_name": "Mina Vane",
+                "contact_email": "mina@example.com",
+                "passengers": [
+                    {
+                        "first_name": "Mina",
+                        "last_name": "Vane",
+                        "date_of_birth": "1994-11-09",
+                        "seat_preference": "aisle",
+                    }
+                ],
+                "extras": [],
+            },
+        )
+        assert cancelled_response.status_code == 201, cancelled_response.text
+
+        cancelled_reference = cancelled_response.json()["booking_reference"]
+        cancellation = client.post(
+            f"/api/bookings/{cancelled_reference}/cancel",
+            json={
+                "reason": "Passenger changed plans",
+                "refund_status": "pending",
+                "refund_amount": "540.00",
+            },
+        )
+        assert cancellation.status_code == 200, cancellation.text
+
+        response = client.get("/api/bookings/all-trips-booked")
+        assert response.status_code == 200, response.text
+
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["booking_reference"] == confirmed_response.json()["booking_reference"]
+        assert body[0]["flight"]["flight_number"] == "TM123"
+        assert body[0]["flight"]["origin_airport"] == "ATH"
+        assert body[0]["passengers"][0]["first_name"] == "Julian"
+        assert body[0]["passengers"][0]["seat_number"] == "1A"
