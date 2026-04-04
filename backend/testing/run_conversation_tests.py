@@ -26,6 +26,7 @@ from agents.config import get_agent_settings  # noqa: E402
 from testing.refinement.agents.critic import evaluate_artifact  # noqa: E402
 from testing.refinement.agents.customer_agent import CustomerReply, CustomerSimulator  # noqa: E402
 from testing.refinement.agents.root_cause_evaluator import evaluate_root_cause  # noqa: E402
+from testing.refinement.core.workflow import create_fix_plan_report  # noqa: E402
 from testing.tasks import CapabilityTask, TASKS, get_task  # noqa: E402
 
 
@@ -1128,6 +1129,10 @@ def run_task(
         after_snapshot=post_snapshot if task.required_backend_effects else None,
     )
 
+    target_output_dir = output_dir or _outputs_dir()
+    target_output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = target_output_dir / f"{task.slug}__{_timestamp()}.json"
+
     payload = {
         "task": {
             "slug": task.slug,
@@ -1160,6 +1165,7 @@ def run_task(
         "elevenlabs_conversation": compact_conversation,
     }
 
+    refinement_report_path = None
     try:
         _emit_event(event_sink, "evaluation_started", task=task.slug)
         critique = evaluate_artifact(payload, model=review_model)
@@ -1199,15 +1205,64 @@ def run_task(
                 title=finding.title,
                 detail=finding.detail,
             )
+
+        if not payload.get("evaluation_error"):
+            refinement_report, refinement_report_path = create_fix_plan_report(
+                output_path,
+                review_model=review_model,
+                fixer_model=review_model,
+                report_path=output_path.with_name(f"{task.slug}__refinement.json"),
+                verbose=False,
+            )
+            payload["refinement_report_path"] = str(refinement_report_path)
+            payload["fix_plan_path"] = str(refinement_report_path.with_name("fix_plan.json"))
+            payload["root_cause"] = refinement_report.root_cause.model_dump(mode="json")
+            payload["fix_plan"] = refinement_report.fix_plan.model_dump(mode="json")
+            _emit_event(
+                event_sink,
+                "root_cause_complete",
+                task=task.slug,
+                category=refinement_report.root_cause.root_cause_category,
+                summary=refinement_report.root_cause.primary_root_cause,
+                confidence=refinement_report.root_cause.confidence,
+            )
+            _emit_event(
+                event_sink,
+                "fix_plan_ready",
+                task=task.slug,
+                edit_count=len(refinement_report.fix_plan.section_edits),
+            )
+            _emit_event(
+                event_sink,
+                "fixer_summary",
+                task=task.slug,
+                summary=refinement_report.fix_plan.summary,
+                verification_command=refinement_report.fix_plan.verification_command,
+            )
+            _emit_event(
+                event_sink,
+                "fixer_expected_improvement",
+                task=task.slug,
+                expected_improvement=refinement_report.fix_plan.expected_improvement,
+            )
+            for edit in refinement_report.fix_plan.section_edits[:5]:
+                _emit_event(
+                    event_sink,
+                    "fixer_edit",
+                    task=task.slug,
+                    path=edit.path,
+                    selector_type=edit.selector_type,
+                    selector_value=edit.selector_value,
+                    reason=edit.reason,
+                )
     except Exception as exc:  # pragma: no cover - runtime integration failure path
         payload["evaluator_verdict"] = None
         payload["root_cause"] = None
         payload["evaluation_error"] = str(exc)
         _emit_event(event_sink, "evaluation_error", task=task.slug, error=str(exc))
 
-    target_output_dir = output_dir or _outputs_dir()
-    target_output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = target_output_dir / f"{task.slug}__{_timestamp()}.json"
+    if refinement_report_path is not None:
+        payload["refinement_report_path"] = str(refinement_report_path)
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return output_path
 

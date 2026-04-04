@@ -149,10 +149,10 @@ pipeline_iteration_field() {
 }
 
 validate_task_exists() {
-  python3 - "$TASK_SLUG" <<'PY'
-import json, sys
+  TASKS_JSON_PAYLOAD="$1" python3 - "$TASK_SLUG" <<'PY'
+import json, os, sys
 task_slug = sys.argv[1]
-tasks = json.load(sys.stdin)
+tasks = json.loads(os.environ["TASKS_JSON_PAYLOAD"])
 slugs = [task.get("slug") for task in tasks]
 if task_slug not in slugs:
     print("Available tasks:", ", ".join(filter(None, slugs)), file=sys.stderr)
@@ -288,7 +288,7 @@ fi
 print_step "git working tree: clean"
 
 request_json "GET" "$PIPELINE_API/api/testing/tasks"
-validate_task_exists <<<"$RESPONSE_BODY"
+validate_task_exists "$RESPONSE_BODY"
 print_step "pipeline backend: reachable at $PIPELINE_API"
 print_step "task '$TASK_SLUG': available"
 
