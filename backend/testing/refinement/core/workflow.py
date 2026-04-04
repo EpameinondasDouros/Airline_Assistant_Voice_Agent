@@ -200,6 +200,7 @@ def apply_report(
     model: str = "openai:gpt-4o-mini",
     logger: Logger | None = None,
     verbose: bool = False,
+    verify: bool = True,
 ) -> RefinementReport:
     active_logger = logger or _default_logger
     path = Path(report_path)
@@ -238,6 +239,16 @@ def apply_report(
             path.write_text(json.dumps(report.model_dump(mode="json"), indent=2), encoding="utf-8")
             active_logger(f"[result] rejected: {report.acceptance.reason}")
             return report
+
+    if not verify:
+        report.verification = None
+        report.rerun_artifact_path = None
+        report.after_critique = None
+        report.after_root_cause = None
+        report.acceptance = None
+        path.write_text(json.dumps(report.model_dump(mode="json"), indent=2), encoding="utf-8")
+        active_logger("[verify] skipped by request; refinement stopped after applying edits")
+        return report
 
     verification_command = _normalize_verification_command(report.fix_plan)
     active_logger(f"[verify] rerunning validation with: {verification_command}")

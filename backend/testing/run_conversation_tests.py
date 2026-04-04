@@ -511,18 +511,88 @@ def _emit_event(event_sink: Callable[[dict], None] | None, event_type: str, **pa
     event_sink({"type": event_type, **payload})
 
 
-def _customer_context(task: CapabilityTask) -> dict:
+BOOKING_PROFILES: list[dict[str, object]] = [
+    {
+        "profile_name": "ath_jfk_business",
+        "full_name": "Eleni Pappas",
+        "first_name": "Eleni",
+        "last_name": "Pappas",
+        "email": "eleni.pappas@example.com",
+        "phone": "+306944001122",
+        "date_of_birth": "1992-04-16",
+        "passenger_count": 1,
+        "passenger_type": "adult",
+        "origin": "ATH",
+        "destination": "JFK",
+        "seat_class": "business",
+        "seat_preference": "window",
+        "extras": "No extras.",
+        "initial_user_intent": "Book the next available business-class flight from ATH to JFK for one adult.",
+    },
+    {
+        "profile_name": "ath_cdg_economy",
+        "full_name": "Nadia Karim",
+        "first_name": "Nadia",
+        "last_name": "Karim",
+        "email": "nadia.karim@example.com",
+        "phone": "+33610445566",
+        "date_of_birth": "1989-03-21",
+        "passenger_count": 1,
+        "passenger_type": "adult",
+        "origin": "ATH",
+        "destination": "CDG",
+        "seat_class": "economy",
+        "seat_preference": "aisle",
+        "extras": "One checked bag.",
+        "initial_user_intent": "Book the next available economy flight from ATH to CDG for one adult with an aisle seat if possible.",
+    },
+    {
+        "profile_name": "mad_ams_premium",
+        "full_name": "Daniel Weber",
+        "first_name": "Daniel",
+        "last_name": "Weber",
+        "email": "daniel.weber@example.com",
+        "phone": "+4915112345678",
+        "date_of_birth": "1984-11-09",
+        "passenger_count": 1,
+        "passenger_type": "adult",
+        "origin": "MAD",
+        "destination": "AMS",
+        "seat_class": "premium economy",
+        "seat_preference": "window",
+        "extras": "No extras.",
+        "initial_user_intent": "Book the next available premium-economy flight from MAD to AMS for one adult.",
+    },
+    {
+        "profile_name": "fco_ath_business",
+        "full_name": "Sofia Conte",
+        "first_name": "Sofia",
+        "last_name": "Conte",
+        "email": "sofia.conte@example.com",
+        "phone": "+393492223311",
+        "date_of_birth": "1991-07-14",
+        "passenger_count": 1,
+        "passenger_type": "adult",
+        "origin": "FCO",
+        "destination": "ATH",
+        "seat_class": "business",
+        "seat_preference": "aisle",
+        "extras": "No extras.",
+        "initial_user_intent": "Book the next available business-class flight from FCO to ATH for one adult.",
+    },
+]
+
+
+def _booking_profile(profile_index: int) -> dict[str, object]:
+    return BOOKING_PROFILES[profile_index % len(BOOKING_PROFILES)]
+
+
+def _customer_context(task: CapabilityTask, *, booking_profile_index: int = 0) -> dict:
     if task.slug == "book_flight":
+        profile = _booking_profile(booking_profile_index)
         return {
-            "full_name": "Eleni Pappas",
-            "first_name": "Eleni",
-            "last_name": "Pappas",
-            "email": "eleni.pappas@example.com",
-            "phone": "+306944001122",
-            "date_of_birth": "1992-04-16",
-            "passenger_count": 1,
-            "passenger_type": "adult",
-            "extras": "No extras.",
+            **profile,
+            "booking_profile_index": booking_profile_index,
         }
     if task.slug == "cancel_or_reschedule_booking":
         return {
@@ -639,13 +709,15 @@ def run_task(
     quiet_window_seconds: float,
     live_output: bool,
     review_model: str,
+    booking_profile_index: int = 0,
     output_dir: Path | None = None,
     event_sink: Callable[[dict], None] | None = None,
 ) -> Path:
     settings = get_agent_settings()
     recorder = TranscriptRecorder(live_output=live_output, event_sink=event_sink)
     customer = CustomerSimulator(model=review_model)
-    customer_context = _customer_context(task)
+    customer_context = _customer_context(task, booking_profile_index=booking_profile_index)
+    effective_initial_user_intent = str(customer_context.get("initial_user_intent") or task.initial_user_intent)
 
     # Change-booking flows need extra time because the agent now looks up the
     # existing booking first, then searches replacement options after the
@@ -689,7 +761,7 @@ def run_task(
         if recorder.wait_for_agent_activity(message_delay_seconds):
             recorder.wait_until_quiet(quiet_window_seconds, settle_timeout_seconds)
 
-        first_message = task.initial_user_intent
+        first_message = effective_initial_user_intent
         _emit_event(event_sink, "user_turn", message=first_message, turn_index=1)
         baseline_agent_count = recorder.agent_count()
         recorder.add_user_message(first_message)
@@ -726,7 +798,7 @@ def run_task(
                     "description": task.description,
                     "goal": task.goal,
                     "task_type": task.task_type,
-                    "initial_user_intent": task.initial_user_intent,
+                    "initial_user_intent": effective_initial_user_intent,
                     "evaluation_focus": task.evaluation_focus,
                     "required_backend_effects": task.required_backend_effects,
                     "allowed_tools_hint": task.allowed_tools_hint,
@@ -796,7 +868,7 @@ def run_task(
             "description": task.description,
             "goal": task.goal,
             "task_type": task.task_type,
-            "initial_user_intent": task.initial_user_intent,
+            "initial_user_intent": effective_initial_user_intent,
             "evaluation_focus": task.evaluation_focus,
             "required_backend_effects": task.required_backend_effects,
             "allowed_tools_hint": task.allowed_tools_hint,
@@ -853,6 +925,12 @@ def main() -> None:
     parser.add_argument("--quiet", action="store_true", help="Disable live console printing while the task runs.")
     parser.add_argument("--stream-events", action="store_true", help="Emit structured JSON lines for live streaming consumers.")
     parser.add_argument("--review-model", default="openai:gpt-4o-mini", help="Model used for the customer simulator and post-run evaluation.")
+    parser.add_argument(
+        "--booking-profile",
+        type=int,
+        default=0,
+        help="Booking customer profile index used for book_flight tasks. Rotates through different names and destinations.",
+    )
     args = parser.parse_args()
 
     selected_task = args.task or args.scenario
@@ -875,6 +953,7 @@ def main() -> None:
             quiet_window_seconds=args.quiet_window,
             live_output=not args.quiet,
             review_model=args.review_model,
+            booking_profile_index=args.booking_profile,
             event_sink=emit_event if args.stream_events else None,
         )
         results.append({"task": task.slug, "output": str(output_path)})

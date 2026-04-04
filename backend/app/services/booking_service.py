@@ -84,22 +84,12 @@ class BookingService:
         passenger_count = len(payload.passengers)
         self._ensure_unique_passengers_in_request(payload.passengers)
 
-        # New check for existing bookings for the same passenger
         for passenger in payload.passengers:
-            existing_bookings = self.session.scalars(
-                select(Booking).where(
-                    Booking.flight_id == flight.id,
-                    Booking.passengers.any(
-                        BookingPassenger.first_name == passenger.first_name,
-                        BookingPassenger.last_name == passenger.last_name,
-                        BookingPassenger.date_of_birth == passenger.date_of_birth
-                    )
-                )
-            ).all()
-            if existing_bookings:
+            passenger_identity = self._passenger_identity(passenger)
+            if self._has_existing_booking_for_identity(flight.id, passenger_identity):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Passenger {passenger.first_name} {passenger.last_name} already has a booking for this flight."
+                    detail=self._duplicate_booking_message(passenger_identity),
                 )
 
         self._ensure_no_duplicate_or_refund_conflicts(flight, payload.passengers)
@@ -441,6 +431,21 @@ class BookingService:
                     status_code=status.HTTP_409_CONFLICT,
                     detail=self._refund_block_message(identity),
                 )
+
+    def _has_existing_booking_for_identity(self, flight_id: int, identity: tuple[str, str, date]) -> bool:
+        first_name, last_name, date_of_birth = identity
+        statement = (
+            select(Booking.id)
+            .join(Booking.passengers)
+            .where(
+                Booking.flight_id == flight_id,
+                BookingPassenger.first_name == first_name,
+                BookingPassenger.last_name == last_name,
+                BookingPassenger.date_of_birth == date_of_birth,
+            )
+            .limit(1)
+        )
+        return self.session.scalar(statement) is not None
 
     def _passenger_identity(self, passenger: object) -> tuple[str, str, date]:
         first_name = self._normalize_name(getattr(passenger, "first_name", ""))

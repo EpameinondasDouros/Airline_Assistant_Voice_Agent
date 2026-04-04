@@ -26,6 +26,11 @@ def main() -> None:
         action="store_true",
         help="Apply the bounded edits, sync the agent if needed, rerun verification, and update the report.",
     )
+    parser.add_argument(
+        "--stop-after-apply",
+        action="store_true",
+        help="Apply the bounded edits and stop without rerunning validation.",
+    )
     parser.add_argument("--verbose", action="store_true", help="Print raw agent JSON and detailed subprocess output.")
     args = parser.parse_args()
 
@@ -35,7 +40,12 @@ def main() -> None:
     report, report_path = create_fix_plan_report(artifact_path, model=args.model, verbose=args.verbose)
 
     if args.apply:
-        report = apply_report(report_path, model=args.model, verbose=args.verbose)
+        report = apply_report(
+            report_path,
+            model=args.model,
+            verbose=args.verbose,
+            verify=not args.stop_after_apply,
+        )
 
     if not args.verbose:
         print(f"Artifact: {artifact_path}")
@@ -45,14 +55,17 @@ def main() -> None:
         print(f"Root cause: {report.root_cause.root_cause_category} | {report.root_cause.primary_root_cause}")
         print(f"Fix edits: {len(report.fix_plan.section_edits)}")
         if args.apply:
-            if report.verification:
+            if args.stop_after_apply:
+                print("Verification: skipped")
+                print("Final result: applied")
+            elif report.verification:
                 print(f"Verification: {'passed' if report.verification.success else 'failed'}")
             if report.acceptance:
                 print(f"Final result: {'accepted' if report.acceptance.accepted else 'rejected'}")
                 print(f"Reason: {report.acceptance.reason}")
             if report.rerun_artifact_path:
                 print(f"Rerun artifact: {report.rerun_artifact_path}")
-        return
+            return
 
     print(
         json.dumps(

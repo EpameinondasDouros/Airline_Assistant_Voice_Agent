@@ -7,7 +7,7 @@ Current flow:
 - a small Pydantic AI critic reviews tool usage and answer quality
 - `analyze_root_cause.py` takes the same artifact and identifies the most likely root cause of failure
 - `generate_fix_plan.py` creates a bounded-section fix plan
-- `apply_fix_plan.py` applies the bounded edits, runs sync if needed, reruns validation, and updates the report
+- `apply_fix_plan.py` applies the bounded edits, runs sync if needed, optionally reruns validation, and updates the report
 - `run_refinement_cycle.py` runs the full loop in one command
 
 Fix plans are allowed to propose edits only in `backend/app` and `backend/agents`. The `backend/testing` tree is read-only evidence and harness code.
@@ -38,8 +38,20 @@ Apply a generated plan report:
 python -m testing.refinement.cli.apply_fix_plan testing/refinement/reports/<report>.json
 ```
 
+Apply and stop without rerunning validation:
+
+```bash
+python -m testing.refinement.cli.apply_fix_plan testing/refinement/reports/<report>.json --stop-after-apply
+```
+
 Or run the whole loop:
 
 ```bash
 python -m testing.refinement.cli.run_refinement_cycle --artifact testing/outputs/<artifact>.json --apply
+```
+
+Run and stop after applying the fix plan without rechecking the scenario:
+
+```bash
+python -m testing.refinement.cli.run_refinement_cycle --artifact testing/outputs/<artifact>.json --apply --stop-after-apply
 ```

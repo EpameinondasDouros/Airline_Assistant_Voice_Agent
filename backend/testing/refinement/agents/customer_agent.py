@@ -52,6 +52,7 @@ Rules:
 - For change_booking tasks, the assistant should retrieve the existing booking first. If it has not done that yet, do not accept a replacement option; wait or ask it to check the booking first.
 - When change_booking tasks include a current booking departure time in customer_context, treat that as the baseline and only accept replacement flights that depart after that date/time.
 - If the assistant offers cancellation instead of rescheduling, confirm it only when the task context says cancellation is an acceptable fallback.
+- If the assistant has already completed the task and asks whether anything else is needed, send one final closing reply such as "No, that's all, thank you." before finishing.
 - If the assistant is still searching, using tools, or obviously mid-turn, usually return wait.
 - Never reply twice in a row without a fresh assistant response in between.
 - Keep replies short, natural, and consistent with earlier customer answers in the transcript.

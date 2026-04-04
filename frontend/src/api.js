@@ -4,9 +4,13 @@ function getApiBase() {
   return import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") || DEFAULT_API_BASE;
 }
 
-async function request(path, options = {}) {
+function getPipelineApiBase() {
+  return import.meta.env.VITE_PIPELINE_API_BASE_URL?.replace(/\/$/, "") || getApiBase();
+}
+
+async function request(path, options = {}, baseUrl = getApiBase()) {
   const hasBody = options.body !== undefined && options.body !== null;
-  const response = await fetch(`${getApiBase()}${path}`, {
+  const response = await fetch(`${baseUrl}${path}`, {
     headers: {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...(options.headers || {}),
@@ -92,34 +96,46 @@ export function listTestingRuns() {
 }
 
 export function listTestingPipelines() {
-  return request("/api/testing/pipelines");
+  return request("/api/testing/pipelines", {}, getPipelineApiBase());
 }
 
 export function getTestingPipeline(pipelineId) {
-  return request(`/api/testing/pipelines/${encodeURIComponent(pipelineId)}`);
+  return request(`/api/testing/pipelines/${encodeURIComponent(pipelineId)}`, {}, getPipelineApiBase());
 }
 
 export function getTestingPipelineEvents(pipelineId) {
-  return request(`/api/testing/pipelines/${encodeURIComponent(pipelineId)}/events`);
+  return request(`/api/testing/pipelines/${encodeURIComponent(pipelineId)}/events`, {}, getPipelineApiBase());
 }
 
 export function startTestingPipeline(payload) {
-  return request("/api/testing/pipelines", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  return request(
+    "/api/testing/pipelines",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    getPipelineApiBase(),
+  );
 }
 
 export function approveTestingPipeline(pipelineId) {
-  return request(`/api/testing/pipelines/${encodeURIComponent(pipelineId)}/approve`, {
-    method: "POST",
-  });
+  return request(
+    `/api/testing/pipelines/${encodeURIComponent(pipelineId)}/approve`,
+    {
+      method: "POST",
+    },
+    getPipelineApiBase(),
+  );
 }
 
 export function cancelTestingPipeline(pipelineId) {
-  return request(`/api/testing/pipelines/${encodeURIComponent(pipelineId)}/cancel`, {
-    method: "POST",
-  });
+  return request(
+    `/api/testing/pipelines/${encodeURIComponent(pipelineId)}/cancel`,
+    {
+      method: "POST",
+    },
+    getPipelineApiBase(),
+  );
 }
 
 export function getTestingRun(runId) {
@@ -230,4 +246,8 @@ export function listTestingScenarios() {
 
 export function runTestingScenario(payload = {}) {
   return runTestingTask(payload);
+}
+
+export function getPipelineApiBaseUrl() {
+  return getPipelineApiBase();
 }

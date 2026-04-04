@@ -4,6 +4,7 @@ import {
   cancelTestingPipeline,
   createBooking,
   getChatHistory,
+  getPipelineApiBaseUrl,
   getTestingPipeline,
   getTestingPipelineEvents,
   listAllTripsBooked,
@@ -307,6 +308,7 @@ function App() {
   const liveConsoleRef = useRef(null);
   const logConsoleRef = useRef(null);
   const pipelineConsoleRef = useRef(null);
+  const pipelineApiBase = getPipelineApiBaseUrl();
   const visibleFlights = useMemo(() => uniqueFlights(flights), [flights]);
   const bookedTripSummary = useMemo(() => {
     const passengerCount = bookedTrips.reduce((total, trip) => total + (trip.passengers?.length || 0), 0);
@@ -355,11 +357,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    Promise.all([listTestingTasks(), listTestingRuns(), listTestingPipelines()])
-      .then(([tasks, runs, pipelines]) => {
+    Promise.all([listTestingTasks(), listTestingRuns()])
+      .then(([tasks, runs]) => {
         setTestingTasks(tasks);
         setTestingRuns(runs);
-        setTestingPipelines(pipelines);
         setSelectedTaskSlug(tasks[0]?.slug || "");
         setPipelineForm((current) =>
           current.task_slugs.length
@@ -370,13 +371,21 @@ function App() {
               }
         );
         setSelectedTestingRunId((current) => current || runs[0]?.id || null);
-        setSelectedPipelineId((current) => current || pipelines[0]?.pipeline_id || null);
         setTestingStatus(runs.length ? `Loaded ${runs.length} testing runs.` : "No testing runs yet. Run a task to generate one.");
-        setPipelineStatus(pipelines.length ? `Loaded ${pipelines.length} pipeline run${pipelines.length === 1 ? "" : "s"}.` : "No self-improvement pipelines yet.");
       })
       .catch((error) => {
         setTestingStatus(error.message);
-        setPipelineStatus(error.message);
+      });
+  }, []);
+
+  useEffect(() => {
+    refreshTestingPipelines()
+      .catch((error) => {
+        setTestingPipelines([]);
+        setSelectedPipelineId(null);
+        setSelectedPipeline(null);
+        setSelectedPipelineEvents([]);
+        setPipelineStatus(`Pipeline backend unavailable: ${error.message}`);
       });
   }, []);
 
@@ -1217,6 +1226,7 @@ function App() {
                   <span className="eyebrow">Self-improvement pipeline</span>
                   <h2>Testing → Refinement → Code Change → Git Push</h2>
                   <p>Run iterative improvement loops against staging until the selected tasks reach the target score or the max-iteration limit.</p>
+                  <p className="testing-muted">Pipeline control plane: {pipelineApiBase}</p>
                 </div>
                 <div className="status-pill status-pill--center">Pipeline: {pipelineStatus}</div>
               </div>
