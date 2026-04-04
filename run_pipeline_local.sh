@@ -139,13 +139,15 @@ print_step() {
 }
 
 pipeline_summary_field() {
-  local field="$1"
-  python3 -c 'import json,sys; payload=json.load(sys.stdin)["payload"]; value=payload.get(sys.argv[1], ""); print("" if value is None else value)' "$field"
+  local json_payload="$1"
+  local field="$2"
+  JSON_PAYLOAD="$json_payload" python3 -c 'import json,os,sys; payload=json.loads(os.environ["JSON_PAYLOAD"])["payload"]; value=payload.get(sys.argv[1], ""); print("" if value is None else value)' "$field"
 }
 
-pipeline_iteration_field() {
-  local field="$1"
-  python3 -c 'import json,sys; payload=json.load(sys.stdin)["payload"]; iterations=payload.get("iterations") or []; latest=iterations[-1] if iterations else {}; value=latest.get(sys.argv[1], ""); print("" if value is None else value)' "$field"
+pipeline_latest_result_field() {
+  local json_payload="$1"
+  local field="$2"
+  JSON_PAYLOAD="$json_payload" python3 -c 'import json,os,sys; payload=json.loads(os.environ["JSON_PAYLOAD"])["payload"]; iterations=payload.get("iterations") or []; latest=iterations[-1] if iterations else {}; results=latest.get("task_results") or []; result=results[-1] if results else {}; value=result.get(sys.argv[1], ""); print("" if value is None else value)' "$field"
 }
 
 validate_task_exists() {
@@ -300,8 +302,8 @@ print_stage "Start Pipeline"
 CREATE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"task_slugs":[sys.argv[1]],"target_score":int(sys.argv[2]),"max_iterations":int(sys.argv[3]),"review_model":sys.argv[4],"fixer_model":sys.argv[5],"require_manual_approval":True}))' "$TASK_SLUG" "$TARGET_SCORE" "$MAX_ITERATIONS" "$REVIEW_MODEL" "$FIXER_MODEL")"
 request_json "POST" "$PIPELINE_API/api/testing/pipelines" "$CREATE_BODY"
 PIPELINE_JSON="$RESPONSE_BODY"
-PIPELINE_ID="$(pipeline_summary_field "pipeline_id" <<<"$PIPELINE_JSON")"
-BRANCH_NAME="$(pipeline_summary_field "branch_name" <<<"$PIPELINE_JSON")"
+PIPELINE_ID="$(pipeline_summary_field "$PIPELINE_JSON" "pipeline_id")"
+BRANCH_NAME="$(pipeline_summary_field "$PIPELINE_JSON" "branch_name")"
 
 print_step "pipeline id: $PIPELINE_ID"
 print_step "branch: $BRANCH_NAME"
@@ -321,9 +323,9 @@ while true; do
 
   emit_new_events "$EVENTS_JSON"
 
-  PIPELINE_STATUS="$(pipeline_summary_field "status" <<<"$PIPELINE_JSON")"
-  PIPELINE_STAGE="$(pipeline_summary_field "stage" <<<"$PIPELINE_JSON")"
-  CURRENT_ITERATION="$(pipeline_summary_field "current_iteration" <<<"$PIPELINE_JSON")"
+  PIPELINE_STATUS="$(pipeline_summary_field "$PIPELINE_JSON" "status")"
+  PIPELINE_STAGE="$(pipeline_summary_field "$PIPELINE_JSON" "stage")"
+  CURRENT_ITERATION="$(pipeline_summary_field "$PIPELINE_JSON" "current_iteration")"
 
   if [[ "$PIPELINE_STATUS" == "waiting_approval" && "$CURRENT_ITERATION" != "$LAST_APPROVAL_ITERATION" ]]; then
     LAST_APPROVAL_ITERATION="$CURRENT_ITERATION"
@@ -355,15 +357,15 @@ while true; do
 done
 
 print_stage "Final Summary"
-FINAL_STATUS="$(pipeline_summary_field "status" <<<"$PIPELINE_JSON")"
-FINAL_STAGE="$(pipeline_summary_field "stage" <<<"$PIPELINE_JSON")"
-STOP_REASON="$(pipeline_summary_field "stop_reason" <<<"$PIPELINE_JSON")"
-LATEST_COMMIT_SHA="$(pipeline_summary_field "latest_commit_sha" <<<"$PIPELINE_JSON")"
-LATEST_DEPLOY_SHA="$(pipeline_summary_field "latest_deploy_sha" <<<"$PIPELINE_JSON")"
-LATEST_TASK_SLUG="$(python3 -c 'import json,sys; payload=json.load(sys.stdin)["payload"]; iterations=payload.get("iterations") or []; latest=iterations[-1] if iterations else {}; results=latest.get("task_results") or []; result=results[-1] if results else {}; print(result.get("task_slug") or "")' <<<"$PIPELINE_JSON")"
-LATEST_SCORE="$(python3 -c 'import json,sys; payload=json.load(sys.stdin)["payload"]; iterations=payload.get("iterations") or []; latest=iterations[-1] if iterations else {}; results=latest.get("task_results") or []; result=results[-1] if results else {}; value=result.get("overall_score"); print("" if value is None else value)' <<<"$PIPELINE_JSON")"
-LATEST_GOAL="$(python3 -c 'import json,sys; payload=json.load(sys.stdin)["payload"]; iterations=payload.get("iterations") or []; latest=iterations[-1] if iterations else {}; results=latest.get("task_results") or []; result=results[-1] if results else {}; value=result.get("goal_achieved"); print("" if value is None else value)' <<<"$PIPELINE_JSON")"
-LATEST_ROOT_CAUSE="$(python3 -c 'import json,sys; payload=json.load(sys.stdin)["payload"]; iterations=payload.get("iterations") or []; latest=iterations[-1] if iterations else {}; results=latest.get("task_results") or []; result=results[-1] if results else {}; print(result.get("root_cause_category") or "")' <<<"$PIPELINE_JSON")"
+FINAL_STATUS="$(pipeline_summary_field "$PIPELINE_JSON" "status")"
+FINAL_STAGE="$(pipeline_summary_field "$PIPELINE_JSON" "stage")"
+STOP_REASON="$(pipeline_summary_field "$PIPELINE_JSON" "stop_reason")"
+LATEST_COMMIT_SHA="$(pipeline_summary_field "$PIPELINE_JSON" "latest_commit_sha")"
+LATEST_DEPLOY_SHA="$(pipeline_summary_field "$PIPELINE_JSON" "latest_deploy_sha")"
+LATEST_TASK_SLUG="$(pipeline_latest_result_field "$PIPELINE_JSON" "task_slug")"
+LATEST_SCORE="$(pipeline_latest_result_field "$PIPELINE_JSON" "overall_score")"
+LATEST_GOAL="$(pipeline_latest_result_field "$PIPELINE_JSON" "goal_achieved")"
+LATEST_ROOT_CAUSE="$(pipeline_latest_result_field "$PIPELINE_JSON" "root_cause_category")"
 
 print_step "pipeline id: $PIPELINE_ID"
 print_step "status: $FINAL_STATUS"
