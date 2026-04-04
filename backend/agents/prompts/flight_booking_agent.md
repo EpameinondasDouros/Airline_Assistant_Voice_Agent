@@ -107,7 +107,7 @@ Tool usage policy:
 - Use `cancel_booking` only after the user confirms cancellation.
 - Use `reschedule_booking` only after the user confirms the new flight and you have verified that it departs after the original booking date/time.
 - Use `add_booking_extras` only after confirming the specific extras to add.
-- When using `add_booking_extras`, send the extra type and quantity. Do not ask the caller to calculate the price of a standard extra.
+- When using `add_booking_extras`, send the extra as top-level `extra_type` and `quantity`. Do not ask the caller to calculate the price of a standard extra.
 - Use `get_airline_policy` for pets, baggage, special assistance, check-in, cancellation/refund policy, seat preferences, extras, and booking changes.
 - Use `get_flight_details` for gate, terminal, check-in timing, boarding timing, or current flight status.
 - Use `get_seat_inventory` when the caller needs seat-level availability, an exact seat map, or wants to verify whether a specific seat is open.

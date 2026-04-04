@@ -1208,165 +1208,86 @@ function App() {
               </button>
             </section>
 
-            <section className="pipeline-shell">
-              <div className="pipeline-shell__header">
-                <h2>Testing → Refinement → Code Change → Git Push</h2>
-              </div>
-
-              <div className="pipeline-grid">
-                <section className="pipeline-card">
-                  <div className="pipeline-card__head">
-                    <span className="eyebrow">Create</span>
-                    <strong>New pipeline</strong>
-                  </div>
-                  <label className="booking-field">
-                    <span>Task</span>
-                    <select
-                      value={pipelineForm.task_slugs[0] || ""}
-                      onChange={(event) => setPipelineTask(event.target.value)}
-                      className="testing-select"
-                      disabled={pipelineBusy || !testingTasks.length}
-                    >
-                      {testingTasks.map((task) => (
-                        <option key={task.slug} value={task.slug}>
-                          {task.slug} — {task.description}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="pipeline-form-grid">
-                    <label className="booking-field">
-                      <span>Target score</span>
-                      <input
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={pipelineForm.target_score}
-                        onChange={(event) => setPipelineForm((current) => ({ ...current, target_score: event.target.value }))}
-                      />
-                    </label>
-                    <label className="booking-field">
-                      <span>Max iterations</span>
-                      <input
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={pipelineForm.max_iterations}
-                        onChange={(event) => setPipelineForm((current) => ({ ...current, max_iterations: event.target.value }))}
-                      />
-                    </label>
-                    <label className="booking-field">
-                      <span>Review model</span>
-                      <input
-                        value={pipelineForm.review_model}
-                        onChange={(event) => setPipelineForm((current) => ({ ...current, review_model: event.target.value }))}
-                      />
-                    </label>
-                    <label className="booking-field">
-                      <span>Fixer model</span>
-                      <input
-                        value={pipelineForm.fixer_model}
-                        onChange={(event) => setPipelineForm((current) => ({ ...current, fixer_model: event.target.value }))}
-                      />
-                    </label>
-                  </div>
-                  <label className="pipeline-toggle">
-                    <input
-                      type="checkbox"
-                      checked={pipelineForm.require_manual_approval}
-                      onChange={(event) =>
-                        setPipelineForm((current) => ({ ...current, require_manual_approval: event.target.checked }))
-                      }
-                    />
-                    <span>Pause for approval before code apply and git push</span>
-                  </label>
-                  <div className="pipeline-actions">
-                    <button type="button" className="button button--primary" onClick={startPipelineRun} disabled={pipelineBusy || !pipelineForm.task_slugs.length}>
-                      <span className="material-symbols-outlined">rocket_launch</span>
-                      Start pipeline
-                    </button>
-                    <button
-                      type="button"
-                      className="button button--secondary"
-                      onClick={approveSelectedPipeline}
-                      disabled={pipelineBusy || selectedPipeline?.status !== "waiting_approval"}
-                    >
-                      <span className="material-symbols-outlined">done_all</span>
-                      Approve iteration
-                    </button>
-                    <button
-                      type="button"
-                      className="button button--secondary"
-                      onClick={cancelSelectedPipeline}
-                      disabled={pipelineBusy || !selectedPipeline || pipelineIsTerminal(selectedPipeline.status)}
-                    >
-                      <span className="material-symbols-outlined">cancel</span>
-                      Cancel pipeline
-                    </button>
-                  </div>
-                </section>
-              </div>
-
-              {selectedPipeline ? (
-                <section className="pipeline-detail">
-                  <div className="pipeline-event-panel">
-                    <div className="pipeline-card__head">
-                      <span className="eyebrow">Timeline</span>
-                      <strong>events.jsonl stream</strong>
+            <section className="testing-workspace">
+              <div className="testing-workspace__left">
+                <section className="testing-live">
+                  <div className="testing-live__header">
+                    <div>
+                      <span className="eyebrow">Live output</span>
+                      <strong>Chat outputs</strong>
                     </div>
-                    <pre className="testing-live__console" ref={pipelineConsoleRef} aria-live="polite">
-                      {selectedPipelineEvents.length
-                        ? selectedPipelineEvents
-                            .map((event) => {
-                              const stamp = event.timestamp ? formatTimestamp(event.timestamp) : "—";
-                              return `[${stamp}] [${String(event.type).toUpperCase()}] ${event.message || ""}`;
-                            })
-                            .join("\n")
-                        : "[waiting] No pipeline events yet."}
-                    </pre>
+                    <span className="status-pill status-pill--center">{testingBusy ? "Running..." : testingLiveActive ? "Streaming..." : "Idle"}</span>
+                  </div>
+                  <div className="testing-live__panels">
+                    <div className="testing-live__panel">
+                      <div className="testing-live__panel-head">
+                        <span className="eyebrow">Conversation</span>
+                        <strong>Readable chat</strong>
+                      </div>
+                      <div className="testing-transcript" ref={transcriptConsoleRef}>
+                        {testingConversation.length ? testingConversation.map((item, index) => (
+                          <article className={item.role === "user" ? "transcript-turn transcript-turn--user" : "transcript-turn transcript-turn--agent"} key={`${item.role}-${item.timestamp || index}`}>
+                            <div className="transcript-turn__meta">
+                              <span>{item.role === "user" ? "User" : item.role === "agent" ? "Agent" : item.role}</span>
+                              <time>{formatTimestamp(item.timestamp)}</time>
+                            </div>
+                            <p>{item.text}</p>
+                          </article>
+                        )) : <p className="testing-muted">Waiting for conversation turns...</p>}
+                      </div>
+                    </div>
+                    <div className="testing-live__panel">
+                      <div className="testing-live__panel-head">
+                        <span className="eyebrow">Steps</span>
+                        <strong>Execution flow</strong>
+                      </div>
+                      <div className="testing-steps" ref={liveConsoleRef} aria-live="polite">
+                        {testingLiveEvents.length ? testingLiveEvents.map((line, index) => (
+                          <div className={`testing-step ${line.tag === "error" ? "testing-step--error" : line.tag === "eval" ? "testing-step--eval" : line.tag === "status" ? "testing-step--status" : "testing-step--accent"}`} key={`${line.tag}-${index}`}>
+                            <span className="testing-step__time">{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                            <span className="testing-step__tag">{String(line.tag || "log").toUpperCase()}</span>
+                            <span className="testing-step__text">{line.text}</span>
+                          </div>
+                        )) : <p className="testing-muted">[waiting] No live step output yet.</p>}
+                      </div>
+                    </div>
                   </div>
                 </section>
-              ) : null}
+              </div>
+
+              <div className="testing-workspace__right">
+                <section className="testing-summary">
+                  <div className="testing-summary__head">
+                    <span className="eyebrow">Refinement</span>
+                    <strong>Evaluation output</strong>
+                  </div>
+                  <div className="testing-summary__grid">
+                    <div>
+                      <span>Task</span>
+                      <strong>{selectedTaskSlug || "—"}</strong>
+                    </div>
+                    <div>
+                      <span>Status</span>
+                      <strong>{testingBusy ? "Running" : testingLiveActive ? "Streaming" : "Idle"}</strong>
+                    </div>
+                    <div className="testing-summary__full">
+                      <span>Latest evaluation</span>
+                      <strong>{selectedTestingRunSummary?.evaluator_verdict || "No evaluation yet."}</strong>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="testing-summary">
+                  <div className="testing-summary__head">
+                    <span className="eyebrow">Logs</span>
+                    <strong>Raw agent output</strong>
+                  </div>
+                  <pre className="testing-live__console testing-live__console--logs" ref={logConsoleRef} aria-live="polite">
+                    {testingLogLines.length ? testingLogLines.join("\n") : "[waiting] No raw log output yet."}
+                  </pre>
+                </section>
+              </div>
             </section>
-
-            {testingLiveActive || testingLiveEvents.length ? (
-              <section className="testing-live">
-                <div className="testing-live__header">
-                  <div>
-                    <span className="eyebrow">Live output</span>
-                    <strong>Streaming test run</strong>
-                  </div>
-                  <span className="status-pill status-pill--center">{testingBusy ? "Running..." : "Complete"}</span>
-                </div>
-                <div className="testing-live__panels">
-                  <div className="testing-live__panel">
-                    <div className="testing-live__panel-head">
-                      <span className="eyebrow">Steps</span>
-                      <strong>Execution flow</strong>
-                    </div>
-                    <pre className="testing-live__console" ref={liveConsoleRef} aria-live="polite">
-                      {testingLiveEvents.length
-                        ? testingLiveEvents
-                            .map((line) => {
-                              const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-                              return `[${stamp}] [${String(line.tag).toUpperCase()}] ${line.text}`;
-                            })
-                            .join("\n")
-                        : "[waiting] No live output yet."}
-                    </pre>
-                  </div>
-                  <div className="testing-live__panel">
-                    <div className="testing-live__panel-head">
-                      <span className="eyebrow">Logs</span>
-                      <strong>Raw agent output</strong>
-                    </div>
-                    <pre className="testing-live__console testing-live__console--logs" ref={logConsoleRef} aria-live="polite">
-                      {testingLogLines.length ? testingLogLines.join("\n") : "[waiting] No raw log output yet."}
-                    </pre>
-                  </div>
-                </div>
-              </section>
-            ) : null}
           </>
         )}
       </main>

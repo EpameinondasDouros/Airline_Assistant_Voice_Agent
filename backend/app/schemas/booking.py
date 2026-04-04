@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.models.booking import BookingStatus, RefundStatus
 from app.models.booking_event import BookingEventType
@@ -71,6 +71,26 @@ class BookingRescheduleRequest(BaseModel):
 
 class BookingAddExtrasRequest(BaseModel):
     extras: list[ExtraCreate] = Field(min_length=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_flat_extra_payload(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        if data.get("extras") is not None:
+            return data
+        if data.get("extra_type") is None:
+            return data
+        return {
+            "extras": [
+                {
+                    "extra_type": data.get("extra_type"),
+                    "quantity": data.get("quantity", 1),
+                    "price": data.get("price", Decimal("0.00")),
+                    "description": data.get("description"),
+                }
+            ]
+        }
 
 
 class BookingPassengerRead(BaseModel):

@@ -1,3 +1,4 @@
+import logging
 import os
 import subprocess
 from functools import lru_cache
@@ -24,6 +25,7 @@ from app.config import get_settings
 
 settings = get_settings()
 REPO_ROOT = Path(__file__).resolve().parents[1]
+logger = logging.getLogger("app.validation")
 
 
 @lru_cache
@@ -72,7 +74,22 @@ def handle_integrity_error(request: Request, exc: IntegrityError) -> JSONRespons
 
 
 @app.exception_handler(RequestValidationError)
-def handle_request_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def handle_request_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    try:
+        raw_body = await request.body()
+        request_body = raw_body.decode("utf-8", errors="replace")
+    except Exception:
+        request_body = "<unavailable>"
+    if len(request_body) > 4000:
+        request_body = request_body[:4000] + "...<truncated>"
+
+    logger.warning(
+        "Request validation error | method=%s path=%s errors=%s body=%s",
+        request.method,
+        request.url.path,
+        exc.errors(),
+        request_body,
+    )
     return JSONResponse(
         status_code=422,
         content={

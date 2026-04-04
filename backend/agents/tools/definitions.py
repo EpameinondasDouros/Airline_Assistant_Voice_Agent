@@ -269,7 +269,7 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
             name="add_booking_extras",
             description=(
                 "Use this tool when the caller wants to add baggage, sports equipment, a pram, a pet, or another special item "
-                "to an existing booking. Do not ask the caller for a standard fee amount. Provide the extra type and quantity, "
+                "to an existing booking. Do not ask the caller for a standard fee amount. Provide the top-level extra type and quantity, "
                 "and let the backend calculate the price unless the caller explicitly gives a custom charge."
             ),
             url=f"{api_base}/api/bookings/{{booking_reference}}/extras",
@@ -281,24 +281,15 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
             request_body_schema={
                 "type": "object",
                 "properties": {
-                    "extras": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "extra_type": _llm_string(
-                                    "Extra type to add.",
-                                    enum=extra_type_enum,
-                                ),
-                                "quantity": {"type": "integer", "description": "Quantity of the extra."},
-                                "price": {"type": "number", "description": "Optional price override. Omit it for standard extras so the backend can calculate the fee."},
-                                "description": _llm_string("Optional description for the extra."),
-                            },
-                            "required": ["extra_type", "quantity"],
-                        },
-                    }
+                    "extra_type": _llm_string(
+                        "Extra type to add.",
+                        enum=extra_type_enum,
+                    ),
+                    "quantity": {"type": "integer", "description": "Quantity of the extra."},
+                    "price": {"type": "number", "description": "Optional price override. Omit it for standard extras so the backend can calculate the fee."},
+                    "description": _llm_string("Optional description for the extra."),
                 },
-                "required": ["extras"],
+                "required": ["extra_type"],
             },
         ),
         _tool(
