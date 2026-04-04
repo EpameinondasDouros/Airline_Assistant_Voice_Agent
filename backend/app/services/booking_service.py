@@ -83,6 +83,25 @@ class BookingService:
         flight = self._get_flight_or_404(payload.flight_id)
         passenger_count = len(payload.passengers)
         self._ensure_unique_passengers_in_request(payload.passengers)
+
+        # New check for existing bookings for the same passenger
+        for passenger in payload.passengers:
+            existing_bookings = self.session.scalars(
+                select(Booking).where(
+                    Booking.flight_id == flight.id,
+                    Booking.passengers.any(
+                        BookingPassenger.first_name == passenger.first_name,
+                        BookingPassenger.last_name == passenger.last_name,
+                        BookingPassenger.date_of_birth == passenger.date_of_birth
+                    )
+                )
+            ).all()
+            if existing_bookings:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Passenger {passenger.first_name} {passenger.last_name} already has a booking for this flight."
+                )
+
         self._ensure_no_duplicate_or_refund_conflicts(flight, payload.passengers)
         self._ensure_flight_bookable(flight, passenger_count)
         self._ensure_preferences_available(flight, payload.passengers)

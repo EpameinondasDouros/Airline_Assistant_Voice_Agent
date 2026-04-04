@@ -91,6 +91,37 @@ export function listTestingRuns() {
   return request("/api/testing/runs");
 }
 
+export function listTestingPipelines() {
+  return request("/api/testing/pipelines");
+}
+
+export function getTestingPipeline(pipelineId) {
+  return request(`/api/testing/pipelines/${encodeURIComponent(pipelineId)}`);
+}
+
+export function getTestingPipelineEvents(pipelineId) {
+  return request(`/api/testing/pipelines/${encodeURIComponent(pipelineId)}/events`);
+}
+
+export function startTestingPipeline(payload) {
+  return request("/api/testing/pipelines", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function approveTestingPipeline(pipelineId) {
+  return request(`/api/testing/pipelines/${encodeURIComponent(pipelineId)}/approve`, {
+    method: "POST",
+  });
+}
+
+export function cancelTestingPipeline(pipelineId) {
+  return request(`/api/testing/pipelines/${encodeURIComponent(pipelineId)}/cancel`, {
+    method: "POST",
+  });
+}
+
 export function getTestingRun(runId) {
   return request(`/api/testing/runs/${encodeURIComponent(runId)}`);
 }

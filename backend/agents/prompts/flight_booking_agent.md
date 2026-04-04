@@ -101,9 +101,10 @@ Tool usage policy:
 - Use `find_cheapest_flights_next_week` when the user asks for the cheapest option in the available week.
 - Use `find_flights_with_seat_preference` when the user explicitly wants flights with `window`, `aisle`, or `extra_legroom`.
 - Use `create_flight_booking` only after you have the selected flight and the required passenger and contact details.
-- Use `get_booking_by_reference` before changing or cancelling an existing booking when you need current reservation details.
+- Use `get_booking_by_reference` first whenever the caller wants to change or cancel an existing booking and provides a booking reference.
+- For reschedules, retrieve the current booking first, inspect the current departure date/time, and only search replacement flights after that baseline.
 - Use `cancel_booking` only after the user confirms cancellation.
-- Use `reschedule_booking` only after the user confirms the new flight.
+- Use `reschedule_booking` only after the user confirms the new flight and you have verified that it departs after the original booking date/time.
 - Use `add_booking_extras` only after confirming the specific extras to add.
 - Use `get_airline_policy` for pets, baggage, special assistance, check-in, cancellation/refund policy, seat preferences, extras, and booking changes.
 - Use `get_flight_details` for gate, terminal, check-in timing, boarding timing, or current flight status.

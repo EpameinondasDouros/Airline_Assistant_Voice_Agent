@@ -780,6 +780,114 @@ button, input { font: inherit; }
   margin: 0;
   color: var(--muted);
 }
+.pipeline-shell {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.pipeline-shell__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1.1rem 1.2rem;
+  border-radius: 1.4rem;
+  border: 1px solid rgba(124, 138, 137, 0.14);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: var(--shadow);
+}
+.pipeline-shell__header h2 {
+  margin: 0.2rem 0 0.35rem;
+  font-size: 1.2rem;
+}
+.pipeline-shell__header p {
+  margin: 0;
+  color: var(--muted);
+}
+.pipeline-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(18rem, 0.8fr);
+  gap: 1rem;
+}
+.pipeline-card,
+.pipeline-detail {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.1rem 1.2rem;
+  border-radius: 1.4rem;
+  border: 1px solid rgba(124, 138, 137, 0.14);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: var(--shadow);
+}
+.pipeline-card__head,
+.pipeline-detail__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.pipeline-task-list,
+.pipeline-history,
+.pipeline-task-results {
+  display: grid;
+  gap: 0.7rem;
+}
+.pipeline-task-option,
+.pipeline-history__item,
+.pipeline-task-result {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(124, 138, 137, 0.14);
+  background: rgba(248, 250, 249, 0.92);
+}
+.pipeline-task-option {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+}
+.pipeline-task-option strong,
+.pipeline-history__item strong,
+.pipeline-task-result strong {
+  font-size: 0.95rem;
+}
+.pipeline-task-option small,
+.pipeline-history__item small {
+  color: var(--muted);
+}
+.pipeline-history__item {
+  text-align: left;
+  cursor: pointer;
+}
+.pipeline-history__item.active {
+  border-color: rgba(0, 101, 101, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(0, 101, 101, 0.18);
+}
+.pipeline-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+.pipeline-toggle {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  color: var(--ink);
+}
+.pipeline-actions,
+.pipeline-iteration__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.pipeline-event-panel pre,
+.pipeline-changes pre {
+  margin: 0;
+}
+.pipeline-changes {
+  display: grid;
+  gap: 0.45rem;
+}
 
 .mobile-nav { display: none; }
 
@@ -792,6 +900,10 @@ button, input { font: inherit; }
   .trips-summary,
   .modal-card__route,
   .flight-detail__grid { grid-template-columns: 1fr; }
+  .pipeline-grid,
+  .pipeline-form-grid {
+    grid-template-columns: 1fr;
+  }
   .booking-form__grid,
   .modal-card__actions--inline,
   .seat-row {
@@ -819,6 +931,11 @@ button, input { font: inherit; }
   .trip-card__price {
     min-width: 0;
     text-align: left;
+  }
+  .pipeline-shell__header,
+  .pipeline-card__head,
+  .pipeline-detail__header {
+    flex-direction: column;
   }
   .testing-live__panels {
     grid-template-columns: 1fr;

@@ -47,11 +47,11 @@ TASKS: list[CapabilityTask] = [
     ),
     CapabilityTask(
         slug="cancel_or_reschedule_booking",
-        description="Reschedule an existing booking to a different flight while preserving a valid booking state.",
-        goal="The agent should look up the existing booking, offer a valid replacement, confirm the change, and complete the reschedule cleanly.",
+        description="Reschedule an existing booking to a different flight after checking the current booking date, with cancellation as a fallback if no suitable replacement exists.",
+        goal="The agent should retrieve the existing booking first, use the current departure date as the baseline, offer a valid replacement after that date, and complete either the reschedule or cancellation cleanly.",
         task_type="change_booking",
-        initial_user_intent="I need to move booking reference TMQ7L5N8 to the next available business-class flight from FCO to ATH.",
-        evaluation_focus="Did the agent retrieve the booking, handle the change flow sensibly, and leave the booking in a coherent updated state?",
+        initial_user_intent="I need to move booking reference TMQ7L5N8 to the next available business-class flight from FCO to ATH after my current booking date. If nothing suitable is available after that date, cancel it instead.",
+        evaluation_focus="Did the agent retrieve the booking first, use the current departure date as the search baseline, and then complete the correct reschedule or cancellation outcome?",
         required_backend_effects=["booking_updated"],
         allowed_tools_hint=["get_booking_by_reference", "find_next_available_flight", "reschedule_booking", "cancel_booking"],
     ),
@@ -83,4 +83,3 @@ def get_task(slug: str) -> CapabilityTask:
             return task
     available = ", ".join(sorted(task.slug for task in TASKS))
     raise ValueError(f"Unknown testing task '{slug}'. Available tasks: {available}")
-

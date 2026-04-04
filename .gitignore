@@ -29,6 +29,9 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
+backend/testing/outputs/*.json
+backend/testing/refinement/reports/*.json
+backend/testing/pipelines/
 
 # Build / packaging
 build/

@@ -527,8 +527,8 @@ def _customer_context(task: CapabilityTask) -> dict:
     if task.slug == "cancel_or_reschedule_booking":
         return {
             "booking_reference": "TMQ7L5N8",
-            "confirm_reschedule": "Yes, move me to the best available option.",
-            "fallback_cancel": "If nothing suitable is available, cancel it instead.",
+            "confirm_reschedule": "Yes, move me to the best available option after my current booking date.",
+            "fallback_cancel": "If nothing suitable is available after my current booking date, cancel it instead.",
         }
     if task.slug == "add_baggage_or_special_items":
         return {
@@ -567,6 +567,31 @@ def _fetch_booking_snapshot(settings, booking_reference: str | None) -> dict | N
         "flight_id": payload.get("flight_id"),
         "seat_preferences": [passenger.get("seat_preference") for passenger in payload.get("passengers", [])],
         "extras_count": len(payload.get("extras", [])),
+        "url": url,
+    }
+
+
+def _fetch_flight_snapshot(settings, flight_id: int | None) -> dict | None:
+    if flight_id is None or not settings.backend_public_url:
+        return None
+    url = f"{settings.backend_public_url.rstrip('/')}/api/flights/{flight_id}"
+    try:
+        with urlopen(url, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+        return {"flight_id": flight_id, "verified": False, "error": str(exc), "url": url}
+
+    return {
+        "flight_id": flight_id,
+        "verified": True,
+        "flight_number": payload.get("flight_number"),
+        "origin_airport": payload.get("origin_airport"),
+        "destination_airport": payload.get("destination_airport"),
+        "departure_time": payload.get("departure_time"),
+        "arrival_time": payload.get("arrival_time"),
+        "seat_class": payload.get("seat_class"),
+        "price": payload.get("price"),
+        "status": payload.get("status"),
         "url": url,
     }
 
@@ -614,6 +639,7 @@ def run_task(
     quiet_window_seconds: float,
     live_output: bool,
     review_model: str,
+    output_dir: Path | None = None,
     event_sink: Callable[[dict], None] | None = None,
 ) -> Path:
     settings = get_agent_settings()
@@ -621,6 +647,23 @@ def run_task(
     customer = CustomerSimulator(model=review_model)
     customer_context = _customer_context(task)
     pre_snapshot = _fetch_booking_snapshot(settings, customer_context.get("booking_reference"))
+    if task.slug == "cancel_or_reschedule_booking" and pre_snapshot and pre_snapshot.get("verified"):
+        current_flight = _fetch_flight_snapshot(settings, pre_snapshot.get("flight_id"))
+        if current_flight and current_flight.get("verified"):
+            departure_time = current_flight.get("departure_time")
+            departure_date = departure_time[:10] if isinstance(departure_time, str) and departure_time else None
+            customer_context.update(
+                {
+                    "current_booking": pre_snapshot,
+                    "current_flight": current_flight,
+                    "current_booking_departure_time": departure_time,
+                    "current_booking_departure_date": departure_date,
+                    "current_booking_flight_number": current_flight.get("flight_number"),
+                    "current_booking_origin": current_flight.get("origin_airport"),
+                    "current_booking_destination": current_flight.get("destination_airport"),
+                    "current_booking_seat_class": current_flight.get("seat_class"),
+                }
+            )
     agent = ElevenLabsChatAgent(
         settings,
         on_agent_response=recorder.on_agent_response,
@@ -784,7 +827,9 @@ def run_task(
         payload["evaluation_error"] = str(exc)
         _emit_event(event_sink, "evaluation_error", task=task.slug, error=str(exc))
 
-    output_path = _outputs_dir() / f"{_timestamp()}_{task.slug}.json"
+    target_output_dir = output_dir or _outputs_dir()
+    target_output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = target_output_dir / f"{_timestamp()}_{task.slug}.json"
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return output_path
 

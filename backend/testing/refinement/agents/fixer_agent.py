@@ -129,11 +129,15 @@ def _artifact_prompt(
 def generate_fix_plan(
     payload: dict[str, Any],
     *,
-    model: str = "openai:gpt-4o-mini",
+    model: str | None = None,
+    review_model: str | None = None,
+    fixer_model: str | None = None,
 ) -> tuple[BoundedFixPlan, dict[str, Any], dict[str, Any]]:
-    critique = evaluate_artifact(payload, model=model)
-    root_cause = evaluate_root_cause(payload, critique=critique, model=model)
-    agent = _build_agent(model)
+    resolved_review_model = review_model or model or "openai:gpt-4o-mini"
+    resolved_fixer_model = fixer_model or model or resolved_review_model
+    critique = evaluate_artifact(payload, model=resolved_review_model)
+    root_cause = evaluate_root_cause(payload, critique=critique, model=resolved_review_model)
+    agent = _build_agent(resolved_fixer_model)
     result = agent.run_sync(
         _artifact_prompt(
             payload,
@@ -148,8 +152,15 @@ def generate_fix_plan(
 def generate_fix_plan_from_artifact(
     artifact_path: str | Path,
     *,
-    model: str = "openai:gpt-4o-mini",
+    model: str | None = None,
+    review_model: str | None = None,
+    fixer_model: str | None = None,
 ) -> tuple[dict[str, Any], BoundedFixPlan, dict[str, Any], dict[str, Any]]:
     payload = load_artifact(artifact_path)
-    plan, critique, root_cause = generate_fix_plan(payload, model=model)
+    plan, critique, root_cause = generate_fix_plan(
+        payload,
+        model=model,
+        review_model=review_model,
+        fixer_model=fixer_model,
+    )
     return payload, plan, critique, root_cause

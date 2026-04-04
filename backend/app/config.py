@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     api_prefix: str = "/api"
     database_url: str = "sqlite:///./techmellon_airline.db"
     cors_allow_origins: str = "*"
+    testing_pipeline_branch_prefix: str = "codex/pipeline"
+    testing_pipeline_deploy_timeout_seconds: int = 600
+    testing_pipeline_deploy_poll_interval_seconds: float = 5.0
+    testing_pipeline_token: str = ""
 
     @property
     def cors_allow_origins_list(self) -> list[str]:

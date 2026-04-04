@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  approveTestingPipeline,
+  cancelTestingPipeline,
   createBooking,
   getChatHistory,
+  getTestingPipeline,
+  getTestingPipelineEvents,
   listAllTripsBooked,
   listFlights,
+  listTestingPipelines,
   listTestingTasks,
   listTestingRuns,
   runTestingTaskLive,
   searchFlights,
   sendChatMessage,
+  startTestingPipeline,
 } from "./api";
 
 function uniqueFlights(items) {
@@ -67,6 +73,10 @@ function stripAnsi(value) {
 
 function normalizeChatHistory(items) {
   return items.map((item) => ({ role: item.role, text: item.content, createdAt: item.created_at }));
+}
+
+function pipelineIsTerminal(status) {
+  return ["completed", "failed", "blocked_manual_fix", "canceled"].includes(String(status || ""));
 }
 
 function getTestingConversationTurns(run) {
@@ -274,14 +284,29 @@ function App() {
   const [testingStatus, setTestingStatus] = useState("Loading testing workspace...");
   const [testingTasks, setTestingTasks] = useState([]);
   const [testingRuns, setTestingRuns] = useState([]);
+  const [testingPipelines, setTestingPipelines] = useState([]);
   const [selectedTestingRunId, setSelectedTestingRunId] = useState(null);
+  const [selectedPipelineId, setSelectedPipelineId] = useState(null);
+  const [selectedPipeline, setSelectedPipeline] = useState(null);
+  const [selectedPipelineEvents, setSelectedPipelineEvents] = useState([]);
   const [selectedTaskSlug, setSelectedTaskSlug] = useState("");
   const [testingBusy, setTestingBusy] = useState(false);
+  const [pipelineBusy, setPipelineBusy] = useState(false);
+  const [pipelineStatus, setPipelineStatus] = useState("Loading self-improvement pipelines...");
+  const [pipelineForm, setPipelineForm] = useState({
+    task_slugs: [],
+    target_score: 8,
+    max_iterations: 5,
+    review_model: "openai:gpt-4o-mini",
+    fixer_model: "openai:gpt-4o-mini",
+    require_manual_approval: true,
+  });
   const [testingLiveEvents, setTestingLiveEvents] = useState([]);
   const [testingLogLines, setTestingLogLines] = useState([]);
   const [testingLiveActive, setTestingLiveActive] = useState(false);
   const liveConsoleRef = useRef(null);
   const logConsoleRef = useRef(null);
+  const pipelineConsoleRef = useRef(null);
   const visibleFlights = useMemo(() => uniqueFlights(flights), [flights]);
   const bookedTripSummary = useMemo(() => {
     const passengerCount = bookedTrips.reduce((total, trip) => total + (trip.passengers?.length || 0), 0);
@@ -295,6 +320,10 @@ function App() {
       nextDeparture,
     };
   }, [bookedTrips]);
+  const selectedPipelineIteration = useMemo(() => {
+    const iterations = selectedPipeline?.iterations;
+    return Array.isArray(iterations) && iterations.length ? iterations[iterations.length - 1] : null;
+  }, [selectedPipeline]);
 
   useEffect(() => {
     listFlights(3)
@@ -326,16 +355,28 @@ function App() {
   }, []);
 
   useEffect(() => {
-    Promise.all([listTestingTasks(), listTestingRuns()])
-      .then(([tasks, runs]) => {
+    Promise.all([listTestingTasks(), listTestingRuns(), listTestingPipelines()])
+      .then(([tasks, runs, pipelines]) => {
         setTestingTasks(tasks);
         setTestingRuns(runs);
+        setTestingPipelines(pipelines);
         setSelectedTaskSlug(tasks[0]?.slug || "");
+        setPipelineForm((current) =>
+          current.task_slugs.length
+            ? current
+            : {
+                ...current,
+                task_slugs: tasks.map((task) => task.slug),
+              }
+        );
         setSelectedTestingRunId((current) => current || runs[0]?.id || null);
+        setSelectedPipelineId((current) => current || pipelines[0]?.pipeline_id || null);
         setTestingStatus(runs.length ? `Loaded ${runs.length} testing runs.` : "No testing runs yet. Run a task to generate one.");
+        setPipelineStatus(pipelines.length ? `Loaded ${pipelines.length} pipeline run${pipelines.length === 1 ? "" : "s"}.` : "No self-improvement pipelines yet.");
       })
       .catch((error) => {
         setTestingStatus(error.message);
+        setPipelineStatus(error.message);
       });
   }, []);
 
@@ -352,10 +393,43 @@ function App() {
   }, [testingLogLines]);
 
   useEffect(() => {
+    if (pipelineConsoleRef.current) {
+      pipelineConsoleRef.current.scrollTop = pipelineConsoleRef.current.scrollHeight;
+    }
+  }, [selectedPipelineEvents, selectedPipelineId]);
+
+  useEffect(() => {
     if (screen === "trips") {
       loadBookedTrips({ silent: bookedTrips.length > 0 });
     }
   }, [screen]);
+
+  useEffect(() => {
+    if (!selectedPipelineId) {
+      setSelectedPipeline(null);
+      setSelectedPipelineEvents([]);
+      return;
+    }
+    refreshPipelineDetails(selectedPipelineId).catch((error) => {
+      setPipelineStatus(error.message);
+    });
+  }, [selectedPipelineId]);
+
+  useEffect(() => {
+    if (screen !== "testing" || !selectedPipelineId) {
+      return undefined;
+    }
+    const activeStatus = selectedPipeline?.status;
+    if (!activeStatus || pipelineIsTerminal(activeStatus)) {
+      return undefined;
+    }
+    const interval = window.setInterval(() => {
+      refreshTestingPipelines(selectedPipelineId).catch((error) => {
+        setPipelineStatus(error.message);
+      });
+    }, 4000);
+    return () => window.clearInterval(interval);
+  }, [screen, selectedPipelineId, selectedPipeline?.status]);
 
   function loadBookedTrips({ silent = false } = {}) {
     if (!silent) {
@@ -507,6 +581,98 @@ function App() {
       setSelectedTestingRunId(nextSelected);
       return runs;
     });
+  }
+
+  function refreshPipelineDetails(pipelineId) {
+    if (!pipelineId) {
+      setSelectedPipeline(null);
+      setSelectedPipelineEvents([]);
+      return Promise.resolve(null);
+    }
+    return Promise.all([getTestingPipeline(pipelineId), getTestingPipelineEvents(pipelineId)]).then(
+      ([pipelinePayload, events]) => {
+        setSelectedPipeline(pipelinePayload.payload);
+        setSelectedPipelineEvents(events);
+        return pipelinePayload.payload;
+      }
+    );
+  }
+
+  function refreshTestingPipelines(preferredPipelineId = null) {
+    return listTestingPipelines().then((pipelines) => {
+      setTestingPipelines(pipelines);
+      const nextSelected = preferredPipelineId || pipelines[0]?.pipeline_id || null;
+      setSelectedPipelineId(nextSelected);
+      setPipelineStatus(
+        pipelines.length
+          ? `Loaded ${pipelines.length} pipeline run${pipelines.length === 1 ? "" : "s"}.`
+          : "No self-improvement pipelines yet."
+      );
+      return refreshPipelineDetails(nextSelected).then(() => pipelines);
+    });
+  }
+
+  function togglePipelineTask(taskSlug) {
+    setPipelineForm((current) => {
+      const exists = current.task_slugs.includes(taskSlug);
+      return {
+        ...current,
+        task_slugs: exists
+          ? current.task_slugs.filter((slug) => slug !== taskSlug)
+          : [...current.task_slugs, taskSlug],
+      };
+    });
+  }
+
+  function startPipelineRun() {
+    if (!pipelineForm.task_slugs.length || pipelineBusy) return;
+    setPipelineBusy(true);
+    setPipelineStatus("Starting self-improvement pipeline...");
+    startTestingPipeline({
+      ...pipelineForm,
+      task_slugs: pipelineForm.task_slugs,
+      target_score: Number(pipelineForm.target_score),
+      max_iterations: Number(pipelineForm.max_iterations),
+    })
+      .then((response) => {
+        const nextPipeline = response.payload;
+        setSelectedPipelineId(nextPipeline.pipeline_id);
+        return refreshTestingPipelines(nextPipeline.pipeline_id);
+      })
+      .catch((error) => {
+        setPipelineStatus(error.message);
+      })
+      .finally(() => {
+        setPipelineBusy(false);
+      });
+  }
+
+  function approveSelectedPipeline() {
+    if (!selectedPipelineId || pipelineBusy) return;
+    setPipelineBusy(true);
+    setPipelineStatus("Approving the current iteration...");
+    approveTestingPipeline(selectedPipelineId)
+      .then(() => refreshTestingPipelines(selectedPipelineId))
+      .catch((error) => {
+        setPipelineStatus(error.message);
+      })
+      .finally(() => {
+        setPipelineBusy(false);
+      });
+  }
+
+  function cancelSelectedPipeline() {
+    if (!selectedPipelineId || pipelineBusy) return;
+    setPipelineBusy(true);
+    setPipelineStatus("Canceling pipeline...");
+    cancelTestingPipeline(selectedPipelineId)
+      .then(() => refreshTestingPipelines(selectedPipelineId))
+      .catch((error) => {
+        setPipelineStatus(error.message);
+      })
+      .finally(() => {
+        setPipelineBusy(false);
+      });
   }
 
   function executeTestingRun(payload = {}) {
@@ -1043,6 +1209,217 @@ function App() {
                 <span className="material-symbols-outlined">refresh</span>
                 Refresh runs
               </button>
+            </section>
+
+            <section className="pipeline-shell">
+              <div className="pipeline-shell__header">
+                <div>
+                  <span className="eyebrow">Self-improvement pipeline</span>
+                  <h2>Testing → Refinement → Code Change → Git Push</h2>
+                  <p>Run iterative improvement loops against staging until the selected tasks reach the target score or the max-iteration limit.</p>
+                </div>
+                <div className="status-pill status-pill--center">Pipeline: {pipelineStatus}</div>
+              </div>
+
+              <div className="pipeline-grid">
+                <section className="pipeline-card">
+                  <div className="pipeline-card__head">
+                    <span className="eyebrow">Create</span>
+                    <strong>New pipeline</strong>
+                  </div>
+                  <div className="pipeline-task-list">
+                    {testingTasks.map((task) => (
+                      <label className="pipeline-task-option" key={task.slug}>
+                        <input
+                          type="checkbox"
+                          checked={pipelineForm.task_slugs.includes(task.slug)}
+                          onChange={() => togglePipelineTask(task.slug)}
+                          disabled={pipelineBusy}
+                        />
+                        <span>
+                          <strong>{task.slug}</strong>
+                          <small>{task.description}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="pipeline-form-grid">
+                    <label className="booking-field">
+                      <span>Target score</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={pipelineForm.target_score}
+                        onChange={(event) => setPipelineForm((current) => ({ ...current, target_score: event.target.value }))}
+                      />
+                    </label>
+                    <label className="booking-field">
+                      <span>Max iterations</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={pipelineForm.max_iterations}
+                        onChange={(event) => setPipelineForm((current) => ({ ...current, max_iterations: event.target.value }))}
+                      />
+                    </label>
+                    <label className="booking-field">
+                      <span>Review model</span>
+                      <input
+                        value={pipelineForm.review_model}
+                        onChange={(event) => setPipelineForm((current) => ({ ...current, review_model: event.target.value }))}
+                      />
+                    </label>
+                    <label className="booking-field">
+                      <span>Fixer model</span>
+                      <input
+                        value={pipelineForm.fixer_model}
+                        onChange={(event) => setPipelineForm((current) => ({ ...current, fixer_model: event.target.value }))}
+                      />
+                    </label>
+                  </div>
+                  <label className="pipeline-toggle">
+                    <input
+                      type="checkbox"
+                      checked={pipelineForm.require_manual_approval}
+                      onChange={(event) =>
+                        setPipelineForm((current) => ({ ...current, require_manual_approval: event.target.checked }))
+                      }
+                    />
+                    <span>Pause for approval before code apply and git push</span>
+                  </label>
+                  <div className="pipeline-actions">
+                    <button type="button" className="button button--primary" onClick={startPipelineRun} disabled={pipelineBusy || !pipelineForm.task_slugs.length}>
+                      <span className="material-symbols-outlined">rocket_launch</span>
+                      Start pipeline
+                    </button>
+                    <button
+                      type="button"
+                      className="button button--secondary"
+                      onClick={approveSelectedPipeline}
+                      disabled={pipelineBusy || selectedPipeline?.status !== "waiting_approval"}
+                    >
+                      <span className="material-symbols-outlined">done_all</span>
+                      Approve iteration
+                    </button>
+                    <button
+                      type="button"
+                      className="button button--secondary"
+                      onClick={cancelSelectedPipeline}
+                      disabled={pipelineBusy || !selectedPipeline || pipelineIsTerminal(selectedPipeline.status)}
+                    >
+                      <span className="material-symbols-outlined">cancel</span>
+                      Cancel pipeline
+                    </button>
+                  </div>
+                </section>
+
+                <section className="pipeline-card">
+                  <div className="pipeline-card__head">
+                    <span className="eyebrow">History</span>
+                    <strong>Saved pipelines</strong>
+                  </div>
+                  <div className="pipeline-history">
+                    {testingPipelines.length ? testingPipelines.map((pipeline) => (
+                      <button
+                        type="button"
+                        key={pipeline.pipeline_id}
+                        className={selectedPipelineId === pipeline.pipeline_id ? "pipeline-history__item active" : "pipeline-history__item"}
+                        onClick={() => setSelectedPipelineId(pipeline.pipeline_id)}
+                      >
+                        <strong>{pipeline.pipeline_id}</strong>
+                        <span>{pipeline.status} · iteration {pipeline.current_iteration}</span>
+                        <small>{pipeline.task_slugs.join(", ")}</small>
+                      </button>
+                    )) : (
+                      <p className="testing-muted">No pipelines yet. Start one from the left.</p>
+                    )}
+                  </div>
+                </section>
+              </div>
+
+              {selectedPipeline ? (
+                <section className="pipeline-detail">
+                  <div className="pipeline-detail__header">
+                    <div>
+                      <span className="eyebrow">Selected pipeline</span>
+                      <strong>{selectedPipeline.pipeline_id}</strong>
+                      <p>{selectedPipeline.task_slugs?.join(", ")} · {selectedPipeline.status} · stage {selectedPipeline.stage}</p>
+                    </div>
+                    <div className="testing-metric-grid">
+                      <article className="testing-metric">
+                        <small>Current iteration</small>
+                        <strong>{selectedPipeline.current_iteration || 0}</strong>
+                      </article>
+                      <article className="testing-metric">
+                        <small>Target</small>
+                        <strong>{selectedPipeline.target_score}/10</strong>
+                      </article>
+                      <article className="testing-metric">
+                        <small>Branch</small>
+                        <strong>{selectedPipeline.branch_name || "—"}</strong>
+                      </article>
+                      <article className="testing-metric">
+                        <small>Deployed SHA</small>
+                        <strong>{selectedPipeline.latest_deploy_sha ? selectedPipeline.latest_deploy_sha.slice(0, 10) : "—"}</strong>
+                      </article>
+                    </div>
+                  </div>
+
+                  {selectedPipeline.stop_reason ? (
+                    <p className="testing-muted">Stop reason: {selectedPipeline.stop_reason}</p>
+                  ) : null}
+
+                  {selectedPipelineIteration ? (
+                    <div className="pipeline-iteration">
+                      <div className="pipeline-card__head">
+                        <span className="eyebrow">Iteration snapshot</span>
+                        <strong>Iteration {selectedPipelineIteration.iteration}</strong>
+                      </div>
+                      <div className="pipeline-iteration__meta">
+                        <span>Status {selectedPipelineIteration.status}</span>
+                        <span>Selected task {selectedPipelineIteration.selected_task_slug || "—"}</span>
+                        <span>Deploy {selectedPipelineIteration.deploy_status || "pending"}</span>
+                        <span>Commit {selectedPipelineIteration.git_commit_sha ? selectedPipelineIteration.git_commit_sha.slice(0, 10) : "—"}</span>
+                      </div>
+                      <div className="pipeline-task-results">
+                        {(selectedPipelineIteration.task_results || []).map((result) => (
+                          <article className="pipeline-task-result" key={`${selectedPipelineIteration.iteration}-${result.task_slug}`}>
+                            <strong>{result.task_slug}</strong>
+                            <span>Score {result.overall_score ?? "—"}/10</span>
+                            <span>{result.goal_achieved ? "Goal achieved" : "Goal not met"}</span>
+                            <span>{result.root_cause_category || "—"}</span>
+                          </article>
+                        ))}
+                      </div>
+                      {(selectedPipelineIteration.changed_paths || []).length ? (
+                        <div className="pipeline-changes">
+                          <span className="eyebrow">Changed paths</span>
+                          <pre>{selectedPipelineIteration.changed_paths.join("\n")}</pre>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <div className="pipeline-event-panel">
+                    <div className="pipeline-card__head">
+                      <span className="eyebrow">Timeline</span>
+                      <strong>events.jsonl stream</strong>
+                    </div>
+                    <pre className="testing-live__console" ref={pipelineConsoleRef} aria-live="polite">
+                      {selectedPipelineEvents.length
+                        ? selectedPipelineEvents
+                            .map((event) => {
+                              const stamp = event.timestamp ? formatTimestamp(event.timestamp) : "—";
+                              return `[${stamp}] [${String(event.type).toUpperCase()}] ${event.message || ""}`;
+                            })
+                            .join("\n")
+                        : "[waiting] No pipeline events yet."}
+                    </pre>
+                  </div>
+                </section>
+              ) : null}
             </section>
 
             {testingLiveActive || testingLiveEvents.length ? (

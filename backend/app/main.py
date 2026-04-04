@@ -1,3 +1,8 @@
+import os
+import subprocess
+from functools import lru_cache
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +23,32 @@ from app.config import get_settings
 
 
 settings = get_settings()
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+@lru_cache
+def _resolve_deploy_git_commit_hash() -> str | None:
+    for key in (
+        "GIT_COMMIT_SHA",
+        "RAILWAY_GIT_COMMIT_SHA",
+        "RAILWAY_GIT_COMMIT_HASH",
+        "SOURCE_VERSION",
+    ):
+        value = os.getenv(key)
+        if value:
+            return value
+    try:
+        return (
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                cwd=REPO_ROOT,
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+            .strip()
+        )
+    except Exception:
+        return None
 
 app = FastAPI(title=settings.app_name)
 app.add_middleware(
@@ -60,5 +91,15 @@ def repair_flight_schema() -> None:
 
 
 @app.get("/health")
-def healthcheck() -> dict[str, str]:
-    return {"status": "ok"}
+def healthcheck() -> dict[str, str | None]:
+    return {"status": "ok", "git_commit_hash": _resolve_deploy_git_commit_hash()}
+
+
+@app.get(f"{settings.api_prefix}/meta")
+def metadata() -> dict[str, str | None]:
+    return {
+        "status": "ok",
+        "app_name": settings.app_name,
+        "app_env": settings.app_env,
+        "git_commit_hash": _resolve_deploy_git_commit_hash(),
+    }

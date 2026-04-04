@@ -143,7 +143,10 @@ def _acceptance_decision(
 def create_fix_plan_report(
     artifact_path: str | Path,
     *,
-    model: str = "openai:gpt-4o-mini",
+    model: str | None = None,
+    review_model: str | None = None,
+    fixer_model: str | None = None,
+    report_path: str | Path | None = None,
     logger: Logger | None = None,
     verbose: bool = False,
 ) -> tuple[RefinementReport, Path]:
@@ -152,6 +155,8 @@ def create_fix_plan_report(
     payload, plan, critique_data, root_cause_data = generate_fix_plan_from_artifact(
         artifact_path,
         model=model,
+        review_model=review_model,
+        fixer_model=fixer_model,
     )
     task = payload.get("task") or payload.get("scenario") or {}
     active_logger(f"[2/5] critique complete for task: {task.get('slug')}")
@@ -176,7 +181,8 @@ def create_fix_plan_report(
         root_cause=RootCauseVerdict.model_validate(root_cause_data),
         fix_plan=plan,
     )
-    report_path = _report_path(plan.task_slug)
+    report_path = Path(report_path) if report_path else _report_path(plan.task_slug)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report.model_dump(mode="json"), indent=2), encoding="utf-8")
     active_logger(f"[5/5] wrote refinement report: {report_path}")
     return report, report_path

@@ -7,16 +7,30 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import StreamingResponse
 
 from agents.config import get_agent_settings
+from app.config import get_settings
 from app.schemas.testing import (
+    TestingPipelineEventRead,
+    TestingPipelineRead,
+    TestingPipelineRequest,
+    TestingPipelineSummaryRead,
     TestingRunExecutionRead,
     TestingRunRead,
     TestingRunRequest,
     TestingRunSummaryRead,
     TestingTaskRead,
+)
+from testing.pipeline import (
+    approve_pipeline,
+    cancel_pipeline,
+    list_pipelines,
+    load_pipeline,
+    load_pipeline_events,
+    reset_local_fixtures,
+    start_pipeline,
 )
 from testing.tasks import TASKS, get_task
 
@@ -69,6 +83,39 @@ def _build_summary(path: Path, payload: dict[str, Any]) -> TestingRunSummaryRead
         evaluator_success=evaluator.get("goal_achieved"),
         root_cause_category=root_cause.get("root_cause_category"),
         evaluator_verdict=evaluator.get("verdict"),
+    )
+
+
+def _latest_iteration(manifest: dict[str, Any]) -> dict[str, Any] | None:
+    iterations = manifest.get("iterations") or []
+    if not iterations:
+        return None
+    return iterations[-1]
+
+
+def _build_pipeline_summary(manifest: dict[str, Any]) -> TestingPipelineSummaryRead:
+    latest_iteration = _latest_iteration(manifest) or {}
+    latest_task = latest_iteration.get("task_results") or []
+    latest_result = latest_task[-1] if latest_task else {}
+    return TestingPipelineSummaryRead(
+        pipeline_id=manifest["pipeline_id"],
+        status=manifest["status"],
+        stage=manifest["stage"],
+        task_slugs=manifest.get("task_slugs") or [],
+        target_score=int(manifest.get("target_score") or 0),
+        max_iterations=int(manifest.get("max_iterations") or 0),
+        current_iteration=int(manifest.get("current_iteration") or 0),
+        branch_name=manifest.get("branch_name") or "",
+        latest_commit_sha=manifest.get("latest_commit_sha"),
+        latest_deploy_sha=manifest.get("latest_deploy_sha"),
+        stop_reason=manifest.get("stop_reason"),
+        created_at=manifest.get("created_at") or "",
+        updated_at=manifest.get("updated_at") or "",
+        require_manual_approval=bool(manifest.get("require_manual_approval")),
+        latest_evaluator_score=latest_result.get("overall_score"),
+        latest_evaluator_success=latest_result.get("goal_achieved"),
+        latest_root_cause_category=latest_result.get("root_cause_category"),
+        latest_task_slug=latest_result.get("task_slug"),
     )
 
 
@@ -160,6 +207,13 @@ def _validate_testing_settings() -> None:
             status_code=400,
             detail="Testing requires ELEVENLABS_API_KEY to run capability-task conversations.",
         )
+
+
+def _validate_pipeline_token(x_testing_pipeline_token: str | None) -> None:
+    settings = get_settings()
+    if settings.testing_pipeline_token:
+        if x_testing_pipeline_token != settings.testing_pipeline_token:
+            raise HTTPException(status_code=403, detail="Invalid testing pipeline token.")
     if not settings.elevenlabs_agent_id:
         raise HTTPException(
             status_code=400,
@@ -197,6 +251,86 @@ def get_testing_run(run_id: str) -> TestingRunRead:
 def get_testing_run_refinement_report(run_id: str) -> dict[str, Any]:
     path = _find_refinement_report_path(run_id)
     return _load_run_payload(path)
+
+
+@router.get("/pipelines", response_model=list[TestingPipelineSummaryRead])
+def list_testing_pipelines() -> list[TestingPipelineSummaryRead]:
+    return [_build_pipeline_summary(manifest) for manifest in list_pipelines()]
+
+
+@router.get("/pipelines/{pipeline_id}", response_model=TestingPipelineRead)
+def get_testing_pipeline(pipeline_id: str) -> TestingPipelineRead:
+    try:
+        manifest = load_pipeline(pipeline_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return TestingPipelineRead(payload=manifest)
+
+
+@router.get("/pipelines/{pipeline_id}/events", response_model=list[TestingPipelineEventRead])
+def get_testing_pipeline_events(pipeline_id: str) -> list[TestingPipelineEventRead]:
+    try:
+        events = load_pipeline_events(pipeline_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return [
+        TestingPipelineEventRead(
+            timestamp=event.get("timestamp") or "",
+            type=event.get("type") or "log",
+            message=event.get("message"),
+            iteration=event.get("iteration"),
+            payload={key: value for key, value in event.items() if key not in {"timestamp", "type", "message", "iteration"}},
+        )
+        for event in events
+    ]
+
+
+@router.post("/pipelines", response_model=TestingPipelineRead)
+def create_testing_pipeline(request: TestingPipelineRequest) -> TestingPipelineRead:
+    _validate_testing_settings()
+    if not request.task_slugs:
+        raise HTTPException(status_code=422, detail="At least one task slug must be provided.")
+    try:
+        manifest = start_pipeline(
+            task_slugs=request.task_slugs,
+            target_score=request.target_score,
+            max_iterations=request.max_iterations,
+            review_model=request.review_model,
+            fixer_model=request.fixer_model,
+            require_manual_approval=request.require_manual_approval,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return TestingPipelineRead(payload=manifest)
+
+
+@router.post("/pipelines/{pipeline_id}/approve", response_model=TestingPipelineRead)
+def approve_testing_pipeline(pipeline_id: str) -> TestingPipelineRead:
+    try:
+        manifest = approve_pipeline(pipeline_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return TestingPipelineRead(payload=manifest)
+
+
+@router.post("/pipelines/{pipeline_id}/cancel", response_model=TestingPipelineRead)
+def cancel_testing_pipeline(pipeline_id: str) -> TestingPipelineRead:
+    try:
+        manifest = cancel_pipeline(pipeline_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return TestingPipelineRead(payload=manifest)
+
+
+@router.post("/reset-fixtures")
+def reset_testing_fixtures(x_testing_pipeline_token: str | None = Header(default=None)) -> dict[str, Any]:
+    _validate_pipeline_token(x_testing_pipeline_token)
+    result = reset_local_fixtures()
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error") or "Fixture reset failed.")
+    return result
 
 
 @router.post("/run", response_model=TestingRunExecutionRead)

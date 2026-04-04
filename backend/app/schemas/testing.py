@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TestingTaskRead(BaseModel):
@@ -50,3 +50,73 @@ class TestingRunRequest(BaseModel):
 class TestingRunExecutionRead(BaseModel):
     results: list[TestingRunSummaryRead]
 
+
+class TestingPipelineRequest(BaseModel):
+    task_slugs: list[str]
+    target_score: int = 8
+    max_iterations: int = 5
+    review_model: str = "openai:gpt-4o-mini"
+    fixer_model: str = "openai:gpt-4o-mini"
+    require_manual_approval: bool = True
+
+
+class TestingPipelineIterationTaskRead(BaseModel):
+    task_slug: str
+    artifact_path: str | None = None
+    overall_score: int | None = None
+    goal_achieved: bool | None = None
+    root_cause_category: str | None = None
+    verdict: str | None = None
+
+
+class TestingPipelineIterationRead(BaseModel):
+    iteration: int
+    status: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    task_results: list[TestingPipelineIterationTaskRead] = Field(default_factory=list)
+    selected_artifact_path: str | None = None
+    selected_task_slug: str | None = None
+    refinement_report_path: str | None = None
+    fix_plan_path: str | None = None
+    apply_result_path: str | None = None
+    git_result_path: str | None = None
+    deploy_verification_path: str | None = None
+    changed_paths: list[str] = Field(default_factory=list)
+    git_commit_sha: str | None = None
+    deploy_commit_sha: str | None = None
+    deploy_status: str | None = None
+    stop_reason: str | None = None
+
+
+class TestingPipelineSummaryRead(BaseModel):
+    pipeline_id: str
+    status: str
+    stage: str
+    task_slugs: list[str]
+    target_score: int
+    max_iterations: int
+    current_iteration: int
+    branch_name: str
+    latest_commit_sha: str | None = None
+    latest_deploy_sha: str | None = None
+    stop_reason: str | None = None
+    created_at: str
+    updated_at: str
+    require_manual_approval: bool
+    latest_evaluator_score: int | None = None
+    latest_evaluator_success: bool | None = None
+    latest_root_cause_category: str | None = None
+    latest_task_slug: str | None = None
+
+
+class TestingPipelineRead(BaseModel):
+    payload: dict[str, Any]
+
+
+class TestingPipelineEventRead(BaseModel):
+    timestamp: str
+    type: str
+    message: str | None = None
+    iteration: int | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
