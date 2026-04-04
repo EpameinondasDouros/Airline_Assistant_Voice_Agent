@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.models.booking import BookingStatus, RefundStatus
 from app.models.booking_event import BookingEventType
@@ -28,6 +28,26 @@ class ExtraCreate(BaseModel):
     quantity: int = Field(default=1, ge=1)
     price: Decimal = Field(default=Decimal("0.00"), ge=Decimal("0.00"))
     description: str | None = None
+
+    @field_validator("extra_type", mode="before")
+    @classmethod
+    def normalize_extra_type(cls, value: object) -> object:
+        if isinstance(value, ExtraType):
+            return value
+        normalized = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "checkedbag": "checked_bag",
+            "bag": "checked_bag",
+            "bags": "checked_bag",
+            "checked_luggage": "checked_bag",
+            "cabinbag": "cabin_bag",
+            "carry_on": "cabin_bag",
+            "carryon": "cabin_bag",
+            "sports": "sports_equipment",
+            "stroller": "pram",
+        }
+        normalized = aliases.get(normalized, normalized)
+        return normalized
 
 
 class BookingCreate(BaseModel):

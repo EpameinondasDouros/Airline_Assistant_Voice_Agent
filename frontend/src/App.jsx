@@ -1216,8 +1216,8 @@ function App() {
               <div className="pipeline-grid">
                 <section className="pipeline-card">
                   <div className="pipeline-card__head">
-                    <span className="eyebrow">Pipeline</span>
-                    <strong>New run</strong>
+                    <span className="eyebrow">Create</span>
+                    <strong>New pipeline</strong>
                   </div>
                   <label className="booking-field">
                     <span>Task</span>
@@ -1229,15 +1229,79 @@ function App() {
                     >
                       {testingTasks.map((task) => (
                         <option key={task.slug} value={task.slug}>
-                          {task.slug}
+                          {task.slug} — {task.description}
                         </option>
                       ))}
                     </select>
+                  </label>
+                  <div className="pipeline-form-grid">
+                    <label className="booking-field">
+                      <span>Target score</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={pipelineForm.target_score}
+                        onChange={(event) => setPipelineForm((current) => ({ ...current, target_score: event.target.value }))}
+                      />
+                    </label>
+                    <label className="booking-field">
+                      <span>Max iterations</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={pipelineForm.max_iterations}
+                        onChange={(event) => setPipelineForm((current) => ({ ...current, max_iterations: event.target.value }))}
+                      />
+                    </label>
+                    <label className="booking-field">
+                      <span>Review model</span>
+                      <input
+                        value={pipelineForm.review_model}
+                        onChange={(event) => setPipelineForm((current) => ({ ...current, review_model: event.target.value }))}
+                      />
+                    </label>
+                    <label className="booking-field">
+                      <span>Fixer model</span>
+                      <input
+                        value={pipelineForm.fixer_model}
+                        onChange={(event) => setPipelineForm((current) => ({ ...current, fixer_model: event.target.value }))}
+                      />
+                    </label>
+                  </div>
+                  <label className="pipeline-toggle">
+                    <input
+                      type="checkbox"
+                      checked={pipelineForm.require_manual_approval}
+                      onChange={(event) =>
+                        setPipelineForm((current) => ({ ...current, require_manual_approval: event.target.checked }))
+                      }
+                    />
+                    <span>Pause for approval before code apply and git push</span>
                   </label>
                   <div className="pipeline-actions">
                     <button type="button" className="button button--primary" onClick={startPipelineRun} disabled={pipelineBusy || !pipelineForm.task_slugs.length}>
                       <span className="material-symbols-outlined">rocket_launch</span>
                       Start pipeline
+                    </button>
+                    <button
+                      type="button"
+                      className="button button--secondary"
+                      onClick={approveSelectedPipeline}
+                      disabled={pipelineBusy || selectedPipeline?.status !== "waiting_approval"}
+                    >
+                      <span className="material-symbols-outlined">done_all</span>
+                      Approve iteration
+                    </button>
+                    <button
+                      type="button"
+                      className="button button--secondary"
+                      onClick={cancelSelectedPipeline}
+                      disabled={pipelineBusy || !selectedPipeline || pipelineIsTerminal(selectedPipeline.status)}
+                    >
+                      <span className="material-symbols-outlined">cancel</span>
+                      Cancel pipeline
                     </button>
                   </div>
                 </section>

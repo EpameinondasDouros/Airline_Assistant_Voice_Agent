@@ -61,6 +61,7 @@ def _tool(
 
 def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
     api_base = base_url.rstrip("/")
+    extra_type_enum = ["checked_bag", "cabin_bag", "sports_equipment", "pram", "pet", "special_item"]
 
     return [
         _tool(
@@ -198,7 +199,8 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
                             "type": "object",
                             "properties": {
                                 "extra_type": _llm_string(
-                                    "Extra type such as checked_bag, cabin_bag, sports_equipment, pram, pet, or special_item."
+                                    "Extra type to add.",
+                                    enum=extra_type_enum,
                                 ),
                                 "quantity": {"type": "integer", "description": "Quantity of this extra."},
                                 "price": {"type": "number", "description": "Optional price override. Omit it for standard extras so the backend can calculate the fee."},
@@ -285,7 +287,8 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
                             "type": "object",
                             "properties": {
                                 "extra_type": _llm_string(
-                                    "Extra type such as checked_bag, cabin_bag, sports_equipment, pram, pet, or special_item."
+                                    "Extra type to add.",
+                                    enum=extra_type_enum,
                                 ),
                                 "quantity": {"type": "integer", "description": "Quantity of the extra."},
                                 "price": {"type": "number", "description": "Optional price override. Omit it for standard extras so the backend can calculate the fee."},
