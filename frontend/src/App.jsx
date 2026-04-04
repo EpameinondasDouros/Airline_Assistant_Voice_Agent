@@ -4,7 +4,6 @@ import {
   cancelTestingPipeline,
   createBooking,
   getChatHistory,
-  getPipelineApiBaseUrl,
   getTestingPipeline,
   getTestingPipelineEvents,
   listAllTripsBooked,
@@ -293,13 +292,13 @@ function App() {
   const [selectedTaskSlug, setSelectedTaskSlug] = useState("");
   const [testingBusy, setTestingBusy] = useState(false);
   const [pipelineBusy, setPipelineBusy] = useState(false);
-  const [pipelineStatus, setPipelineStatus] = useState("Loading self-improvement pipelines...");
+  const [, setPipelineStatus] = useState("Loading self-improvement pipelines...");
   const [pipelineForm, setPipelineForm] = useState({
     task_slugs: [],
     target_score: 8,
     max_iterations: 5,
-    review_model: "openai:gpt-4o-mini",
-    fixer_model: "openai:gpt-4o-mini",
+    review_model: "openai:gpt-5.4-mini",
+    fixer_model: "openai:gpt-5.4-mini",
     require_manual_approval: true,
   });
   const [testingLiveEvents, setTestingLiveEvents] = useState([]);
@@ -308,7 +307,6 @@ function App() {
   const liveConsoleRef = useRef(null);
   const logConsoleRef = useRef(null);
   const pipelineConsoleRef = useRef(null);
-  const pipelineApiBase = getPipelineApiBaseUrl();
   const visibleFlights = useMemo(() => uniqueFlights(flights), [flights]);
   const bookedTripSummary = useMemo(() => {
     const passengerCount = bookedTrips.reduce((total, trip) => total + (trip.passengers?.length || 0), 0);
@@ -322,11 +320,6 @@ function App() {
       nextDeparture,
     };
   }, [bookedTrips]);
-  const selectedPipelineIteration = useMemo(() => {
-    const iterations = selectedPipeline?.iterations;
-    return Array.isArray(iterations) && iterations.length ? iterations[iterations.length - 1] : null;
-  }, [selectedPipeline]);
-
   useEffect(() => {
     listFlights(3)
       .then((items) => {
@@ -367,7 +360,7 @@ function App() {
             ? current
             : {
                 ...current,
-                task_slugs: tasks.map((task) => task.slug),
+                task_slugs: tasks[0] ? [tasks[0].slug] : [],
               }
         );
         setSelectedTestingRunId((current) => current || runs[0]?.id || null);
@@ -621,16 +614,11 @@ function App() {
     });
   }
 
-  function togglePipelineTask(taskSlug) {
-    setPipelineForm((current) => {
-      const exists = current.task_slugs.includes(taskSlug);
-      return {
-        ...current,
-        task_slugs: exists
-          ? current.task_slugs.filter((slug) => slug !== taskSlug)
-          : [...current.task_slugs, taskSlug],
-      };
-    });
+  function setPipelineTask(taskSlug) {
+    setPipelineForm((current) => ({
+      ...current,
+      task_slugs: taskSlug ? [taskSlug] : [],
+    }));
   }
 
   function startPipelineRun() {
@@ -1222,13 +1210,7 @@ function App() {
 
             <section className="pipeline-shell">
               <div className="pipeline-shell__header">
-                <div>
-                  <span className="eyebrow">Self-improvement pipeline</span>
-                  <h2>Testing → Refinement → Code Change → Git Push</h2>
-                  <p>Run iterative improvement loops against staging until the selected tasks reach the target score or the max-iteration limit.</p>
-                  <p className="testing-muted">Pipeline control plane: {pipelineApiBase}</p>
-                </div>
-                <div className="status-pill status-pill--center">Pipeline: {pipelineStatus}</div>
+                <h2>Testing → Refinement → Code Change → Git Push</h2>
               </div>
 
               <div className="pipeline-grid">
@@ -1237,22 +1219,21 @@ function App() {
                     <span className="eyebrow">Create</span>
                     <strong>New pipeline</strong>
                   </div>
-                  <div className="pipeline-task-list">
-                    {testingTasks.map((task) => (
-                      <label className="pipeline-task-option" key={task.slug}>
-                        <input
-                          type="checkbox"
-                          checked={pipelineForm.task_slugs.includes(task.slug)}
-                          onChange={() => togglePipelineTask(task.slug)}
-                          disabled={pipelineBusy}
-                        />
-                        <span>
-                          <strong>{task.slug}</strong>
-                          <small>{task.description}</small>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
+                  <label className="booking-field">
+                    <span>Task</span>
+                    <select
+                      value={pipelineForm.task_slugs[0] || ""}
+                      onChange={(event) => setPipelineTask(event.target.value)}
+                      className="testing-select"
+                      disabled={pipelineBusy || !testingTasks.length}
+                    >
+                      {testingTasks.map((task) => (
+                        <option key={task.slug} value={task.slug}>
+                          {task.slug} — {task.description}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <div className="pipeline-form-grid">
                     <label className="booking-field">
                       <span>Target score</span>
@@ -1324,94 +1305,10 @@ function App() {
                     </button>
                   </div>
                 </section>
-
-                <section className="pipeline-card">
-                  <div className="pipeline-card__head">
-                    <span className="eyebrow">History</span>
-                    <strong>Saved pipelines</strong>
-                  </div>
-                  <div className="pipeline-history">
-                    {testingPipelines.length ? testingPipelines.map((pipeline) => (
-                      <button
-                        type="button"
-                        key={pipeline.pipeline_id}
-                        className={selectedPipelineId === pipeline.pipeline_id ? "pipeline-history__item active" : "pipeline-history__item"}
-                        onClick={() => setSelectedPipelineId(pipeline.pipeline_id)}
-                      >
-                        <strong>{pipeline.pipeline_id}</strong>
-                        <span>{pipeline.status} · iteration {pipeline.current_iteration}</span>
-                        <small>{pipeline.task_slugs.join(", ")}</small>
-                      </button>
-                    )) : (
-                      <p className="testing-muted">No pipelines yet. Start one from the left.</p>
-                    )}
-                  </div>
-                </section>
               </div>
 
               {selectedPipeline ? (
                 <section className="pipeline-detail">
-                  <div className="pipeline-detail__header">
-                    <div>
-                      <span className="eyebrow">Selected pipeline</span>
-                      <strong>{selectedPipeline.pipeline_id}</strong>
-                      <p>{selectedPipeline.task_slugs?.join(", ")} · {selectedPipeline.status} · stage {selectedPipeline.stage}</p>
-                    </div>
-                    <div className="testing-metric-grid">
-                      <article className="testing-metric">
-                        <small>Current iteration</small>
-                        <strong>{selectedPipeline.current_iteration || 0}</strong>
-                      </article>
-                      <article className="testing-metric">
-                        <small>Target</small>
-                        <strong>{selectedPipeline.target_score}/10</strong>
-                      </article>
-                      <article className="testing-metric">
-                        <small>Branch</small>
-                        <strong>{selectedPipeline.branch_name || "—"}</strong>
-                      </article>
-                      <article className="testing-metric">
-                        <small>Deployed SHA</small>
-                        <strong>{selectedPipeline.latest_deploy_sha ? selectedPipeline.latest_deploy_sha.slice(0, 10) : "—"}</strong>
-                      </article>
-                    </div>
-                  </div>
-
-                  {selectedPipeline.stop_reason ? (
-                    <p className="testing-muted">Stop reason: {selectedPipeline.stop_reason}</p>
-                  ) : null}
-
-                  {selectedPipelineIteration ? (
-                    <div className="pipeline-iteration">
-                      <div className="pipeline-card__head">
-                        <span className="eyebrow">Iteration snapshot</span>
-                        <strong>Iteration {selectedPipelineIteration.iteration}</strong>
-                      </div>
-                      <div className="pipeline-iteration__meta">
-                        <span>Status {selectedPipelineIteration.status}</span>
-                        <span>Selected task {selectedPipelineIteration.selected_task_slug || "—"}</span>
-                        <span>Deploy {selectedPipelineIteration.deploy_status || "pending"}</span>
-                        <span>Commit {selectedPipelineIteration.git_commit_sha ? selectedPipelineIteration.git_commit_sha.slice(0, 10) : "—"}</span>
-                      </div>
-                      <div className="pipeline-task-results">
-                        {(selectedPipelineIteration.task_results || []).map((result) => (
-                          <article className="pipeline-task-result" key={`${selectedPipelineIteration.iteration}-${result.task_slug}`}>
-                            <strong>{result.task_slug}</strong>
-                            <span>Score {result.overall_score ?? "—"}/10</span>
-                            <span>{result.goal_achieved ? "Goal achieved" : "Goal not met"}</span>
-                            <span>{result.root_cause_category || "—"}</span>
-                          </article>
-                        ))}
-                      </div>
-                      {(selectedPipelineIteration.changed_paths || []).length ? (
-                        <div className="pipeline-changes">
-                          <span className="eyebrow">Changed paths</span>
-                          <pre>{selectedPipelineIteration.changed_paths.join("\n")}</pre>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-
                   <div className="pipeline-event-panel">
                     <div className="pipeline-card__head">
                       <span className="eyebrow">Timeline</span>

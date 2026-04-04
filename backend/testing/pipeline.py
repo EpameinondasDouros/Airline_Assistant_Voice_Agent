@@ -741,12 +741,30 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
     if _all_tasks_meet_threshold(task_results, int(manifest["target_score"])):
         iteration["status"] = "completed"
         iteration["finished_at"] = _now()
-        _mark_completed(
+        if iteration_number >= int(manifest["max_iterations"]):
+            _mark_completed(
+                pipeline_id,
+                f"All selected tasks reached goal achieved and score >= {manifest['target_score']}.",
+                manifest=manifest,
+            )
+            return False
+
+        manifest["status"] = "running"
+        manifest["stage"] = "iteration_complete"
+        manifest["stop_reason"] = None
+        _save_manifest(manifest)
+        _append_event(
             pipeline_id,
-            f"All selected tasks reached goal achieved and score >= {manifest['target_score']}.",
-            manifest=manifest,
+            "iteration_complete",
+            (
+                f"Iteration {iteration_number} met the target, but the pipeline will continue "
+                f"until iteration {manifest['max_iterations']}."
+            ),
+            iteration=iteration_number,
+            target_score=manifest["target_score"],
+            max_iterations=manifest["max_iterations"],
         )
-        return False
+        return True
 
     selected = _select_refinement_target(task_results)
     if selected is None:
@@ -796,6 +814,35 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
     )
     _append_event(
         pipeline_id,
+        "critic_verdict",
+        report.critique.verdict,
+        iteration=iteration_number,
+        task=selected["task_slug"],
+        overall_score=report.critique.overall_score,
+        goal_achieved=report.critique.goal_achieved,
+        used_tools_correctly=report.critique.used_tools_correctly,
+        answer_quality=report.critique.answer_quality,
+        suggested_next_step=report.critique.suggested_next_step,
+    )
+    for finding in report.critique.findings[:3]:
+        _append_event(
+            pipeline_id,
+            "critic_finding",
+            f"{finding.severity.upper()}: {finding.title} — {finding.detail}",
+            iteration=iteration_number,
+            task=selected["task_slug"],
+            severity=finding.severity,
+            title=finding.title,
+        )
+    _append_event(
+        pipeline_id,
+        "critic_next_step",
+        report.critique.suggested_next_step,
+        iteration=iteration_number,
+        task=selected["task_slug"],
+    )
+    _append_event(
+        pipeline_id,
         "root_cause_complete",
         f"Root cause categorized as {report.root_cause.root_cause_category}.",
         iteration=iteration_number,
@@ -811,6 +858,32 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
         task=selected["task_slug"],
         edit_count=len(report.fix_plan.section_edits),
     )
+    _append_event(
+        pipeline_id,
+        "fixer_summary",
+        report.fix_plan.summary,
+        iteration=iteration_number,
+        task=selected["task_slug"],
+        verification_command=report.fix_plan.verification_command,
+    )
+    _append_event(
+        pipeline_id,
+        "fixer_expected_improvement",
+        report.fix_plan.expected_improvement,
+        iteration=iteration_number,
+        task=selected["task_slug"],
+    )
+    for edit in report.fix_plan.section_edits[:5]:
+        _append_event(
+            pipeline_id,
+            "fixer_edit",
+            f"{edit.path} | {edit.selector_type}:{edit.selector_value} — {edit.reason}",
+            iteration=iteration_number,
+            task=selected["task_slug"],
+            path=edit.path,
+            selector_type=edit.selector_type,
+            selector_value=edit.selector_value,
+        )
 
     blocked_paths = _blocked_edit_paths(saved_report_path)
     if blocked_paths:
