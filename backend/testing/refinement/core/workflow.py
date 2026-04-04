@@ -37,7 +37,7 @@ def _default_logger(message: str) -> None:
 
 def _report_path(task_slug: str) -> Path:
     REPORTS_ROOT.mkdir(parents=True, exist_ok=True)
-    return REPORTS_ROOT / f"{_timestamp()}_{task_slug}_refinement.json"
+    return REPORTS_ROOT / f"{task_slug}__refinement__{_timestamp()}.json"
 
 
 def _normalize_verification_command(plan: BoundedFixPlan) -> str:

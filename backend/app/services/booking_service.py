@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.booking import Booking, BookingStatus, RefundStatus
 from app.models.booking_event import BookingEvent, BookingEventType
-from app.models.booking_extra import BookingExtra
+from app.models.booking_extra import BookingExtra, ExtraType
 from app.models.booking_passenger import BookingPassenger
 from app.models.flight import Flight, FlightStatus, SeatPreference
 from app.models.seat_inventory import SeatInventory
@@ -29,6 +29,13 @@ UNRESOLVED_REFUND_STATUSES = {
     RefundStatus.APPROVED,
     RefundStatus.PAID,
 }
+
+SHORT_HAUL_CHECKED_BAG_FEE = Decimal("35.00")
+LONG_HAUL_CHECKED_BAG_FEE = Decimal("70.00")
+SPORTS_EQUIPMENT_FEE = Decimal("55.00")
+PET_FEE = Decimal("90.00")
+CABIN_BAG_FEE = Decimal("20.00")
+SPECIAL_ITEM_FEE = Decimal("45.00")
 
 
 class BookingService:
@@ -137,13 +144,14 @@ class BookingService:
             )
 
         for extra in payload.extras:
-            total_price += extra.price
+            extra_price = self._resolved_extra_price(flight, extra)
+            total_price += extra_price
             self.session.add(
                 BookingExtra(
                     booking_id=booking.id,
                     extra_type=extra.extra_type,
                     quantity=extra.quantity,
-                    price=extra.price,
+                    price=extra_price,
                     description=extra.description,
                 )
             )
@@ -201,13 +209,14 @@ class BookingService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot add extras to a cancelled booking.")
 
         for extra in payload.extras:
-            booking.total_price += extra.price
+            extra_price = self._resolved_extra_price(booking.flight, extra)
+            booking.total_price += extra_price
             self.session.add(
                 BookingExtra(
                     booking_id=booking.id,
                     extra_type=extra.extra_type,
                     quantity=extra.quantity,
-                    price=extra.price,
+                    price=extra_price,
                     description=extra.description,
                 )
             )
@@ -513,6 +522,52 @@ class BookingService:
             return SeatPreference(str(preference))
         except ValueError:
             return None
+
+    def _resolved_extra_price(self, flight: Flight, extra: object) -> Decimal:
+        provided_price = getattr(extra, "price", None)
+        if provided_price is not None and Decimal(provided_price) > Decimal("0.00"):
+            return Decimal(provided_price).quantize(Decimal("0.01"))
+        return self._default_extra_price(
+            flight,
+            getattr(extra, "extra_type", None),
+            quantity=int(getattr(extra, "quantity", 1) or 1),
+            description=getattr(extra, "description", None),
+        )
+
+    def _default_extra_price(
+        self,
+        flight: Flight,
+        extra_type: ExtraType | str | None,
+        *,
+        quantity: int,
+        description: str | None,
+    ) -> Decimal:
+        normalized_quantity = max(quantity, 1)
+        if isinstance(extra_type, ExtraType):
+            normalized_type = extra_type
+        else:
+            normalized_type = ExtraType(str(extra_type))
+
+        if normalized_type == ExtraType.CHECKED_BAG:
+            unit_price = LONG_HAUL_CHECKED_BAG_FEE if self._is_long_haul(flight) else SHORT_HAUL_CHECKED_BAG_FEE
+            return (unit_price * normalized_quantity).quantize(Decimal("0.01"))
+        if normalized_type == ExtraType.SPORTS_EQUIPMENT:
+            return (SPORTS_EQUIPMENT_FEE * normalized_quantity).quantize(Decimal("0.01"))
+        if normalized_type == ExtraType.CABIN_BAG:
+            return (CABIN_BAG_FEE * normalized_quantity).quantize(Decimal("0.01"))
+        if normalized_type == ExtraType.PET:
+            return (PET_FEE * normalized_quantity).quantize(Decimal("0.01"))
+        if normalized_type == ExtraType.PRAM:
+            return Decimal("0.00")
+        if normalized_type == ExtraType.SPECIAL_ITEM:
+            if description and any(token in description.lower() for token in ("wheelchair", "mobility aid", "medical")):
+                return Decimal("0.00")
+            return (SPECIAL_ITEM_FEE * normalized_quantity).quantize(Decimal("0.01"))
+        return Decimal("0.00")
+
+    def _is_long_haul(self, flight: Flight) -> bool:
+        duration = flight.arrival_time - flight.departure_time
+        return duration.total_seconds() >= 6 * 60 * 60
 
     def _generate_booking_reference(self) -> str:
         alphabet = string.ascii_uppercase + string.digits

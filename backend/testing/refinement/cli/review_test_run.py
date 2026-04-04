@@ -34,6 +34,10 @@ def main() -> None:
         print(f"Score: {verdict.overall_score}/10")
         print(f"Goal achieved: {'yes' if verdict.goal_achieved else 'no'}")
         print(f"Tools correct: {'yes' if verdict.used_tools_correctly else 'no'}")
+        if verdict.criterion_scores:
+            print("Criteria:")
+            for criterion in verdict.criterion_scores:
+                print(f"  - {criterion.criterion}: {criterion.score}/10")
         print(f"Verdict: {verdict.verdict}")
         print(f"Next step: {verdict.suggested_next_step}")
         return

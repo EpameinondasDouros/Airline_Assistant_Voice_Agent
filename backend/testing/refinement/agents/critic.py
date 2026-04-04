@@ -32,6 +32,19 @@ Judge the run primarily on:
 
 Be concrete and conservative. Do not fail a run only because it used a different but still reasonable phrasing.
 Do not rely on rigid keyword matching. Use the transcript, tool trace, final answer, and backend verification as evidence.
+
+Return explicit 1-10 criterion scores for exactly these four criteria:
+- request_understanding
+- tool_usage_and_parameters
+- outcome_confirmation
+- natural_conversation
+
+For each criterion score:
+- provide a score from 1 to 10
+- provide a short summary
+- provide 1 to 3 short direct evidence quotes from the transcript, final answer, or tool trace
+
+The overall_score should be a conservative whole-number summary of the run and should roughly align with the criterion scores.
 """
 
 

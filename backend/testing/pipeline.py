@@ -140,6 +140,16 @@ def _task_runtime_event_message(event: dict[str, Any]) -> str | None:
         if root_cause:
             parts.append(f"root cause: {root_cause}")
         return " | ".join(parts)
+    if event_type == "evaluation_criterion":
+        criterion = str(event.get("criterion") or "").strip().replace("_", " ")
+        score = event.get("score")
+        summary = str(event.get("summary") or "").strip()
+        parts = [criterion.title() or "Criterion"]
+        if score is not None:
+            parts.append(f"{score}/10")
+        if summary:
+            parts.append(summary)
+        return " | ".join(parts)
     if event_type == "evaluation_finding":
         severity = str(event.get("severity") or "").upper()
         title = str(event.get("title") or "").strip()
@@ -900,6 +910,18 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
         answer_quality=report.critique.answer_quality,
         suggested_next_step=report.critique.suggested_next_step,
     )
+    for criterion in report.critique.criterion_scores:
+        _append_event(
+            pipeline_id,
+            "critic_criterion",
+            f"{criterion.criterion.replace('_', ' ').title()} {criterion.score}/10 — {criterion.summary}",
+            iteration=iteration_number,
+            task=selected["task_slug"],
+            criterion=criterion.criterion,
+            score=criterion.score,
+            summary=criterion.summary,
+            evidence_quotes=criterion.evidence_quotes,
+        )
     for finding in report.critique.findings[:3]:
         _append_event(
             pipeline_id,

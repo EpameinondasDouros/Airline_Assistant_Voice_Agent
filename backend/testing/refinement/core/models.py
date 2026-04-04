@@ -3,6 +3,20 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class CritiqueCriterionScore(BaseModel):
+    criterion: str = Field(
+        description=(
+            "One of: request_understanding, tool_usage_and_parameters, outcome_confirmation, natural_conversation."
+        )
+    )
+    score: int = Field(ge=1, le=10)
+    summary: str = Field(description="Short explanation of why this criterion received the score.")
+    evidence_quotes: list[str] = Field(
+        default_factory=list,
+        description="One to three short direct quotes from the transcript, final answer, or tool trace supporting the score.",
+    )
+
+
 class CritiqueFinding(BaseModel):
     title: str = Field(description="Short label for the issue or success.")
     severity: str = Field(description="low, medium, or high.")
@@ -16,6 +30,7 @@ class CritiqueVerdict(BaseModel):
     used_tools_correctly: bool
     answer_quality: str = Field(description="Short quality summary.")
     verdict: str = Field(description="One sentence overall conclusion.")
+    criterion_scores: list[CritiqueCriterionScore] = Field(default_factory=list)
     findings: list[CritiqueFinding] = Field(default_factory=list)
     suggested_next_step: str = Field(description="Single most useful next action.")
 
@@ -100,4 +115,3 @@ class RefinementReport(BaseModel):
     after_critique: CritiqueVerdict | None = None
     after_root_cause: RootCauseVerdict | None = None
     acceptance: AcceptanceDecision | None = None
-

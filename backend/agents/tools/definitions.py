@@ -193,7 +193,7 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
                     },
                     "extras": {
                         "type": "array",
-                        "description": "Optional extras to attach at booking time.",
+                        "description": "Optional extras to attach at booking time. Omit price for standard extras and let the backend calculate the fee.",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -201,10 +201,10 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
                                     "Extra type such as checked_bag, cabin_bag, sports_equipment, pram, pet, or special_item."
                                 ),
                                 "quantity": {"type": "integer", "description": "Quantity of this extra."},
-                                "price": {"type": "number", "description": "Price for this extra line."},
+                                "price": {"type": "number", "description": "Optional price override. Omit it for standard extras so the backend can calculate the fee."},
                                 "description": _llm_string("Optional description for the extra."),
                             },
-                            "required": ["extra_type", "quantity", "price"],
+                            "required": ["extra_type", "quantity"],
                         },
                     },
                 },
@@ -267,7 +267,8 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
             name="add_booking_extras",
             description=(
                 "Use this tool when the caller wants to add baggage, sports equipment, a pram, a pet, or another special item "
-                "to an existing booking."
+                "to an existing booking. Do not ask the caller for a standard fee amount. Provide the extra type and quantity, "
+                "and let the backend calculate the price unless the caller explicitly gives a custom charge."
             ),
             url=f"{api_base}/api/bookings/{{booking_reference}}/extras",
             method="POST",
@@ -287,10 +288,10 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
                                     "Extra type such as checked_bag, cabin_bag, sports_equipment, pram, pet, or special_item."
                                 ),
                                 "quantity": {"type": "integer", "description": "Quantity of the extra."},
-                                "price": {"type": "number", "description": "Price for this extra line."},
+                                "price": {"type": "number", "description": "Optional price override. Omit it for standard extras so the backend can calculate the fee."},
                                 "description": _llm_string("Optional description for the extra."),
                             },
-                            "required": ["extra_type", "quantity", "price"],
+                            "required": ["extra_type", "quantity"],
                         },
                     }
                 },

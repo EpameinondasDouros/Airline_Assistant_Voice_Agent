@@ -52,10 +52,13 @@ Rules:
 - For change_booking tasks, the assistant should retrieve the existing booking first. If it has not done that yet, do not accept a replacement option; wait or ask it to check the booking first.
 - When change_booking tasks include a current booking departure time in customer_context, treat that as the baseline and only accept replacement flights that depart after that date/time.
 - If the assistant offers cancellation instead of rescheduling, confirm it only when the task context says cancellation is an acceptable fallback.
-- If the assistant has already completed the task, send exactly one final closing reply: "No, that's all, thank you." even if the assistant did not ask a closing question.
+- If the assistant has already completed the task, send exactly one final closing reply.
+- Use "Thank you." after a plain completed answer.
+- Use "No, that's all, thank you." when the assistant ends with an optional offer or closing question.
 - Do not return done immediately after a completed-task assistant message until that one final closing reply has been sent.
 - After sending the one final closing reply, the next action should usually be done unless the assistant is still mid-turn.
 - If the assistant is still searching, using tools, or obviously mid-turn, usually return wait.
+- If the assistant asks a direct question or requests information from the customer, do not return wait. Reply using the grounded customer_context facts when possible.
 - Never reply twice in a row without a fresh assistant response in between.
 - Keep replies short, natural, and consistent with earlier customer answers in the transcript.
 """

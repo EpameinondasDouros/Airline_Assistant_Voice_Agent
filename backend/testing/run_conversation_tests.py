@@ -31,7 +31,8 @@ from testing.tasks import CapabilityTask, TASKS, get_task  # noqa: E402
 
 Role = Literal["user", "agent", "user_transcript"]
 BOOKING_REFERENCE_PATTERN = re.compile(r"\b[A-Z0-9]{8,12}\b")
-CLOSING_REPLY = "No, that's all, thank you."
+SIMPLE_CLOSING_REPLY = "Thank you."
+DECLINE_CLOSING_REPLY = "No, that's all, thank you."
 CLOSING_INVITATION_PATTERNS = (
     "would you like",
     "do you want",
@@ -42,6 +43,16 @@ CLOSING_INVITATION_PATTERNS = (
     "let me know if you would like",
     "shall i",
     "should i",
+)
+DIRECT_RESPONSE_PATTERNS = (
+    "could you",
+    "can you",
+    "please provide",
+    "please share",
+    "please confirm",
+    "what is",
+    "which",
+    "tell me",
 )
 
 
@@ -435,6 +446,129 @@ def _assistant_message_has_closing_invitation(message: str | None) -> bool:
     return any(pattern in lowered for pattern in CLOSING_INVITATION_PATTERNS)
 
 
+def _closing_reply_for_message(message: str | None) -> str:
+    if _assistant_message_has_closing_invitation(message):
+        return DECLINE_CLOSING_REPLY
+    return SIMPLE_CLOSING_REPLY
+
+
+def _assistant_message_requires_customer_reply(message: str | None) -> bool:
+    if not message:
+        return False
+    lowered = message.lower()
+    return "?" in message or any(pattern in lowered for pattern in DIRECT_RESPONSE_PATTERNS)
+
+
+def _context_value(customer_context: dict, *keys: str) -> str | None:
+    for key in keys:
+        value = customer_context.get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _reply_from_customer_context(message: str | None, customer_context: dict) -> str | None:
+    if not message:
+        return None
+
+    lowered = message.lower()
+    parts: list[str] = []
+
+    if "booking reference" in lowered:
+        booking_reference = _context_value(customer_context, "booking_reference")
+        if booking_reference:
+            parts.append(f"The booking reference is {booking_reference}.")
+
+    if any(token in lowered for token in ("origin", "destination", "airport code", "route")):
+        origin = _context_value(customer_context, "origin", "current_booking_origin")
+        destination = _context_value(customer_context, "destination", "current_booking_destination")
+        if origin and destination:
+            parts.append(f"The route is {origin} to {destination}.")
+
+    if any(token in lowered for token in ("contact full name", "contact name", "full name")):
+        full_name = _context_value(customer_context, "full_name")
+        if full_name:
+            parts.append(f"The contact name is {full_name}.")
+
+    if "email" in lowered:
+        email = _context_value(customer_context, "email")
+        if email:
+            parts.append(f"The contact email is {email}.")
+
+    if "phone" in lowered:
+        phone = _context_value(customer_context, "phone")
+        if phone:
+            parts.append(f"The contact phone is {phone}.")
+
+    if any(token in lowered for token in ("first and last name", "passenger's first and last name", "passenger first and last name")):
+        first_name = _context_value(customer_context, "first_name")
+        last_name = _context_value(customer_context, "last_name")
+        if first_name and last_name:
+            parts.append(f"The passenger is {first_name} {last_name}.")
+
+    if any(token in lowered for token in ("date of birth", "birth")):
+        date_of_birth = _context_value(customer_context, "date_of_birth")
+        if date_of_birth:
+            parts.append(f"The date of birth is {date_of_birth}.")
+
+    if any(token in lowered for token in ("seat preference", "window or aisle", "window", "aisle")):
+        seat_preference = _context_value(customer_context, "seat_preference")
+        if seat_preference:
+            parts.append(f"I prefer a {seat_preference} seat if possible.")
+
+    if any(token in lowered for token in ("confirm", "go ahead", "proceed")):
+        confirmation = _context_value(customer_context, "confirmation")
+        if confirmation:
+            parts.append(confirmation)
+
+    return " ".join(parts).strip() or None
+
+
+def _fallback_blocked_reply(task: CapabilityTask, customer_context: dict) -> str:
+    booking_reference = _context_value(customer_context, "booking_reference")
+    if booking_reference:
+        return (
+            f"I only have the booking reference {booking_reference}. "
+            "Could you check the booking details from that and continue?"
+        )
+    if task.slug == "search_available_flights":
+        return "I don't have more details than that. Please use the information I already gave you and show me the best options."
+    return "I don't have any more details than what I've already shared. Please use that and continue."
+
+
+def _coerce_customer_decision(
+    task: CapabilityTask,
+    *,
+    decision: CustomerReply,
+    latest_assistant_message: str | None,
+    customer_context: dict,
+    transcript: list[TranscriptEntry],
+    closing_reply_sent: bool,
+) -> CustomerReply:
+    if decision.action == "reply":
+        return decision
+    if not _assistant_message_requires_customer_reply(latest_assistant_message):
+        return decision
+    if _task_goal_seems_satisfied(
+        task,
+        transcript=transcript,
+        latest_assistant_message=latest_assistant_message,
+        customer_context=customer_context,
+    ):
+        return decision
+
+    forced_message = _reply_from_customer_context(latest_assistant_message, customer_context)
+    if not forced_message:
+        forced_message = _fallback_blocked_reply(task, customer_context)
+
+    reason = (
+        "The assistant asked a direct question, so the customer must reply instead of waiting."
+        if decision.action == "wait"
+        else "The assistant asked a direct question, so the conversation should not end before the customer replies."
+    )
+    return CustomerReply(action="reply", message=forced_message, reason=reason)
+
+
 def _task_goal_seems_satisfied(
     task: CapabilityTask,
     *,
@@ -498,9 +632,10 @@ def _deterministic_customer_decision(
             reason="The task goal is already satisfied and the customer already sent the final closing reply.",
         )
 
+    closing_reply = _closing_reply_for_message(latest_assistant_message)
     return CustomerReply(
         action="reply",
-        message=CLOSING_REPLY,
+        message=closing_reply,
         reason="The task goal is satisfied, so the customer should send one final natural closing reply before the session ends.",
     )
 
@@ -529,7 +664,7 @@ def _ensure_fresh_agent_turn(
         settings,
         conversation_id,
         baseline_agent_count=last_seen_agent_count,
-        timeout_seconds=max(settle_timeout_seconds, 8.0),
+        timeout_seconds=max(response_timeout_seconds, settle_timeout_seconds, 8.0),
     )
     current_agent_count = recorder.agent_count()
     if current_agent_count > last_seen_agent_count:
@@ -562,7 +697,7 @@ def _wait_for_agent_turn(
         settings,
         conversation_id,
         baseline_agent_count=baseline_agent_count,
-        timeout_seconds=max(settle_timeout_seconds, 8.0),
+        timeout_seconds=max(timeout_seconds, settle_timeout_seconds, 8.0),
     )
     if recorder.agent_count() > baseline_agent_count:
         return True
@@ -810,15 +945,14 @@ def run_task(
     customer_context = _customer_context(task, booking_profile_index=booking_profile_index)
     effective_initial_user_intent = str(customer_context.get("initial_user_intent") or task.initial_user_intent)
 
-    # Change-booking flows need extra time because the agent now looks up the
-    # existing booking first, then searches replacement options after the
-    # original departure date before replying.
-    if task.slug == "cancel_or_reschedule_booking":
+    # Multi-step mutation flows need extra time because the agent may need to
+    # retrieve the existing booking and related flight details before it can reply.
+    if task.slug in {"cancel_or_reschedule_booking", "add_baggage_or_special_items"}:
         response_timeout_seconds = max(response_timeout_seconds, 35.0)
         settle_timeout_seconds = max(settle_timeout_seconds, 8.0)
 
     pre_snapshot = _fetch_booking_snapshot(settings, customer_context.get("booking_reference"))
-    if task.slug == "cancel_or_reschedule_booking" and pre_snapshot and pre_snapshot.get("verified"):
+    if pre_snapshot and pre_snapshot.get("verified"):
         current_flight = _fetch_flight_snapshot(settings, pre_snapshot.get("flight_id"))
         if current_flight and current_flight.get("verified"):
             departure_time = current_flight.get("departure_time")
@@ -908,6 +1042,14 @@ def run_task(
                     transcript=[asdict(entry) for entry in recorder.entries],
                     latest_assistant_message=latest_agent_message,
                 )
+            decision = _coerce_customer_decision(
+                task,
+                decision=decision,
+                latest_assistant_message=latest_agent_message,
+                customer_context=customer_context,
+                transcript=recorder.entries,
+                closing_reply_sent=closing_reply_sent,
+            )
             processed_agent_count = fresh_agent_count
 
             if decision.action == "done":
@@ -920,7 +1062,7 @@ def run_task(
                 if decision.message is None:
                     raise RuntimeError("Customer simulator requested a reply without a message.")
                 customer_reply_count += 1
-                is_closing_reply = decision.message.strip() == CLOSING_REPLY
+                is_closing_reply = decision.message.strip() in {SIMPLE_CLOSING_REPLY, DECLINE_CLOSING_REPLY}
                 if is_closing_reply:
                     closing_reply_sent = True
                     _emit_event(
@@ -1038,6 +1180,16 @@ def run_task(
             root_cause_category=root_cause.root_cause_category,
             primary_root_cause=root_cause.primary_root_cause,
         )
+        for criterion in critique.criterion_scores:
+            _emit_event(
+                event_sink,
+                "evaluation_criterion",
+                task=task.slug,
+                criterion=criterion.criterion,
+                score=criterion.score,
+                summary=criterion.summary,
+                evidence_quotes=criterion.evidence_quotes,
+            )
         for finding in critique.findings[:3]:
             _emit_event(
                 event_sink,
@@ -1055,7 +1207,7 @@ def run_task(
 
     target_output_dir = output_dir or _outputs_dir()
     target_output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = target_output_dir / f"{_timestamp()}_{task.slug}.json"
+    output_path = target_output_dir / f"{task.slug}__{_timestamp()}.json"
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return output_path
 
