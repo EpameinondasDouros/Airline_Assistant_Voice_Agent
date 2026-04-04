@@ -26,7 +26,7 @@ def main() -> None:
     args = parser.parse_args()
 
     set_debug_output_enabled(args.verbose)
-    outputs_dir = Path(__file__).resolve().parents[1] / "outputs"
+    outputs_dir = Path(__file__).resolve().parents[2] / "outputs"
     artifact_path = Path(args.artifact) if args.artifact else _latest_artifact(outputs_dir)
     payload = load_artifact(artifact_path)
     verdict = evaluate_root_cause(payload, model=args.model)

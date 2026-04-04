@@ -25,7 +25,7 @@ def main() -> None:
     args = parser.parse_args()
 
     set_debug_output_enabled(args.verbose)
-    outputs_dir = Path(__file__).resolve().parents[1] / "outputs"
+    outputs_dir = Path(__file__).resolve().parents[2] / "outputs"
     artifact_path = Path(args.artifact) if args.artifact else _latest_artifact(outputs_dir)
     report, report_path = create_fix_plan_report(artifact_path, model=args.model, verbose=args.verbose)
 
