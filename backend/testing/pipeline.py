@@ -541,9 +541,21 @@ def _worker_entrypoint(pipeline_id: str, cancel_event: threading.Event, resume_f
 def _preflight_checks(pipeline_id: str) -> bool:
     repo_status = _repo_status()
     if not repo_status["clean"]:
+        dirty_entries = repo_status.get("dirty_entries") or []
+        dirty_preview = "; ".join(dirty_entries[:10])
+        reason = "Git working tree is dirty. Commit or stash changes before starting the self-improvement pipeline."
+        if dirty_preview:
+            reason = f"{reason} Dirty entries: {dirty_preview}"
+        _append_event(
+            pipeline_id,
+            "pipeline_failed",
+            reason,
+            stage="preflight",
+            dirty_entries=dirty_entries,
+        )
         _mark_failed(
             pipeline_id,
-            "Git working tree is dirty. Commit or stash changes before starting the self-improvement pipeline.",
+            reason,
             stage="preflight",
         )
         return False
