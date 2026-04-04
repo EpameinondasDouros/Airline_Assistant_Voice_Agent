@@ -9,7 +9,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from uuid import uuid4
@@ -104,6 +104,55 @@ def _append_event(pipeline_id: str, event_type: str, message: str, **payload: An
     with PIPELINE_IO_LOCK:
         with events_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(event) + "\n")
+
+
+def _task_runtime_event_message(event: dict[str, Any]) -> str | None:
+    event_type = str(event.get("type") or "")
+    task_slug = event.get("task")
+    if event_type == "task_started":
+        return f"Task {task_slug or 'unknown'} started."
+    if event_type == "user_turn":
+        message = str(event.get("message") or "").strip()
+        return f"User: {message}" if message else "User sent a message."
+    if event_type == "customer_reply":
+        message = str(event.get("message") or "").strip()
+        return f"Customer: {message}" if message else "Customer replied."
+    if event_type == "transcript_turn":
+        role = str(event.get("role") or "turn")
+        text = str(event.get("text") or "").strip()
+        label = "Agent" if role == "agent" else "User" if role == "user" else role.replace("_", " ").title()
+        return f"{label}: {text}" if text else f"{label} turn received."
+    if event_type == "evaluation_started":
+        return f"Evaluation started for {task_slug or 'task'}."
+    if event_type == "evaluation_complete":
+        return f"Evaluation finished for {task_slug or 'task'}."
+    if event_type == "evaluation_error":
+        return f"Evaluation failed for {task_slug or 'task'}: {event.get('error') or 'unknown error'}"
+    if event_type == "run_started":
+        return f"Test run started for {event.get('task_count') or 0} task(s)."
+    if event_type == "run_finished":
+        return "Test run finished."
+    if event_type == "error":
+        return str(event.get("message") or "Task runner error.")
+    return None
+
+
+def _pipeline_task_event_sink(pipeline_id: str, iteration_number: int, task_slug: str) -> Callable[[dict[str, Any]], None]:
+    def sink(event: dict[str, Any]) -> None:
+        event_type = str(event.get("type") or "task_runtime_event")
+        message = _task_runtime_event_message(event)
+        if not message:
+            return
+        _append_event(
+            pipeline_id,
+            event_type,
+            message,
+            iteration=iteration_number,
+            task=task_slug,
+            event_payload={key: value for key, value in event.items() if key != "type"},
+        )
+
+    return sink
 
 
 def _list_manifest_paths() -> list[Path]:
@@ -646,6 +695,13 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
             manifest=manifest,
         )
         return False
+    _append_event(
+        pipeline_id,
+        "testing_started",
+        f"Fixture reset completed via {reset_result.get('mode', 'unknown')} mode.",
+        iteration=iteration_number,
+        reset_mode=reset_result.get("mode"),
+    )
 
     task_results: list[dict[str, Any]] = []
     for task_slug in manifest["task_slugs"]:
@@ -662,6 +718,7 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
             live_output=False,
             review_model=manifest["review_model"],
             output_dir=iteration_dir,
+            event_sink=_pipeline_task_event_sink(pipeline_id, iteration_number, task_slug),
         )
         result = _iteration_result_from_artifact(artifact_path)
         task_results.append(result)
