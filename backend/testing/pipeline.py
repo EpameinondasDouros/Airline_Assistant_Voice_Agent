@@ -127,7 +127,27 @@ def _task_runtime_event_message(event: dict[str, Any]) -> str | None:
     if event_type == "evaluation_started":
         return f"Evaluation started for {task_slug or 'task'}."
     if event_type == "evaluation_complete":
-        return f"Evaluation finished for {task_slug or 'task'}."
+        score = event.get("overall_score")
+        goal = "goal achieved" if event.get("goal_achieved") else "goal not met"
+        verdict = str(event.get("verdict") or "").strip()
+        root_cause = str(event.get("primary_root_cause") or "").strip()
+        parts = [f"Evaluation finished for {task_slug or 'task'}"]
+        if score is not None:
+            parts.append(f"score {score}/10")
+        parts.append(goal)
+        if verdict:
+            parts.append(verdict)
+        if root_cause:
+            parts.append(f"root cause: {root_cause}")
+        return " | ".join(parts)
+    if event_type == "evaluation_finding":
+        severity = str(event.get("severity") or "").upper()
+        title = str(event.get("title") or "").strip()
+        detail = str(event.get("detail") or "").strip()
+        prefix = f"{severity}: " if severity else ""
+        if title and detail:
+            return f"{prefix}{title} — {detail}"
+        return f"{prefix}{title or detail}".strip() or None
     if event_type == "evaluation_error":
         return f"Evaluation failed for {task_slug or 'task'}: {event.get('error') or 'unknown error'}"
     if event_type == "run_started":

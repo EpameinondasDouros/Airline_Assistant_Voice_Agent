@@ -24,13 +24,25 @@ if str(BACKEND_ROOT) not in sys.path:
 from agents.chat.elevenlabs import ElevenLabsChatAgent  # noqa: E402
 from agents.config import get_agent_settings  # noqa: E402
 from testing.refinement.agents.critic import evaluate_artifact  # noqa: E402
-from testing.refinement.agents.customer_agent import CustomerSimulator  # noqa: E402
+from testing.refinement.agents.customer_agent import CustomerReply, CustomerSimulator  # noqa: E402
 from testing.refinement.agents.root_cause_evaluator import evaluate_root_cause  # noqa: E402
 from testing.tasks import CapabilityTask, TASKS, get_task  # noqa: E402
 
 
 Role = Literal["user", "agent", "user_transcript"]
 BOOKING_REFERENCE_PATTERN = re.compile(r"\b[A-Z0-9]{8,12}\b")
+CLOSING_REPLY = "No, that's all, thank you."
+CLOSING_INVITATION_PATTERNS = (
+    "would you like",
+    "do you want",
+    "anything else",
+    "is there anything else",
+    "can i help with anything else",
+    "let me know if you'd like",
+    "let me know if you would like",
+    "shall i",
+    "should i",
+)
 
 
 @dataclass
@@ -414,6 +426,92 @@ def _latest_agent_message(entries: list[TranscriptEntry]) -> str | None:
     return None
 
 
+def _assistant_message_has_closing_invitation(message: str | None) -> bool:
+    if not message:
+        return False
+    lowered = message.lower()
+    if "?" in message:
+        return True
+    return any(pattern in lowered for pattern in CLOSING_INVITATION_PATTERNS)
+
+
+def _task_goal_seems_satisfied(
+    task: CapabilityTask,
+    *,
+    transcript: list[TranscriptEntry],
+    latest_assistant_message: str | None,
+    customer_context: dict,
+) -> bool:
+    latest = (latest_assistant_message or "").lower()
+    agent_text = "\n".join(entry.text.lower() for entry in transcript if entry.role == "agent")
+    combined = f"{agent_text}\n{latest}".strip()
+
+    if task.slug == "retrieve_booking_by_reference":
+        booking_reference = str(customer_context.get("booking_reference") or "").lower()
+        has_reference = bool(booking_reference and booking_reference in combined)
+        has_operational_detail = any(
+            token in combined
+            for token in ("status", "departure", "flight", "terminal", "gate", "check-in", "boarding", "arrival")
+        )
+        return has_reference and has_operational_detail
+
+    if task.slug == "search_available_flights":
+        return any(token in combined for token in ("option 1", "i found", "available flight", "cheapest", "sorted by price"))
+
+    if task.slug == "book_flight":
+        return bool(BOOKING_REFERENCE_PATTERN.search(combined)) or any(
+            token in combined for token in ("booking confirmed", "booking reference", "here is your booking")
+        )
+
+    if task.slug == "cancel_or_reschedule_booking":
+        return any(token in combined for token in ("rescheduled", "canceled", "cancelled", "refund requested", "new flight"))
+
+    if task.slug == "add_baggage_or_special_items":
+        return any(token in combined for token in ("added", "updated")) and any(
+            token in combined for token in ("bag", "baggage", "pram", "special item", "extras")
+        )
+
+    return False
+
+
+def _deterministic_customer_decision(
+    task: CapabilityTask,
+    *,
+    transcript: list[TranscriptEntry],
+    latest_assistant_message: str | None,
+    customer_context: dict,
+    closing_reply_sent: bool,
+) -> CustomerReply | None:
+    goal_satisfied = _task_goal_seems_satisfied(
+        task,
+        transcript=transcript,
+        latest_assistant_message=latest_assistant_message,
+        customer_context=customer_context,
+    )
+    if not goal_satisfied:
+        return None
+
+    if closing_reply_sent:
+        return CustomerReply(
+            action="done",
+            message=None,
+            reason="The task goal is already satisfied and the customer already sent the final closing reply.",
+        )
+
+    if _assistant_message_has_closing_invitation(latest_assistant_message):
+        return CustomerReply(
+            action="reply",
+            message=CLOSING_REPLY,
+            reason="The assistant completed the task and ended with a closing follow-up, so the customer should send one final natural closing reply.",
+        )
+
+    return CustomerReply(
+        action="done",
+        message=None,
+        reason="The task goal is satisfied and the assistant is not asking for any further customer input.",
+    )
+
+
 def _ensure_fresh_agent_turn(
     recorder: TranscriptRecorder,
     settings,
@@ -755,6 +853,7 @@ def run_task(
     conversation_id = agent.conversation_id
     customer_reply_count = 0
     max_customer_replies = 8
+    closing_reply_sent = False
     _emit_event(event_sink, "task_started", task=task.slug, conversation_id=conversation_id)
 
     try:
@@ -792,21 +891,29 @@ def run_task(
                 break
 
             latest_agent_message = _latest_agent_message(recorder.entries)
-            decision = customer.decide(
-                task={
-                    "slug": task.slug,
-                    "description": task.description,
-                    "goal": task.goal,
-                    "task_type": task.task_type,
-                    "initial_user_intent": effective_initial_user_intent,
-                    "evaluation_focus": task.evaluation_focus,
-                    "required_backend_effects": task.required_backend_effects,
-                    "allowed_tools_hint": task.allowed_tools_hint,
-                },
-                customer_context=customer_context,
-                transcript=[asdict(entry) for entry in recorder.entries],
+            decision = _deterministic_customer_decision(
+                task,
+                transcript=recorder.entries,
                 latest_assistant_message=latest_agent_message,
+                customer_context=customer_context,
+                closing_reply_sent=closing_reply_sent,
             )
+            if decision is None:
+                decision = customer.decide(
+                    task={
+                        "slug": task.slug,
+                        "description": task.description,
+                        "goal": task.goal,
+                        "task_type": task.task_type,
+                        "initial_user_intent": effective_initial_user_intent,
+                        "evaluation_focus": task.evaluation_focus,
+                        "required_backend_effects": task.required_backend_effects,
+                        "allowed_tools_hint": task.allowed_tools_hint,
+                    },
+                    customer_context=customer_context,
+                    transcript=[asdict(entry) for entry in recorder.entries],
+                    latest_assistant_message=latest_agent_message,
+                )
             processed_agent_count = fresh_agent_count
 
             if decision.action == "done":
@@ -819,11 +926,19 @@ def run_task(
                 if decision.message is None:
                     raise RuntimeError("Customer simulator requested a reply without a message.")
                 customer_reply_count += 1
+                is_closing_reply = decision.message.strip() == CLOSING_REPLY
+                if is_closing_reply:
+                    closing_reply_sent = True
+                    _emit_event(
+                        event_sink,
+                        "conversation_close_started",
+                        message="The task goal is satisfied. Sending one final customer closing reply before ending the session.",
+                    )
                 _emit_event(event_sink, "customer_reply", message=decision.message, reply_index=customer_reply_count)
                 baseline_agent_count = recorder.agent_count()
                 recorder.add_user_message(decision.message)
                 agent.send(decision.message)
-                if not _wait_for_agent_turn(
+                got_agent_turn = _wait_for_agent_turn(
                     recorder,
                     settings,
                     conversation_id,
@@ -831,8 +946,23 @@ def run_task(
                     timeout_seconds=response_timeout_seconds,
                     settle_timeout_seconds=settle_timeout_seconds,
                     initial_message=decision.message,
-                ):
+                )
+                if not got_agent_turn and not is_closing_reply:
                     raise RuntimeError(f"Timed out waiting for the agent response after user message: {decision.message}")
+                if is_closing_reply:
+                    if got_agent_turn:
+                        _emit_event(
+                            event_sink,
+                            "conversation_close_started",
+                            message="Received the assistant's final acknowledgment after the customer's closing reply.",
+                        )
+                    else:
+                        _emit_event(
+                            event_sink,
+                            "conversation_close_started",
+                            message="No final assistant acknowledgment arrived after the customer's closing reply. Ending gracefully after the quiet window.",
+                        )
+                    break
                 continue
 
             raise RuntimeError(f"Unsupported customer simulator action: {decision.action}")
@@ -894,13 +1024,34 @@ def run_task(
     }
 
     try:
-        critique = evaluate_artifact(payload, model=review_model)
         _emit_event(event_sink, "evaluation_started", task=task.slug)
+        critique = evaluate_artifact(payload, model=review_model)
         root_cause = evaluate_root_cause(payload, critique=critique, model=review_model)
         payload["evaluator_verdict"] = critique.model_dump(mode="json")
         payload["root_cause"] = root_cause.model_dump(mode="json")
         payload["evaluation_error"] = None
-        _emit_event(event_sink, "evaluation_complete", task=task.slug)
+        _emit_event(
+            event_sink,
+            "evaluation_complete",
+            task=task.slug,
+            overall_score=critique.overall_score,
+            goal_achieved=critique.goal_achieved,
+            used_tools_correctly=critique.used_tools_correctly,
+            verdict=critique.verdict,
+            answer_quality=critique.answer_quality,
+            suggested_next_step=critique.suggested_next_step,
+            root_cause_category=root_cause.root_cause_category,
+            primary_root_cause=root_cause.primary_root_cause,
+        )
+        for finding in critique.findings[:3]:
+            _emit_event(
+                event_sink,
+                "evaluation_finding",
+                task=task.slug,
+                severity=finding.severity,
+                title=finding.title,
+                detail=finding.detail,
+            )
     except Exception as exc:  # pragma: no cover - runtime integration failure path
         payload["evaluator_verdict"] = None
         payload["root_cause"] = None
