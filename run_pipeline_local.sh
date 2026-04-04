@@ -164,28 +164,12 @@ PY
 
 emit_new_events() {
   local events_json="$1"
+  local events_file
   local line index stage iteration event_type message
 
-  while IFS=$'\t' read -r index stage iteration event_type message; do
-    [[ -z "$index" ]] && continue
-    LAST_EVENT_INDEX="$index"
-    local stage_key="${iteration}|${stage}"
-    if [[ "$stage_key" != "$LAST_STAGE_KEY" ]]; then
-      echo
-      if [[ -n "$iteration" ]]; then
-        echo "[Iteration $iteration] $stage"
-      else
-        echo "[$stage]"
-      fi
-      LAST_STAGE_KEY="$stage_key"
-    fi
-    if [[ -n "$message" ]]; then
-      echo "- $message"
-    else
-      echo "- $event_type"
-    fi
-  done < <(
-    EVENTS_JSON_PAYLOAD="$events_json" python3 - "$LAST_EVENT_INDEX" <<'PY'
+  events_file="$(mktemp)"
+
+  EVENTS_JSON_PAYLOAD="$events_json" python3 - "$LAST_EVENT_INDEX" <<'PY' >"$events_file"
 import json, sys
 import os
 
@@ -258,7 +242,28 @@ for idx, event in enumerate(events[start:], start=start + 1):
     message = str(event.get("message") or "").replace("\n", "\n  ")
     print(f"{idx}\t{stage}\t{iteration_text}\t{event_type}\t{message}")
 PY
-  )
+
+  while IFS=$'\t' read -r index stage iteration event_type message; do
+    [[ -z "$index" ]] && continue
+    LAST_EVENT_INDEX="$index"
+    local stage_key="${iteration}|${stage}"
+    if [[ "$stage_key" != "$LAST_STAGE_KEY" ]]; then
+      echo
+      if [[ -n "$iteration" ]]; then
+        echo "[Iteration $iteration] $stage"
+      else
+        echo "[$stage]"
+      fi
+      LAST_STAGE_KEY="$stage_key"
+    fi
+    if [[ -n "$message" ]]; then
+      echo "- $message"
+    else
+      echo "- $event_type"
+    fi
+  done <"$events_file"
+
+  rm -f "$events_file"
 }
 
 approve_iteration() {

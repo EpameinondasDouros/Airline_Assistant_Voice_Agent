@@ -1165,6 +1165,10 @@ def run_task(
         "elevenlabs_conversation": compact_conversation,
     }
 
+    # Persist the base artifact before refinement so the fix-plan workflow can
+    # load the completed testing run from disk.
+    output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
     refinement_report_path = None
     try:
         _emit_event(event_sink, "evaluation_started", task=task.slug)
@@ -1254,7 +1258,7 @@ def run_task(
                     selector_type=edit.selector_type,
                     selector_value=edit.selector_value,
                     reason=edit.reason,
-                )
+            )
     except Exception as exc:  # pragma: no cover - runtime integration failure path
         payload["evaluator_verdict"] = None
         payload["root_cause"] = None
