@@ -646,6 +646,14 @@ def run_task(
     recorder = TranscriptRecorder(live_output=live_output, event_sink=event_sink)
     customer = CustomerSimulator(model=review_model)
     customer_context = _customer_context(task)
+
+    # Change-booking flows need extra time because the agent now looks up the
+    # existing booking first, then searches replacement options after the
+    # original departure date before replying.
+    if task.slug == "cancel_or_reschedule_booking":
+        response_timeout_seconds = max(response_timeout_seconds, 35.0)
+        settle_timeout_seconds = max(settle_timeout_seconds, 8.0)
+
     pre_snapshot = _fetch_booking_snapshot(settings, customer_context.get("booking_reference"))
     if task.slug == "cancel_or_reschedule_booking" and pre_snapshot and pre_snapshot.get("verified"):
         current_flight = _fetch_flight_snapshot(settings, pre_snapshot.get("flight_id"))
