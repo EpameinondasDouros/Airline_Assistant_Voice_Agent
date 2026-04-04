@@ -498,17 +498,10 @@ def _deterministic_customer_decision(
             reason="The task goal is already satisfied and the customer already sent the final closing reply.",
         )
 
-    if _assistant_message_has_closing_invitation(latest_assistant_message):
-        return CustomerReply(
-            action="reply",
-            message=CLOSING_REPLY,
-            reason="The assistant completed the task and ended with a closing follow-up, so the customer should send one final natural closing reply.",
-        )
-
     return CustomerReply(
-        action="done",
-        message=None,
-        reason="The task goal is satisfied and the assistant is not asking for any further customer input.",
+        action="reply",
+        message=CLOSING_REPLY,
+        reason="The task goal is satisfied, so the customer should send one final natural closing reply before the session ends.",
     )
 
 
