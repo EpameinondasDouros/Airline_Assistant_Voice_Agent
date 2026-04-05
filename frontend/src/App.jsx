@@ -314,6 +314,7 @@ function getPipelinePhase(type) {
     "agent_sync_finished",
     "agent_sync_failed",
     "git_commit_finished",
+    "git_push_started",
     "git_push_finished",
     "git_push_skipped",
     "deploy_wait_started",
@@ -810,7 +811,7 @@ function App() {
         sections.fixerEdits.push(item);
         continue;
       }
-      if (["approval_required", "code_apply_started", "code_apply_finished", "agent_sync_started", "agent_sync_finished", "agent_sync_failed", "git_commit_finished", "git_push_finished", "git_push_skipped", "deploy_wait_started", "deploy_wait_health_check", "deploy_wait_progress", "deploy_verified", "deploy_skipped"].includes(event.type)) {
+      if (["approval_required", "code_apply_started", "code_apply_finished", "agent_sync_started", "agent_sync_finished", "agent_sync_failed", "git_commit_finished", "git_push_started", "git_push_finished", "git_push_skipped", "deploy_wait_started", "deploy_wait_health_check", "deploy_wait_progress", "deploy_verified", "deploy_skipped"].includes(event.type)) {
         sections.codeDeploy.push(item);
         continue;
       }
@@ -864,7 +865,7 @@ function App() {
       );
       const approvalEvents = events.filter((event) => String(event.type || "") === "approval_required");
       const codeChangeEvents = events.filter((event) =>
-        ["code_apply_started", "code_apply_finished", "git_commit_finished", "git_push_finished", "git_push_skipped"].includes(String(event.type || ""))
+        ["code_apply_started", "code_apply_finished", "git_commit_finished", "git_push_started", "git_push_finished", "git_push_skipped"].includes(String(event.type || ""))
       );
       const syncPostDeployEvents = events.filter((event) =>
         ["agent_sync_started", "agent_sync_finished", "agent_sync_failed", "deploy_wait_started", "deploy_wait_health_check", "deploy_wait_progress", "deploy_verified", "deploy_skipped"].includes(String(event.type || ""))

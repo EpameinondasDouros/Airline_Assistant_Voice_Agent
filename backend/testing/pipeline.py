@@ -307,15 +307,43 @@ def _mark_canceled(
     return _save_manifest(manifest)
 
 
-def _subprocess_result(command: list[str], *, cwd: Path = REPO_ROOT) -> dict[str, Any]:
-    completed = subprocess.run(command, cwd=cwd, capture_output=True, text=True)
-    return {
-        "command": " ".join(shlex.quote(part) for part in command),
-        "success": completed.returncode == 0,
-        "exit_code": completed.returncode,
-        "stdout": completed.stdout,
-        "stderr": completed.stderr,
-    }
+def _subprocess_result(
+    command: list[str],
+    *,
+    cwd: Path = REPO_ROOT,
+    env: dict[str, str] | None = None,
+    timeout_seconds: int | None = None,
+) -> dict[str, Any]:
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            env=merged_env,
+            timeout=timeout_seconds,
+        )
+        return {
+            "command": " ".join(shlex.quote(part) for part in command),
+            "success": completed.returncode == 0,
+            "exit_code": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "timed_out": False,
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "command": " ".join(shlex.quote(part) for part in command),
+            "success": False,
+            "exit_code": None,
+            "stdout": exc.stdout or "",
+            "stderr": exc.stderr or "",
+            "timed_out": True,
+            "error": f"Command timed out after {timeout_seconds} seconds.",
+        }
 
 
 def _repo_status() -> dict[str, Any]:
@@ -340,8 +368,17 @@ def _git_commit(message: str) -> dict[str, Any]:
 
 
 def _git_push(branch_name: str, *, set_upstream: bool) -> dict[str, Any]:
+    settings = get_settings()
     command = ["git", "push", "-u", "origin", branch_name] if set_upstream else ["git", "push", "origin", branch_name]
-    return _subprocess_result(command)
+    return _subprocess_result(
+        command,
+        env={
+            "GIT_TERMINAL_PROMPT": "0",
+            "GCM_INTERACTIVE": "never",
+            "GH_PROMPT_DISABLED": "1",
+        },
+        timeout_seconds=settings.testing_pipeline_git_timeout_seconds,
+    )
 
 
 def _git_head_sha() -> str | None:
@@ -1356,6 +1393,14 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
     iteration["git_commit_sha"] = commit_sha
     manifest["latest_commit_sha"] = commit_sha
 
+    _append_event(
+        pipeline_id,
+        "git_push_started",
+        f"Starting git push to origin/{branch_name}.",
+        iteration=iteration_number,
+        branch_name=branch_name,
+        commit_sha=commit_sha,
+    )
     push_result = _git_push(branch_name, set_upstream=False)
     git_payload["push"] = push_result
     git_result_path.write_text(json.dumps(git_payload, indent=2), encoding="utf-8")
@@ -1363,7 +1408,10 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
     if not push_result["success"]:
         _mark_failed(
             pipeline_id,
-            f"git push failed for {branch_name}.",
+            (
+                f"git push failed for {branch_name}: "
+                f"{(push_result.get('error') or push_result.get('stderr') or push_result.get('stdout') or 'unknown push error').strip()}"
+            ),
             stage="pushing",
             manifest=manifest,
         )

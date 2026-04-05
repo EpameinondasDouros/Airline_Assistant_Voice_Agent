@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     testing_pipeline_branch_prefix: str = "codex/pipeline"
     testing_pipeline_deploy_timeout_seconds: int = 600
     testing_pipeline_deploy_poll_interval_seconds: float = 5.0
+    testing_pipeline_git_timeout_seconds: int = 120
     testing_pipeline_token: str = ""
 
     @property

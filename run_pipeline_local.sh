@@ -293,6 +293,7 @@ def stage_for(event_type: str) -> str:
         "agent_sync_finished",
         "agent_sync_failed",
         "git_commit_finished",
+        "git_push_started",
         "git_push_finished",
         "git_push_skipped",
         "deploy_wait_started",
