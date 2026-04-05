@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -84,6 +85,14 @@ Server-error investigation rule:
 - Treat tool-definition mismatches, malformed request payloads, route validation problems, missing fields, serialization issues, and brittle API assumptions as likely internal causes that deserve a bounded fix.
 - Only return zero edits for a server/tool failure if the artifact strongly shows that the repository code and tool contract are already correct and the problem is genuinely outside this codebase.
 - Before returning zero edits, explicitly rule out likely internal causes in the relevant backend/app and backend/agents/tools files.
+- If likely_owner_files are provided from a failing tool URL or route, inspect those files first and treat them as the primary suspects unless the evidence clearly rules them out.
+
+Deep investigation rule:
+- For any failed or weak run, identify the exact failing step in the transcript or tool trace before deciding on a fix.
+- Then inspect the most likely owner files for that step, such as the route, service, schema, tool definition, or prompt file tied to the failing behavior.
+- Compare the observed request, response, and user-visible behavior against those files to see whether the current repository logic could itself be producing the failure.
+- Do not stop at the symptom level. Trace each important symptom back to the file or contract most likely to own it.
+- A zero-edit plan is allowed only after that ownership-based inspection has been done and the internal candidates have been ruled out by evidence.
 
 Markdown selector guidance:
 - For markdown files, prefer markdown_heading whenever you are changing a prompt or rules section.
@@ -169,12 +178,117 @@ def _select_candidate_files(root_cause: dict[str, Any]) -> list[dict[str, Any]]:
     return candidates
 
 
+def _singularize(name: str) -> str:
+    if name.endswith("ies") and len(name) > 3:
+        return name[:-3] + "y"
+    if name.endswith("s") and not name.endswith("ss") and len(name) > 1:
+        return name[:-1]
+    return name
+
+
+def _likely_owner_paths_from_url(url: str) -> list[str]:
+    parsed = urlparse(url)
+    path_parts = [part for part in parsed.path.split("/") if part]
+    if len(path_parts) < 2:
+        return []
+    if path_parts[0] == "api":
+        path_parts = path_parts[1:]
+    if not path_parts:
+        return []
+
+    resource = path_parts[0]
+    singular = _singularize(resource)
+    candidates = [
+        f"backend/app/api/routes/{resource}.py",
+        f"backend/app/services/{singular}_service.py",
+        f"backend/app/schemas/{singular}.py",
+        "backend/agents/tools/definitions.py",
+    ]
+    return candidates
+
+
+def _likely_owner_hints(payload: dict[str, Any], root_cause: dict[str, Any]) -> list[dict[str, str]]:
+    hints: list[dict[str, str]] = []
+    seen_paths: set[str] = set()
+    likely_fix_targets = root_cause.get("likely_fix_targets") or []
+    for path in likely_fix_targets:
+        normalized = str(path).replace("\\", "/").lstrip("./")
+        if not normalized.startswith("backend/"):
+            normalized = f"backend/{normalized}"
+        if get_policy(normalized) is None or normalized in seen_paths:
+            continue
+        seen_paths.add(normalized)
+        hints.append(
+            {
+                "path": normalized,
+                "reason": "Suggested by the root-cause analysis as a likely internal fix target.",
+            }
+        )
+
+    conversation = payload.get("elevenlabs_conversation") or {}
+    for item in conversation.get("transcript") or []:
+        tool_results_by_request = {
+            str(result.get("request_id") or ""): result
+            for result in (item.get("tool_results") or [])
+        }
+        for tool_call in item.get("tool_calls") or []:
+            url = str(((tool_call.get("tool_details") or {}).get("url")) or "").strip()
+            if not url:
+                continue
+            request_id = str(tool_call.get("request_id") or "")
+            result = tool_results_by_request.get(request_id) or {}
+            is_error = bool(result.get("is_error"))
+            for path in _likely_owner_paths_from_url(url):
+                if get_policy(path) is None or path in seen_paths:
+                    continue
+                seen_paths.add(path)
+                reason = (
+                    f"Likely owner of failing tool endpoint {url}."
+                    if is_error
+                    else f"Likely owner of tool endpoint {url}."
+                )
+                hints.append({"path": path, "reason": reason})
+    return hints
+
+
+def _select_candidate_files_for_payload(payload: dict[str, Any], root_cause: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    category = str(root_cause.get("root_cause_category") or "script_based")
+    candidate_paths = candidate_paths_for_category(category)
+    owner_hints = _likely_owner_hints(payload, root_cause)
+    prioritized_paths = [hint["path"] for hint in owner_hints]
+    ordered_paths = list(dict.fromkeys([*prioritized_paths, *candidate_paths]))
+
+    candidates: list[dict[str, Any]] = []
+    hint_by_path = {hint["path"]: hint["reason"] for hint in owner_hints}
+    for path in ordered_paths:
+        policy = get_policy(path)
+        if policy is None:
+            continue
+        content = read_target_file(path)
+        candidate_payload = {
+            "path": path,
+            "policy": {
+                "selector_types": list(policy.selector_types),
+                "apply_mode": policy.apply_mode,
+                "note": policy.note,
+            },
+            "selector_hints": selector_hints(path, content),
+            "safe_text_between_anchor_pairs": markdown_text_between_hints(path, content),
+            "content": content,
+        }
+        if path in hint_by_path:
+            candidate_payload["priority_reason"] = hint_by_path[path]
+        candidates.append(candidate_payload)
+    return candidates, owner_hints
+
+
 def _artifact_prompt(
     payload: dict[str, Any],
     critique: dict[str, Any],
     root_cause: dict[str, Any],
 ) -> str:
     task = payload.get("task") or payload.get("scenario") or {}
+    candidate_files, owner_hints = _select_candidate_files_for_payload(payload, root_cause)
     compact_payload = {
         "task": {
             "slug": task.get("slug"),
@@ -193,7 +307,8 @@ def _artifact_prompt(
         "elevenlabs_analysis": compact_elevenlabs_analysis(payload),
         "critique": critique,
         "root_cause": root_cause,
-        "candidate_files": _select_candidate_files(root_cause),
+        "likely_owner_files": owner_hints,
+        "candidate_files": candidate_files,
         "scope_rule": "Only propose edits to files inside backend/app or backend/agents.",
         "behavioral_fix_rule": (
             "If the root cause category is prompt_based, or the suggested fix type is prompt_change "
@@ -212,6 +327,19 @@ def _artifact_prompt(
             "schemas, validation, serialization, service logic, or backend/agents/tools definitions could be "
             "causing the failure from inside this repository. Only return zero edits if those likely internal "
             "causes have been ruled out by the evidence."
+        ),
+        "likely_owner_file_rule": (
+            "When likely_owner_files are present, inspect those files first before concluding that the failure is external. "
+            "For a failing known API endpoint, prefer the matching route file and service file over unrelated candidates."
+        ),
+        "deep_investigation_rule": (
+            "For any failed or weak run, trace the key symptom back to the most likely owner file or contract. "
+            "Inspect the route, service, schema, tool definition, or prompt file that most directly owns the symptom "
+            "before deciding that no code change is warranted."
+        ),
+        "zero_edit_rule": (
+            "If you return zero edits, your summary and rationale must make it clear which likely owner files or contracts "
+            "were inspected and why they were ruled out."
         ),
     }
     return (
