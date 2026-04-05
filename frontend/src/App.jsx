@@ -320,6 +320,7 @@ function getPipelinePhase(type) {
     "code_apply_started",
     "code_apply_finished",
     "agent_sync_started",
+    "agent_sync_progress",
     "agent_sync_finished",
     "agent_sync_failed",
     "git_commit_finished",
@@ -821,7 +822,7 @@ function App() {
         sections.fixerEdits.push(item);
         continue;
       }
-      if (["approval_required", "code_apply_started", "code_apply_finished", "code_apply_noop", "agent_sync_started", "agent_sync_finished", "agent_sync_failed", "git_commit_finished", "git_push_started", "git_push_progress", "git_push_finished", "git_push_skipped", "deploy_wait_started", "deploy_wait_health_check", "deploy_wait_progress", "deploy_verified", "deploy_skipped"].includes(event.type)) {
+      if (["approval_required", "code_apply_started", "code_apply_finished", "code_apply_noop", "agent_sync_started", "agent_sync_progress", "agent_sync_finished", "agent_sync_failed", "git_commit_finished", "git_push_started", "git_push_progress", "git_push_finished", "git_push_skipped", "deploy_wait_started", "deploy_wait_health_check", "deploy_wait_progress", "deploy_verified", "deploy_skipped"].includes(event.type)) {
         sections.codeDeploy.push(item);
         continue;
       }
@@ -878,7 +879,7 @@ function App() {
         ["code_apply_started", "code_apply_finished", "code_apply_noop", "git_commit_finished", "git_push_started", "git_push_progress", "git_push_finished", "git_push_skipped"].includes(String(event.type || ""))
       );
       const syncPostDeployEvents = events.filter((event) =>
-        ["agent_sync_started", "agent_sync_finished", "agent_sync_failed", "deploy_wait_started", "deploy_wait_health_check", "deploy_wait_progress", "deploy_verified", "deploy_skipped"].includes(String(event.type || ""))
+        ["agent_sync_started", "agent_sync_progress", "agent_sync_finished", "agent_sync_failed", "deploy_wait_started", "deploy_wait_health_check", "deploy_wait_progress", "deploy_verified", "deploy_skipped"].includes(String(event.type || ""))
       );
       const iterationResultEvents = events.filter((event) =>
         ["task_finished", "testing_complete", "iteration_complete"].includes(String(event.type || ""))

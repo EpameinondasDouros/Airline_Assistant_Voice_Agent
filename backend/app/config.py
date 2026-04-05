@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     testing_pipeline_deploy_poll_interval_seconds: float = 5.0
     testing_pipeline_git_timeout_seconds: int = 120
     testing_pipeline_git_progress_interval_seconds: float = 5.0
+    testing_pipeline_agent_sync_timeout_seconds: int = 180
+    testing_pipeline_agent_sync_progress_interval_seconds: float = 5.0
     testing_pipeline_token: str = ""
 
     @property

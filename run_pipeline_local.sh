@@ -290,6 +290,7 @@ def stage_for(event_type: str) -> str:
         return "Code Change"
     if event_type in {
         "agent_sync_started",
+        "agent_sync_progress",
         "agent_sync_finished",
         "agent_sync_failed",
         "git_commit_finished",
@@ -538,7 +539,7 @@ PY
         print_colored_block "$YELLOW_COLOR" "" "$message"
       elif [[ "$event_type" == "transcript_turn" && ( "$role" == "agent" || "$message" == Agent:* ) ]]; then
         print_colored_block "$BLUE_COLOR" "" "$message"
-      elif [[ "$event_type" == "git_push_progress" || "$event_type" == "deploy_wait_started" || "$event_type" == "deploy_wait_health_check" || "$event_type" == "deploy_wait_progress" || "$event_type" == "deploy_verified" ]]; then
+      elif [[ "$event_type" == "agent_sync_progress" || "$event_type" == "git_push_progress" || "$event_type" == "deploy_wait_started" || "$event_type" == "deploy_wait_health_check" || "$event_type" == "deploy_wait_progress" || "$event_type" == "deploy_verified" ]]; then
         print_colored_block "$GREEN_COLOR" "" "$message"
       else
         print_colored_block "$GRAY_COLOR" "" "$message"

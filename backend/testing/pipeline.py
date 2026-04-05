@@ -483,10 +483,24 @@ def _requires_remote_deploy(changed_paths: list[str]) -> bool:
     return any(path.startswith(APP_EDIT_ROOT) for path in changed_paths)
 
 
-def _run_sync_commands(changed_paths: list[str]) -> list[dict[str, Any]]:
+def _run_sync_commands(
+    changed_paths: list[str],
+    *,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> list[dict[str, Any]]:
+    settings = get_settings()
     results: list[dict[str, Any]] = []
     for command in _agent_sync_commands(changed_paths):
-        results.append(_subprocess_result(command, cwd=BACKEND_ROOT))
+        results.append(
+            _subprocess_result_with_progress(
+                command,
+                cwd=BACKEND_ROOT,
+                env={"PYTHONUNBUFFERED": "1"},
+                timeout_seconds=settings.testing_pipeline_agent_sync_timeout_seconds,
+                progress_interval_seconds=settings.testing_pipeline_agent_sync_progress_interval_seconds,
+                progress_callback=progress_callback,
+            )
+        )
         if not results[-1]["success"]:
             break
     return results
@@ -1367,7 +1381,28 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
             iteration=iteration_number,
             changed_paths=changed_paths,
         )
-        sync_results = _run_sync_commands(changed_paths)
+        sync_results = _run_sync_commands(
+            changed_paths,
+            progress_callback=lambda payload: _append_event(
+                pipeline_id,
+                "agent_sync_progress",
+                (
+                    "Still waiting for update_agent.sh to finish "
+                    f"({payload.get('elapsed_seconds', 0):.1f}s elapsed"
+                    + (
+                        f", timeout {payload.get('timeout_seconds')}s"
+                        if payload.get("timeout_seconds") is not None
+                        else ""
+                    )
+                    + ")."
+                ),
+                iteration=iteration_number,
+                changed_paths=changed_paths,
+                elapsed_seconds=payload.get("elapsed_seconds"),
+                timeout_seconds=payload.get("timeout_seconds"),
+                pid=payload.get("pid"),
+            ),
+        )
         if sync_results and not sync_results[-1]["success"]:
             sync_result = sync_results[-1]
             _append_event(
@@ -1378,14 +1413,18 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
                 changed_paths=changed_paths,
                 stdout=sync_result.get("stdout"),
                 stderr=sync_result.get("stderr"),
+                error=sync_result.get("error"),
             )
         else:
+            sync_result = sync_results[-1] if sync_results else {}
             _append_event(
                 pipeline_id,
                 "agent_sync_finished",
                 "update_agent.sh completed successfully.",
                 iteration=iteration_number,
                 changed_paths=changed_paths,
+                stdout=sync_result.get("stdout"),
+                stderr=sync_result.get("stderr"),
             )
     apply_payload = {
         "applied_changes": applied_changes,
