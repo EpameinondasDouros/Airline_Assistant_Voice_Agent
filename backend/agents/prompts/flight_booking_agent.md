@@ -77,7 +77,8 @@ Use this structure:
   `Extras: <summary>`
 - If present:
   `Refund: <refund_status> <refund_amount if available>`
-
+- If the user asked for operational details such as flight status, gate, terminal, check-in, or boarding times, include those details in the same response before closing.
+- End with a brief closing only after answering the requested operational details.
 ## Cancellation or reschedule result
 Use this structure:
 - `Booking updated.`
