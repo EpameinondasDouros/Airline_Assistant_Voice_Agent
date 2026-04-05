@@ -208,7 +208,13 @@ def _pipeline_task_event_sink(pipeline_id: str, iteration_number: int, task_slug
     return sink
 
 
-def _iteration_reset_policy(task_slugs: list[str], iteration_number: int) -> dict[str, Any]:
+def _iteration_reset_policy(task_slugs: list[str], iteration_number: int, manifest: dict[str, Any]) -> dict[str, Any]:
+    if bool(manifest.get("skip_fixture_reset")):
+        return {
+            "reset_mode": "never",
+            "should_reset": False,
+            "reason": "Fixture reset disabled for this pipeline run.",
+        }
     modes = {get_task(task_slug).reset_mode for task_slug in task_slugs}
     if "always" in modes:
         return {
@@ -593,6 +599,7 @@ def _build_pipeline_manifest(
     review_model: str,
     fixer_model: str,
     require_manual_approval: bool,
+    skip_fixture_reset: bool,
 ) -> dict[str, Any]:
     settings = get_settings()
     return {
@@ -605,6 +612,7 @@ def _build_pipeline_manifest(
         "review_model": review_model,
         "fixer_model": fixer_model,
         "require_manual_approval": require_manual_approval,
+        "skip_fixture_reset": skip_fixture_reset,
         "branch_name": f"{settings.testing_pipeline_branch_prefix}/{pipeline_id}",
         "current_iteration": 0,
         "latest_commit_sha": None,
@@ -626,6 +634,7 @@ def start_pipeline(
     review_model: str = "openai:gpt-4o-mini",
     fixer_model: str = "openai:gpt-4o-mini",
     require_manual_approval: bool = True,
+    skip_fixture_reset: bool = False,
 ) -> dict[str, Any]:
     for slug in task_slugs:
         get_task(slug)
@@ -639,6 +648,7 @@ def start_pipeline(
         review_model=review_model,
         fixer_model=fixer_model,
         require_manual_approval=require_manual_approval,
+        skip_fixture_reset=skip_fixture_reset,
     )
     _ensure_pipeline_dirs(pipeline_id)
     _save_manifest(manifest)
@@ -773,7 +783,7 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
     iteration_dir = _iteration_dir(pipeline_id, iteration_number)
     iteration_dir.mkdir(parents=True, exist_ok=True)
 
-    reset_policy = _iteration_reset_policy(list(manifest["task_slugs"]), iteration_number)
+    reset_policy = _iteration_reset_policy(list(manifest["task_slugs"]), iteration_number, manifest)
     iteration["fixture_reset_mode"] = reset_policy["reset_mode"]
     iteration["fixture_reset_applied"] = bool(reset_policy["should_reset"])
     _append_event(

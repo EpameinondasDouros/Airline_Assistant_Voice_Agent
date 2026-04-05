@@ -10,6 +10,7 @@ GRAY_COLOR=$'\033[90m'
 YELLOW_COLOR=$'\033[93m'
 BLUE_COLOR=$'\033[1;96m'
 GREEN_COLOR=$'\033[1;92m'
+PURPLE_COLOR=$'\033[95m'
 
 TASK_SLUG=""
 TARGET_SCORE=8
@@ -17,6 +18,7 @@ MAX_ITERATIONS=5
 REVIEW_MODEL="openai:gpt-5.4-mini"
 FIXER_MODEL="openai:gpt-5.4-mini"
 AUTO_APPROVE=false
+SKIP_FIXTURE_RESET=true
 POLL_INTERVAL=2
 PIPELINE_API="$PIPELINE_API_DEFAULT"
 PRODUCT_API="$PRODUCT_API_DEFAULT"
@@ -37,6 +39,7 @@ Options:
   --review-model <model>    Review model. Default: $REVIEW_MODEL
   --fixer-model <model>     Fixer model. Default: $FIXER_MODEL
   --auto-approve            Auto-approve each waiting iteration.
+  --reset-fixtures          Reset staging fixtures before each iteration. Default is disabled.
   --pipeline-api <url>      Local pipeline API base. Default: $PIPELINE_API_DEFAULT
   --product-api <url>       Product backend API base. Default: $PRODUCT_API_DEFAULT
   --poll-interval <sec>     Poll interval in seconds. Default: $POLL_INTERVAL
@@ -68,6 +71,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --auto-approve)
       AUTO_APPROVE=true
+      shift
+      ;;
+    --reset-fixtures)
+      SKIP_FIXTURE_RESET=false
       shift
       ;;
     --pipeline-api)
@@ -326,7 +333,7 @@ PY
             turn)
               case "$transcript_role" in
                 agent)
-                  print_colored_block "$GREEN_COLOR" "Agent: " "$transcript_text"
+                  print_colored_block "$BLUE_COLOR" "Agent: " "$transcript_text"
                   ;;
                 user|user_transcript)
                   print_colored_block "$YELLOW_COLOR" "User: " "$transcript_text"
@@ -337,7 +344,7 @@ PY
               esac
               ;;
             tool_call)
-              print_colored_block "$GREEN_COLOR" "Tool call: " "$transcript_text"
+              print_colored_block "$PURPLE_COLOR" "Tool call: " "$transcript_text"
               ;;
             tool_result)
               print_colored_block "$GREEN_COLOR" "Tool result: " "$transcript_text"
@@ -482,7 +489,7 @@ print_step "product backend: reachable at $PRODUCT_API"
 
 print_stage "Start Pipeline"
 
-CREATE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"task_slugs":[sys.argv[1]],"target_score":int(sys.argv[2]),"max_iterations":int(sys.argv[3]),"review_model":sys.argv[4],"fixer_model":sys.argv[5],"require_manual_approval":True}))' "$TASK_SLUG" "$TARGET_SCORE" "$MAX_ITERATIONS" "$REVIEW_MODEL" "$FIXER_MODEL")"
+CREATE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"task_slugs":[sys.argv[1]],"target_score":int(sys.argv[2]),"max_iterations":int(sys.argv[3]),"review_model":sys.argv[4],"fixer_model":sys.argv[5],"require_manual_approval":True,"skip_fixture_reset":sys.argv[6].lower()=="true"}))' "$TASK_SLUG" "$TARGET_SCORE" "$MAX_ITERATIONS" "$REVIEW_MODEL" "$FIXER_MODEL" "$SKIP_FIXTURE_RESET")"
 request_json "POST" "$PIPELINE_API/api/testing/pipelines" "$CREATE_BODY"
 PIPELINE_JSON="$RESPONSE_BODY"
 PIPELINE_ID="$(pipeline_summary_field "$PIPELINE_JSON" "pipeline_id")"
@@ -496,6 +503,11 @@ if [[ "$AUTO_APPROVE" == true ]]; then
   print_step "approval mode: automatic"
 else
   print_step "approval mode: manual"
+fi
+if [[ "$SKIP_FIXTURE_RESET" == true ]]; then
+  print_step "fixture reset: disabled"
+else
+  print_step "fixture reset: enabled"
 fi
 
 while true; do

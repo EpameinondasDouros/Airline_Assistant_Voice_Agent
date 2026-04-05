@@ -60,6 +60,7 @@ class TestingPipelineRequest(BaseModel):
     review_model: str = "openai:gpt-4o-mini"
     fixer_model: str = "openai:gpt-4o-mini"
     require_manual_approval: bool = True
+    skip_fixture_reset: bool = False
 
 
 class TestingPipelineIterationTaskRead(BaseModel):

@@ -302,6 +302,7 @@ def create_testing_pipeline(request: TestingPipelineRequest) -> TestingPipelineR
             review_model=request.review_model,
             fixer_model=request.fixer_model,
             require_manual_approval=request.require_manual_approval,
+            skip_fixture_reset=request.skip_fixture_reset,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
