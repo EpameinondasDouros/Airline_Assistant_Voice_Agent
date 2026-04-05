@@ -79,7 +79,7 @@ function pipelineEventCategory(type) {
   const eventType = String(type || "").toLowerCase();
   if (eventType.includes("error") || eventType.includes("failed") || eventType.includes("blocked")) return "error";
   if (eventType.includes("approval")) return "approval";
-  if (eventType.includes("deploy") || eventType.includes("git") || eventType.includes("code_apply")) return "code";
+  if (eventType.includes("deploy") || eventType.includes("git") || eventType.includes("code_apply") || eventType.includes("agent_sync")) return "code";
   if (eventType.includes("fix") || eventType.includes("refinement") || eventType.includes("root_cause")) return "refine";
   if (eventType.includes("evaluation") || eventType.includes("criterion") || eventType.includes("finding")) return "evaluation";
   if (eventType.includes("iteration") || eventType.includes("testing") || eventType.includes("task") || eventType.includes("run")) return "testing";
@@ -115,6 +115,12 @@ function formatPipelineEventBody(event) {
   }
   if (Array.isArray(payload.changed_paths) && payload.changed_paths.length) {
     extraLines.push(`Changed paths: ${payload.changed_paths.join(", ")}`);
+  }
+  if (typeof payload.stderr === "string" && payload.stderr.trim()) {
+    extraLines.push(`stderr: ${payload.stderr.trim()}`);
+  }
+  if (typeof payload.stdout === "string" && payload.stdout.trim()) {
+    extraLines.push(`stdout: ${payload.stdout.trim()}`);
   }
   if (typeof payload.approved !== "undefined") {
     extraLines.push(`Approved: ${payload.approved ? "yes" : "no"}`);

@@ -267,6 +267,9 @@ def stage_for(event_type: str) -> str:
     if event_type in {"code_apply_started", "code_apply_finished"}:
         return "Code Change"
     if event_type in {
+        "agent_sync_started",
+        "agent_sync_finished",
+        "agent_sync_failed",
         "git_commit_finished",
         "git_push_finished",
         "git_push_skipped",

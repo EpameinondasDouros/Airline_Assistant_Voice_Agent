@@ -23,6 +23,7 @@ from testing.tasks import get_task
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = BACKEND_ROOT.parent
 TESTING_ROOT = BACKEND_ROOT / "testing"
 PIPELINES_ROOT = TESTING_ROOT / "pipelines"
 PIPELINE_IO_LOCK = threading.Lock()
@@ -314,7 +315,7 @@ def _mark_canceled(
     return _save_manifest(manifest)
 
 
-def _subprocess_result(command: list[str], *, cwd: Path = BACKEND_ROOT) -> dict[str, Any]:
+def _subprocess_result(command: list[str], *, cwd: Path = REPO_ROOT) -> dict[str, Any]:
     completed = subprocess.run(command, cwd=cwd, capture_output=True, text=True)
     return {
         "command": " ".join(shlex.quote(part) for part in command),
@@ -362,7 +363,7 @@ def _python_compile(paths: list[str]) -> dict[str, Any]:
     python_paths = [str(BACKEND_ROOT.parent / path) for path in paths if path.endswith(".py")]
     if not python_paths:
         return {"command": "python -m py_compile", "success": True, "exit_code": 0, "stdout": "", "stderr": ""}
-    return _subprocess_result([sys.executable, "-m", "py_compile", *python_paths])
+    return _subprocess_result([sys.executable, "-m", "py_compile", *python_paths], cwd=BACKEND_ROOT)
 
 
 def _agent_sync_commands(changed_paths: list[str]) -> list[list[str]]:
@@ -382,7 +383,7 @@ def _requires_remote_deploy(changed_paths: list[str]) -> bool:
 def _run_sync_commands(changed_paths: list[str]) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for command in _agent_sync_commands(changed_paths):
-        results.append(_subprocess_result(command))
+        results.append(_subprocess_result(command, cwd=BACKEND_ROOT))
         if not results[-1]["success"]:
             break
     return results
@@ -1108,7 +1109,36 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
 
     changed_paths = [change["path"] for change in applied_changes if change.get("applied")]
     compile_result = _python_compile(changed_paths)
-    sync_results = _run_sync_commands(changed_paths)
+    sync_commands = _agent_sync_commands(changed_paths)
+    sync_results: list[dict[str, Any]] = []
+    if sync_commands:
+        _append_event(
+            pipeline_id,
+            "agent_sync_started",
+            "Running update_agent.sh for backend/agents changes.",
+            iteration=iteration_number,
+            changed_paths=changed_paths,
+        )
+        sync_results = _run_sync_commands(changed_paths)
+        if sync_results and not sync_results[-1]["success"]:
+            sync_result = sync_results[-1]
+            _append_event(
+                pipeline_id,
+                "agent_sync_failed",
+                "update_agent.sh failed after applying the fix plan.",
+                iteration=iteration_number,
+                changed_paths=changed_paths,
+                stdout=sync_result.get("stdout"),
+                stderr=sync_result.get("stderr"),
+            )
+        else:
+            _append_event(
+                pipeline_id,
+                "agent_sync_finished",
+                "update_agent.sh completed successfully.",
+                iteration=iteration_number,
+                changed_paths=changed_paths,
+            )
     apply_payload = {
         "applied_changes": applied_changes,
         "compile_result": compile_result,
@@ -1146,9 +1176,16 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
 
     add_result = _git_add(changed_paths)
     if not add_result["success"]:
+        git_result_path = _iteration_dir(pipeline_id, iteration_number) / "git_result.json"
+        git_result_path.write_text(
+            json.dumps({"checkout": checkout_result, "add": add_result}, indent=2),
+            encoding="utf-8",
+        )
+        iteration["git_result_path"] = str(git_result_path)
+        add_failure_detail = (add_result.get("stderr") or add_result.get("stdout") or "unknown git add error").strip()
         _mark_failed(
             pipeline_id,
-            "git add failed for the applied paths.",
+            f"git add failed for the applied paths ({', '.join(changed_paths)}): {add_failure_detail}",
             stage="committing",
             manifest=manifest,
         )
