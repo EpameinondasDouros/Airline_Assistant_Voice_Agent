@@ -142,6 +142,8 @@ def _task_runtime_event_message(event: dict[str, Any]) -> str | None:
         if root_cause:
             parts.append(f"root cause: {root_cause}")
         return " | ".join(parts)
+    if event_type == "refinement_gate":
+        return str(event.get("message") or "Refinement gate evaluated.")
     if event_type == "elevenlabs_analysis":
         title = str(event.get("call_summary_title") or "").strip()
         summary = str(event.get("transcript_summary") or "").strip()
@@ -174,6 +176,9 @@ def _task_runtime_event_message(event: dict[str, Any]) -> str | None:
         return f"{prefix}{title or detail}".strip() or None
     if event_type == "evaluation_error":
         return f"Evaluation failed for {task_slug or 'task'}: {event.get('error') or 'unknown error'}"
+    if event_type == "refinement_error":
+        stage = str(event.get("stage") or "refinement")
+        return f"Refinement failed during {stage} for {task_slug or 'task'}: {event.get('error') or 'unknown error'}"
     if event_type == "run_started":
         return f"Test run started for {event.get('task_count') or 0} task(s)."
     if event_type == "run_finished":
@@ -499,6 +504,10 @@ def _iteration_result_from_artifact(artifact_path: Path) -> dict[str, Any]:
         "artifact_path": str(artifact_path),
         "overall_score": verdict.get("overall_score"),
         "goal_achieved": verdict.get("goal_achieved"),
+        "criterion_scores": verdict.get("criterion_scores") or [],
+        "criteria_below_target": payload.get("criteria_below_target") or [],
+        "min_criterion_score": payload.get("min_criterion_score"),
+        "needs_refinement": payload.get("needs_refinement"),
         "root_cause_category": root_cause.get("root_cause_category"),
         "verdict": verdict.get("verdict"),
     }
@@ -510,15 +519,18 @@ def _all_tasks_meet_threshold(task_results: list[dict[str, Any]], target_score: 
     for result in task_results:
         if not result.get("goal_achieved"):
             return False
-        if int(result.get("overall_score") or 0) < target_score:
+        if result.get("needs_refinement") is True:
+            return False
+        if result.get("min_criterion_score") is not None and int(result.get("min_criterion_score") or 0) < target_score:
             return False
     return True
 
 
-def _artifact_priority(result: dict[str, Any]) -> tuple[int, int]:
+def _artifact_priority(result: dict[str, Any]) -> tuple[int, int, int]:
     goal_penalty = 0 if result.get("goal_achieved") else -1
+    min_criterion_score = int(result.get("min_criterion_score") or 0)
     score = int(result.get("overall_score") or 0)
-    return (goal_penalty, score)
+    return (goal_penalty, min_criterion_score, score)
 
 
 def _select_refinement_target(task_results: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -820,6 +832,8 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
             quiet_window_seconds=2.0,
             live_output=False,
             review_model=manifest["review_model"],
+            target_score=int(manifest["target_score"]),
+            include_refinement=False,
             output_dir=iteration_dir,
             event_sink=_pipeline_task_event_sink(pipeline_id, iteration_number, task_slug),
         )
@@ -828,11 +842,19 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
         _append_event(
             pipeline_id,
             "task_finished",
-            f"Task {task_slug} scored {result.get('overall_score')}/10.",
+            (
+                f"Task {task_slug} scored {result.get('overall_score')}/10"
+                + (
+                    f" with minimum criterion {result.get('min_criterion_score')}/10."
+                    if result.get("min_criterion_score") is not None
+                    else "."
+                )
+            ),
             iteration=iteration_number,
             task=task_slug,
             overall_score=result.get("overall_score"),
             goal_achieved=result.get("goal_achieved"),
+            needs_refinement=result.get("needs_refinement"),
         )
 
     iteration["task_results"] = task_results
@@ -879,68 +901,45 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
     )
 
     report_path = iteration_dir / "refinement_report.json"
-    report, saved_report_path = create_fix_plan_report(
-        selected["artifact_path"],
-        review_model=manifest["review_model"],
-        fixer_model=manifest["fixer_model"],
-        report_path=report_path,
-        verbose=False,
-    )
+    selected_payload = _load_json(Path(selected["artifact_path"]))
+    selected_critique = (selected_payload.get("evaluator_verdict") or None)
+    selected_root_cause = selected_payload.get("root_cause") or None
+    try:
+        report, saved_report_path = create_fix_plan_report(
+            selected["artifact_path"],
+            review_model=manifest["review_model"],
+            fixer_model=manifest["fixer_model"],
+            payload=selected_payload,
+            critique=selected_critique,
+            root_cause=selected_root_cause,
+            report_path=report_path,
+            verbose=False,
+        )
+    except Exception as exc:
+        iteration["status"] = "failed"
+        iteration["finished_at"] = _now()
+        iteration["stop_reason"] = "Refinement analysis failed."
+        _append_event(
+            pipeline_id,
+            "refinement_error",
+            f"Refinement failed during {getattr(exc, 'stage', 'refinement')}: {exc}",
+            iteration=iteration_number,
+            task=selected["task_slug"],
+            stage=getattr(exc, "stage", "refinement"),
+            error=str(exc),
+        )
+        _mark_failed(
+            pipeline_id,
+            f"Refinement analysis failed: {exc}",
+            stage="refinement",
+            manifest=manifest,
+        )
+        return False
     iteration["refinement_report_path"] = str(saved_report_path)
     iteration["fix_plan_path"] = str(iteration_dir / "fix_plan.json")
     (iteration_dir / "fix_plan.json").write_text(
         json.dumps(report.fix_plan.model_dump(mode="json"), indent=2),
         encoding="utf-8",
-    )
-    _append_event(
-        pipeline_id,
-        "critique_complete",
-        f"Critique score {report.critique.overall_score}/10 for {selected['task_slug']}.",
-        iteration=iteration_number,
-        task=selected["task_slug"],
-        overall_score=report.critique.overall_score,
-        goal_achieved=report.critique.goal_achieved,
-    )
-    _append_event(
-        pipeline_id,
-        "critic_verdict",
-        report.critique.verdict,
-        iteration=iteration_number,
-        task=selected["task_slug"],
-        overall_score=report.critique.overall_score,
-        goal_achieved=report.critique.goal_achieved,
-        used_tools_correctly=report.critique.used_tools_correctly,
-        answer_quality=report.critique.answer_quality,
-        suggested_next_step=report.critique.suggested_next_step,
-    )
-    for criterion in report.critique.criterion_scores:
-        _append_event(
-            pipeline_id,
-            "critic_criterion",
-            f"{criterion.criterion.replace('_', ' ').title()} {criterion.score}/10 — {criterion.summary}",
-            iteration=iteration_number,
-            task=selected["task_slug"],
-            criterion=criterion.criterion,
-            score=criterion.score,
-            summary=criterion.summary,
-            evidence_quotes=criterion.evidence_quotes,
-        )
-    for finding in report.critique.findings[:3]:
-        _append_event(
-            pipeline_id,
-            "critic_finding",
-            f"{finding.severity.upper()}: {finding.title} — {finding.detail}",
-            iteration=iteration_number,
-            task=selected["task_slug"],
-            severity=finding.severity,
-            title=finding.title,
-        )
-    _append_event(
-        pipeline_id,
-        "critic_next_step",
-        report.critique.suggested_next_step,
-        iteration=iteration_number,
-        task=selected["task_slug"],
     )
     _append_event(
         pipeline_id,

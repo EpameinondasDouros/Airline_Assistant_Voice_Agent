@@ -146,20 +146,26 @@ def create_fix_plan_report(
     model: str | None = None,
     review_model: str | None = None,
     fixer_model: str | None = None,
+    payload: dict | None = None,
+    critique: CritiqueVerdict | dict | None = None,
+    root_cause: RootCauseVerdict | dict | None = None,
     report_path: str | Path | None = None,
     logger: Logger | None = None,
     verbose: bool = False,
 ) -> tuple[RefinementReport, Path]:
     active_logger = logger or _default_logger
     active_logger(f"[1/5] loading artifact: {artifact_path}")
-    payload, plan, critique_data, root_cause_data = generate_fix_plan_from_artifact(
+    loaded_payload, plan, critique_data, root_cause_data = generate_fix_plan_from_artifact(
         artifact_path,
         model=model,
         review_model=review_model,
         fixer_model=fixer_model,
+        critique=critique,
+        root_cause=root_cause,
     )
+    payload = payload or loaded_payload
     task = payload.get("task") or payload.get("scenario") or {}
-    active_logger(f"[2/5] critique complete for task: {task.get('slug')}")
+    active_logger(f"[2/5] refinement analysis ready for task: {task.get('slug')}")
     active_logger(f"[3/5] root cause: {root_cause_data.get('root_cause_category')} | {root_cause_data.get('primary_root_cause')}")
     active_logger(
         "[4/5] generated bounded fix plan with "

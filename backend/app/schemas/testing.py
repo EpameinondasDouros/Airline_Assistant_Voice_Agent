@@ -42,6 +42,7 @@ class TestingRunRead(BaseModel):
 class TestingRunRequest(BaseModel):
     task: str | None = None
     scenario: str | None = None
+    target_score: int = 8
     message_delay: float = 1.0
     response_timeout: float = 20.0
     settle_timeout: float = 6.0
@@ -66,6 +67,10 @@ class TestingPipelineIterationTaskRead(BaseModel):
     artifact_path: str | None = None
     overall_score: int | None = None
     goal_achieved: bool | None = None
+    criterion_scores: list[dict[str, Any]] = Field(default_factory=list)
+    criteria_below_target: list[dict[str, Any]] = Field(default_factory=list)
+    min_criterion_score: int | None = None
+    needs_refinement: bool | None = None
     root_cause_category: str | None = None
     verdict: str | None = None
 

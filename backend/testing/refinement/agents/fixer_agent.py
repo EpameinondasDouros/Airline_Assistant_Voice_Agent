@@ -10,7 +10,7 @@ from .critic import evaluate_artifact, load_artifact
 from .root_cause_evaluator import evaluate_root_cause
 from ..core.artifact_context import compact_elevenlabs_analysis
 from ..core.debug_output import print_agent_json
-from ..core.models import BoundedFixPlan, CritiqueVerdict
+from ..core.models import BoundedFixPlan, CritiqueVerdict, RootCauseVerdict
 from ..core.section_editors import (
     candidate_paths_for_category,
     get_policy,
@@ -57,6 +57,12 @@ Strict rules:
 
 Good fixes are narrow, testable, and directly tied to the diagnosed root cause.
 """
+
+
+class RefinementGenerationError(RuntimeError):
+    def __init__(self, stage: str, message: str) -> None:
+        self.stage = stage
+        super().__init__(message)
 
 
 def _build_agent(model: str) -> Agent[None, BoundedFixPlan]:
@@ -135,21 +141,53 @@ def generate_fix_plan(
     model: str | None = None,
     review_model: str | None = None,
     fixer_model: str | None = None,
+    critique: CritiqueVerdict | dict[str, Any] | None = None,
+    root_cause: RootCauseVerdict | dict[str, Any] | None = None,
 ) -> tuple[BoundedFixPlan, dict[str, Any], dict[str, Any]]:
     resolved_review_model = review_model or model or "openai:gpt-4o-mini"
     resolved_fixer_model = fixer_model or model or resolved_review_model
-    critique = evaluate_artifact(payload, model=resolved_review_model)
-    root_cause = evaluate_root_cause(payload, critique=critique, model=resolved_review_model)
-    agent = _build_agent(resolved_fixer_model)
-    result = agent.run_sync(
-        _artifact_prompt(
-            payload,
-            critique.model_dump(mode="json"),
-            root_cause.model_dump(mode="json"),
+
+    try:
+        critique_verdict = (
+            critique
+            if isinstance(critique, CritiqueVerdict)
+            else CritiqueVerdict.model_validate(critique)
+            if critique is not None
+            else evaluate_artifact(payload, model=resolved_review_model)
         )
-    )
+    except Exception as exc:  # pragma: no cover - runtime integration failure path
+        raise RefinementGenerationError("critic", str(exc)) from exc
+
+    try:
+        root_cause_verdict = (
+            root_cause
+            if isinstance(root_cause, RootCauseVerdict)
+            else RootCauseVerdict.model_validate(root_cause)
+            if root_cause is not None
+            else evaluate_root_cause(payload, critique=critique_verdict, model=resolved_review_model)
+        )
+    except Exception as exc:  # pragma: no cover - runtime integration failure path
+        raise RefinementGenerationError("root_cause", str(exc)) from exc
+
+    agent = _build_agent(resolved_fixer_model)
+
+    try:
+        result = agent.run_sync(
+            _artifact_prompt(
+                payload,
+                critique_verdict.model_dump(mode="json"),
+                root_cause_verdict.model_dump(mode="json"),
+            )
+        )
+    except Exception as exc:  # pragma: no cover - runtime integration failure path
+        raise RefinementGenerationError("fixer_agent", str(exc)) from exc
+
     print_agent_json("fixer_agent", result.output)
-    return result.output, critique.model_dump(mode="json"), root_cause.model_dump(mode="json")
+    return (
+        result.output,
+        critique_verdict.model_dump(mode="json"),
+        root_cause_verdict.model_dump(mode="json"),
+    )
 
 
 def generate_fix_plan_from_artifact(
@@ -158,6 +196,8 @@ def generate_fix_plan_from_artifact(
     model: str | None = None,
     review_model: str | None = None,
     fixer_model: str | None = None,
+    critique: CritiqueVerdict | dict[str, Any] | None = None,
+    root_cause: RootCauseVerdict | dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], BoundedFixPlan, dict[str, Any], dict[str, Any]]:
     payload = load_artifact(artifact_path)
     plan, critique, root_cause = generate_fix_plan(
@@ -165,5 +205,7 @@ def generate_fix_plan_from_artifact(
         model=model,
         review_model=review_model,
         fixer_model=fixer_model,
+        critique=critique,
+        root_cause=root_cause,
     )
     return payload, plan, critique, root_cause

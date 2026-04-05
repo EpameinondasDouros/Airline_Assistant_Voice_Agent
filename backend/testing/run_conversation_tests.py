@@ -35,6 +35,9 @@ Role = Literal["user", "agent", "user_transcript"]
 BOOKING_REFERENCE_PATTERN = re.compile(r"\b[A-Z0-9]{8,12}\b")
 SIMPLE_CLOSING_REPLY = "Thank you."
 DECLINE_CLOSING_REPLY = "No, that's all, thank you."
+ANSI_RESET = "\033[0m"
+ANSI_YELLOW = "\033[93m"
+ANSI_BLUE = "\033[94m"
 CLOSING_INVITATION_PATTERNS = (
     "would you like",
     "do you want",
@@ -56,6 +59,7 @@ DIRECT_RESPONSE_PATTERNS = (
     "which",
     "tell me",
 )
+DEFAULT_TARGET_SCORE = 8
 
 
 @dataclass
@@ -96,8 +100,13 @@ class TranscriptRecorder:
                 )
             )
             self._last_entry_ts = time.time()
-        if self._live_output:
-            print(f"{role}: {text}")
+        if self._live_output and role != "user_transcript":
+            color = ANSI_YELLOW if role == "user" else ANSI_BLUE if role == "agent" else ""
+            prefix = f"{role}: "
+            if color:
+                print(f"{color}{prefix}{text}{ANSI_RESET}")
+            else:
+                print(f"{prefix}{text}")
         if self._event_sink:
             self._event_sink(
                 {
@@ -739,6 +748,40 @@ def _emit_event(event_sink: Callable[[dict], None] | None, event_type: str, **pa
     event_sink({"type": event_type, **payload})
 
 
+def _criteria_below_target(criterion_scores: list[object], target_score: int) -> list[dict[str, object]]:
+    below_target: list[dict[str, object]] = []
+    for criterion in criterion_scores:
+        criterion_name = getattr(criterion, "criterion", None) or getattr(criterion, "get", lambda _key, _default=None: None)("criterion")
+        score = getattr(criterion, "score", None) if hasattr(criterion, "score") else None
+        if score is None and hasattr(criterion, "get"):
+            score = criterion.get("score")
+        summary = getattr(criterion, "summary", None) if hasattr(criterion, "summary") else None
+        if summary is None and hasattr(criterion, "get"):
+            summary = criterion.get("summary")
+        if score is None:
+            continue
+        if int(score) < target_score:
+            below_target.append(
+                {
+                    "criterion": criterion_name,
+                    "score": int(score),
+                    "summary": summary,
+                }
+            )
+    return below_target
+
+
+def _min_criterion_score(criterion_scores: list[object]) -> int | None:
+    scores: list[int] = []
+    for criterion in criterion_scores:
+        score = getattr(criterion, "score", None) if hasattr(criterion, "score") else None
+        if score is None and hasattr(criterion, "get"):
+            score = criterion.get("score")
+        if score is not None:
+            scores.append(int(score))
+    return min(scores) if scores else None
+
+
 BOOKING_PROFILES: list[dict[str, object]] = [
     {
         "profile_name": "ath_jfk_business",
@@ -937,6 +980,8 @@ def run_task(
     quiet_window_seconds: float,
     live_output: bool,
     review_model: str,
+    target_score: int = DEFAULT_TARGET_SCORE,
+    include_refinement: bool = True,
     booking_profile_index: int = 0,
     output_dir: Path | None = None,
     event_sink: Callable[[dict], None] | None = None,
@@ -1184,13 +1229,34 @@ def run_task(
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     refinement_report_path = None
+    payload["evaluation_target_score"] = target_score
+    payload["evaluation_error"] = None
+    payload["refinement_error"] = None
+    payload["root_cause"] = None
+    payload["fix_plan"] = None
+    payload["needs_refinement"] = None
+    payload["criteria_below_target"] = []
+    payload["min_criterion_score"] = None
+
+    critique = None
     try:
         _emit_event(event_sink, "evaluation_started", task=task.slug)
         critique = evaluate_artifact(payload, model=review_model)
-        root_cause = evaluate_root_cause(payload, critique=critique, model=review_model)
+    except Exception as exc:  # pragma: no cover - runtime integration failure path
+        payload["evaluator_verdict"] = None
+        payload["evaluation_error"] = str(exc)
+        _emit_event(event_sink, "evaluation_error", task=task.slug, error=str(exc))
+    else:
+        criterion_scores = critique.criterion_scores or []
+        criteria_below_target = _criteria_below_target(criterion_scores, target_score)
+        min_criterion_score = _min_criterion_score(criterion_scores)
+        needs_refinement = (not critique.goal_achieved) or bool(criteria_below_target)
+
         payload["evaluator_verdict"] = critique.model_dump(mode="json")
-        payload["root_cause"] = root_cause.model_dump(mode="json")
-        payload["evaluation_error"] = None
+        payload["criteria_below_target"] = criteria_below_target
+        payload["min_criterion_score"] = min_criterion_score
+        payload["needs_refinement"] = needs_refinement
+
         _emit_event(
             event_sink,
             "evaluation_complete",
@@ -1201,8 +1267,6 @@ def run_task(
             verdict=critique.verdict,
             answer_quality=critique.answer_quality,
             suggested_next_step=critique.suggested_next_step,
-            root_cause_category=root_cause.root_cause_category,
-            primary_root_cause=root_cause.primary_root_cause,
         )
         elevenlabs_analysis = payload.get("elevenlabs_analysis") or {}
         _emit_event(
@@ -1215,7 +1279,7 @@ def run_task(
             termination_reason=elevenlabs_analysis.get("termination_reason"),
             conversation_status=elevenlabs_analysis.get("conversation_status"),
         )
-        for criterion in critique.criterion_scores:
+        for criterion in criterion_scores:
             _emit_event(
                 event_sink,
                 "evaluation_criterion",
@@ -1235,60 +1299,98 @@ def run_task(
                 detail=finding.detail,
             )
 
-        if not payload.get("evaluation_error"):
-            refinement_report, refinement_report_path = create_fix_plan_report(
-                output_path,
-                review_model=review_model,
-                fixer_model=review_model,
-                report_path=output_path.with_name(f"{task.slug}__refinement.json"),
-                verbose=False,
-            )
-            payload["refinement_report_path"] = str(refinement_report_path)
-            payload["fix_plan_path"] = str(refinement_report_path.with_name("fix_plan.json"))
-            payload["root_cause"] = refinement_report.root_cause.model_dump(mode="json")
-            payload["fix_plan"] = refinement_report.fix_plan.model_dump(mode="json")
-            _emit_event(
-                event_sink,
-                "root_cause_complete",
-                task=task.slug,
-                category=refinement_report.root_cause.root_cause_category,
-                summary=refinement_report.root_cause.primary_root_cause,
-                confidence=refinement_report.root_cause.confidence,
-            )
-            _emit_event(
-                event_sink,
-                "fix_plan_ready",
-                task=task.slug,
-                edit_count=len(refinement_report.fix_plan.section_edits),
-            )
-            _emit_event(
-                event_sink,
-                "fixer_summary",
-                task=task.slug,
-                summary=refinement_report.fix_plan.summary,
-                verification_command=refinement_report.fix_plan.verification_command,
-            )
-            _emit_event(
-                event_sink,
-                "fixer_expected_improvement",
-                task=task.slug,
-                expected_improvement=refinement_report.fix_plan.expected_improvement,
-            )
-            for edit in refinement_report.fix_plan.section_edits[:5]:
+        if needs_refinement:
+            if not critique.goal_achieved:
+                gate_message = (
+                    f"Refinement required: goal not achieved; "
+                    f"minimum criterion score {min_criterion_score if min_criterion_score is not None else 'n/a'}/10 against target {target_score}/10."
+                )
+            else:
+                missed = ", ".join(
+                    f"{item.get('criterion')} scored {item.get('score')}/10"
+                    for item in criteria_below_target
+                )
+                gate_message = f"Refinement required: {missed}, below target {target_score}/10."
+        else:
+            gate_message = f"Evaluation passed all criterion thresholds at target {target_score}/10; no refinement needed."
+
+        _emit_event(
+            event_sink,
+            "refinement_gate",
+            task=task.slug,
+            message=gate_message,
+            target_score=target_score,
+            needs_refinement=needs_refinement,
+            criteria_below_target=criteria_below_target,
+            min_criterion_score=min_criterion_score,
+        )
+
+        if include_refinement and needs_refinement:
+            try:
+                root_cause = evaluate_root_cause(payload, critique=critique, model=review_model)
+                payload["root_cause"] = root_cause.model_dump(mode="json")
+                refinement_report, refinement_report_path = create_fix_plan_report(
+                    output_path,
+                    review_model=review_model,
+                    fixer_model=review_model,
+                    payload=payload,
+                    critique=critique,
+                    root_cause=root_cause,
+                    report_path=output_path.with_name(f"{task.slug}__refinement.json"),
+                    verbose=False,
+                )
+            except Exception as exc:  # pragma: no cover - runtime integration failure path
+                payload["refinement_error"] = str(exc)
+                error_stage = getattr(exc, "stage", "refinement")
                 _emit_event(
                     event_sink,
-                    "fixer_edit",
+                    "refinement_error",
                     task=task.slug,
-                    path=edit.path,
-                    selector_type=edit.selector_type,
-                    selector_value=edit.selector_value,
-                    reason=edit.reason,
-            )
-    except Exception as exc:  # pragma: no cover - runtime integration failure path
-        payload["evaluator_verdict"] = None
-        payload["root_cause"] = None
-        payload["evaluation_error"] = str(exc)
-        _emit_event(event_sink, "evaluation_error", task=task.slug, error=str(exc))
+                    stage=error_stage,
+                    error=str(exc),
+                )
+            else:
+                payload["refinement_report_path"] = str(refinement_report_path)
+                payload["fix_plan_path"] = str(refinement_report_path.with_name("fix_plan.json"))
+                payload["root_cause"] = refinement_report.root_cause.model_dump(mode="json")
+                payload["fix_plan"] = refinement_report.fix_plan.model_dump(mode="json")
+                _emit_event(
+                    event_sink,
+                    "root_cause_complete",
+                    task=task.slug,
+                    category=refinement_report.root_cause.root_cause_category,
+                    summary=refinement_report.root_cause.primary_root_cause,
+                    confidence=refinement_report.root_cause.confidence,
+                )
+                _emit_event(
+                    event_sink,
+                    "fix_plan_ready",
+                    task=task.slug,
+                    edit_count=len(refinement_report.fix_plan.section_edits),
+                )
+                _emit_event(
+                    event_sink,
+                    "fixer_summary",
+                    task=task.slug,
+                    summary=refinement_report.fix_plan.summary,
+                    verification_command=refinement_report.fix_plan.verification_command,
+                )
+                _emit_event(
+                    event_sink,
+                    "fixer_expected_improvement",
+                    task=task.slug,
+                    expected_improvement=refinement_report.fix_plan.expected_improvement,
+                )
+                for edit in refinement_report.fix_plan.section_edits[:5]:
+                    _emit_event(
+                        event_sink,
+                        "fixer_edit",
+                        task=task.slug,
+                        path=edit.path,
+                        selector_type=edit.selector_type,
+                        selector_value=edit.selector_value,
+                        reason=edit.reason,
+                    )
 
     if refinement_report_path is not None:
         payload["refinement_report_path"] = str(refinement_report_path)
@@ -1304,6 +1406,7 @@ def main() -> None:
     parser.add_argument("--response-timeout", type=float, default=20.0, help="How long to wait for agent output after each message.")
     parser.add_argument("--settle-timeout", type=float, default=6.0, help="How long to wait for final agent output after the last message.")
     parser.add_argument("--quiet-window", type=float, default=2.0, help="How long the conversation must stay idle before the current turn is considered complete.")
+    parser.add_argument("--target-score", type=int, default=DEFAULT_TARGET_SCORE, help="Per-criterion evaluation threshold that determines whether refinement is required.")
     parser.add_argument("--quiet", action="store_true", help="Disable live console printing while the task runs.")
     parser.add_argument("--stream-events", action="store_true", help="Emit structured JSON lines for live streaming consumers.")
     parser.add_argument("--review-model", default="openai:gpt-4o-mini", help="Model used for the customer simulator and post-run evaluation.")
@@ -1335,6 +1438,7 @@ def main() -> None:
             quiet_window_seconds=args.quiet_window,
             live_output=not args.quiet,
             review_model=args.review_model,
+            target_score=args.target_score,
             booking_profile_index=args.booking_profile,
             event_sink=emit_event if args.stream_events else None,
         )

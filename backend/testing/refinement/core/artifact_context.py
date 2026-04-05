@@ -11,6 +11,7 @@ def compact_elevenlabs_analysis(payload: dict[str, Any]) -> dict[str, Any]:
         "call_successful": analysis.get("call_successful"),
         "call_summary_title": analysis.get("call_summary_title"),
         "transcript_summary": analysis.get("transcript_summary"),
+        "transcript": conversation.get("transcript") or [],
         "termination_reason": metadata.get("termination_reason"),
         "conversation_status": conversation.get("status"),
     }

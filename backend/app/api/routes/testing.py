@@ -181,6 +181,8 @@ def _build_run_command(request: TestingRunRequest, selected_task: str | None) ->
         "-m",
         "testing.run_conversation_tests",
         "--quiet",
+        "--target-score",
+        str(request.target_score),
         "--message-delay",
         str(request.message_delay),
         "--response-timeout",
