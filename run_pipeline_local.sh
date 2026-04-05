@@ -313,10 +313,16 @@ for idx, event in enumerate(events[start:], start=start + 1):
     stage = stage_for(event_type)
     iteration = event.get("iteration")
     iteration_text = "" if iteration is None else str(iteration)
-    event_payload = event.get("event_payload") or {}
-    role = str(event.get("role") or event_payload.get("role") or "")
+    payload = event.get("payload") or {}
+    runtime_payload = payload.get("event_payload") or {}
+    role = str(event.get("role") or payload.get("role") or runtime_payload.get("role") or "")
     message_json = json.dumps(str(event.get("message") or ""))
-    transcript_json = json.dumps(event.get("transcript") or event_payload.get("transcript") or [])
+    transcript_json = json.dumps(
+        event.get("transcript")
+        or payload.get("transcript")
+        or runtime_payload.get("transcript")
+        or []
+    )
     details = {}
     for key in (
         "task",
@@ -360,6 +366,10 @@ for idx, event in enumerate(events[start:], start=start + 1):
         "blocked_paths",
     ):
         value = event.get(key)
+        if value in (None, "", [], {}):
+            value = payload.get(key)
+        if value in (None, "", [], {}):
+            value = runtime_payload.get(key)
         if value not in (None, "", [], {}):
             details[key] = value
     details_json = json.dumps(details)
