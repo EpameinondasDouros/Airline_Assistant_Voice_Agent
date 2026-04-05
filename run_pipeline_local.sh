@@ -47,25 +47,40 @@ Options:
 EOF
 }
 
+require_arg() {
+  local flag="$1"
+  local value="${2:-}"
+  if [[ -z "$value" || "$value" == --* ]]; then
+    echo "$flag requires a value." >&2
+    usage >&2
+    exit 1
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --task)
+      require_arg "$1" "${2:-}"
       TASK_SLUG="${2:-}"
       shift 2
       ;;
     --target)
+      require_arg "$1" "${2:-}"
       TARGET_SCORE="${2:-}"
       shift 2
       ;;
     --iterations)
+      require_arg "$1" "${2:-}"
       MAX_ITERATIONS="${2:-}"
       shift 2
       ;;
     --review-model)
+      require_arg "$1" "${2:-}"
       REVIEW_MODEL="${2:-}"
       shift 2
       ;;
     --fixer-model)
+      require_arg "$1" "${2:-}"
       FIXER_MODEL="${2:-}"
       shift 2
       ;;
@@ -78,14 +93,17 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --pipeline-api)
+      require_arg "$1" "${2:-}"
       PIPELINE_API="${2:-}"
       shift 2
       ;;
     --product-api)
+      require_arg "$1" "${2:-}"
       PRODUCT_API="${2:-}"
       shift 2
       ;;
     --poll-interval)
+      require_arg "$1" "${2:-}"
       POLL_INTERVAL="${2:-}"
       shift 2
       ;;
