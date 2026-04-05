@@ -108,6 +108,13 @@ def selector_hints(path: str, text: str) -> list[str]:
     return []
 
 
+def _normalize_markdown_heading_selector(selector_value: str) -> str:
+    stripped = selector_value.strip()
+    if stripped.startswith("#"):
+        stripped = stripped.lstrip("#").strip()
+    return stripped
+
+
 def _locate_python_symbol(text: str, selector_value: str) -> tuple[int, int]:
     tree = ast.parse(text)
     target: ast.AST | None = None
@@ -132,6 +139,7 @@ def _locate_python_symbol(text: str, selector_value: str) -> tuple[int, int]:
 
 
 def _locate_markdown_heading(text: str, selector_value: str) -> tuple[int, int]:
+    normalized_selector = _normalize_markdown_heading_selector(selector_value)
     lines = text.splitlines(keepends=True)
     heading_line_index: int | None = None
     heading_level: int | None = None
@@ -141,14 +149,14 @@ def _locate_markdown_heading(text: str, selector_value: str) -> tuple[int, int]:
             continue
         level = len(stripped) - len(stripped.lstrip("#"))
         heading_text = stripped[level:].strip()
-        if heading_text == selector_value:
+        if heading_text == normalized_selector:
             if heading_line_index is not None:
-                raise ValueError(f"Multiple markdown headings matched: {selector_value}")
+                raise ValueError(f"Multiple markdown headings matched: {normalized_selector}")
             heading_line_index = index
             heading_level = level
 
     if heading_line_index is None or heading_level is None:
-        raise ValueError(f"Markdown heading not found: {selector_value}")
+        raise ValueError(f"Markdown heading not found: {normalized_selector}")
 
     end_index = len(lines)
     for index in range(heading_line_index + 1, len(lines)):

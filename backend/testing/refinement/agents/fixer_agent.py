@@ -47,7 +47,7 @@ Strict rules:
 - Every proposed path must stay inside backend/app or backend/agents.
 - Each edit must use one selector_type: python_symbol, markdown_heading, or text_between.
 - For python_symbol, selector_value must be an existing top-level function, class, or Class.method.
-- For markdown_heading, selector_value must match an existing markdown heading.
+- For markdown_heading, selector_value must be the heading text only, without leading # characters, and it must match an existing markdown heading.
 - For text_between, selector_value must be START|END using exact unique anchor text from the file.
 - For python_symbol, replacement must contain the full replacement symbol block, including the def/class line.
 - For markdown_heading, replacement must contain the full replacement section, including the heading line.
