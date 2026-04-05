@@ -9,6 +9,7 @@ RESET_COLOR=$'\033[0m'
 GRAY_COLOR=$'\033[90m'
 YELLOW_COLOR=$'\033[93m'
 BLUE_COLOR=$'\033[1;96m'
+GREEN_COLOR=$'\033[1;92m'
 
 TASK_SLUG=""
 TARGET_SCORE=8
@@ -308,16 +309,16 @@ PY
     fi
 
     if [[ "$event_type" == "elevenlabs_analysis" ]]; then
-      print_colored_block "$BLUE_COLOR" "" "$message"
+      print_colored_block "$GREEN_COLOR" "" "$message"
       if [[ -n "$transcript_json" && "$transcript_json" != "[]" ]]; then
-        print_colored_step "$BLUE_COLOR" "ElevenLabs transcript:"
+        print_colored_step "$GREEN_COLOR" "ElevenLabs transcript:"
         while IFS="$field_sep" read -r item_kind transcript_role transcript_text; do
           [[ -z "$item_kind" ]] && continue
           case "$item_kind" in
             turn)
               case "$transcript_role" in
                 agent)
-                  print_colored_block "$BLUE_COLOR" "Agent: " "$transcript_text"
+                  print_colored_block "$GREEN_COLOR" "Agent: " "$transcript_text"
                   ;;
                 user|user_transcript)
                   print_colored_block "$YELLOW_COLOR" "User: " "$transcript_text"
@@ -328,10 +329,10 @@ PY
               esac
               ;;
             tool_call)
-              print_colored_block "$BLUE_COLOR" "Tool call: " "$transcript_text"
+              print_colored_block "$GREEN_COLOR" "Tool call: " "$transcript_text"
               ;;
             tool_result)
-              print_colored_block "$BLUE_COLOR" "Tool result: " "$transcript_text"
+              print_colored_block "$GREEN_COLOR" "Tool result: " "$transcript_text"
               ;;
           esac
         done < <(
