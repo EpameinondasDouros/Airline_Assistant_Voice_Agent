@@ -8,7 +8,7 @@ PRODUCT_API_DEFAULT="${VITE_API_BASE_URL:-https://airlineassistantvoiceagent.up.
 RESET_COLOR=$'\033[0m'
 GRAY_COLOR=$'\033[90m'
 YELLOW_COLOR=$'\033[93m'
-BLUE_COLOR=$'\033[1;38;5;39m'
+BLUE_COLOR=$'\033[1;96m'
 
 TASK_SLUG=""
 TARGET_SCORE=8
@@ -277,10 +277,11 @@ for idx, event in enumerate(events[start:], start=start + 1):
     stage = stage_for(event_type)
     iteration = event.get("iteration")
     iteration_text = "" if iteration is None else str(iteration)
-    payload = event.get("event_payload") or {}
-    role = str(event.get("role") or payload.get("role") or "")
+    payload = event.get("payload") or {}
+    event_payload = payload.get("event_payload") or {}
+    role = str(event.get("role") or payload.get("role") or event_payload.get("role") or "")
     message_json = json.dumps(str(event.get("message") or ""))
-    transcript_json = json.dumps(payload.get("transcript") or [])
+    transcript_json = json.dumps(payload.get("transcript") or event_payload.get("transcript") or [])
     print(f"{idx}\x1f{stage}\x1f{iteration_text}\x1f{event_type}\x1f{role}\x1f{message_json}\x1f{transcript_json}")
 PY
 
@@ -297,7 +298,7 @@ PY
       fi
       LAST_STAGE_KEY="$stage_key"
     fi
-    if [[ "$event_type" == "transcript_turn" && "$role" == "user" ]]; then
+    if [[ "$event_type" == "transcript_turn" && ( "$role" == "user" || "$role" == "user_transcript" ) ]]; then
       continue
     fi
 
@@ -307,17 +308,17 @@ PY
     fi
 
     if [[ "$event_type" == "elevenlabs_analysis" ]]; then
-      print_colored_step "$BLUE_COLOR" "$message"
+      print_colored_block "$BLUE_COLOR" "" "$message"
       if [[ -n "$transcript_json" && "$transcript_json" != "[]" ]]; then
         print_colored_step "$BLUE_COLOR" "ElevenLabs transcript:"
         while IFS="$field_sep" read -r transcript_role transcript_text; do
           [[ -z "$transcript_role" ]] && continue
           case "$transcript_role" in
             agent)
-              print_colored_block "$BLUE_COLOR" "Transcript: " "$transcript_text"
+              print_colored_block "$BLUE_COLOR" "Agent: " "$transcript_text"
               ;;
             user|user_transcript)
-              print_colored_block "$YELLOW_COLOR" "Transcript: " "$transcript_text"
+              print_colored_block "$YELLOW_COLOR" "User: " "$transcript_text"
               ;;
             *)
               print_colored_block "$GRAY_COLOR" "Transcript: " "$transcript_text"
@@ -331,7 +332,7 @@ import os
 field_sep = "\x1f"
 for item in json.loads(os.environ["TRANSCRIPT_JSON"]):
     role = str(item.get("role") or "")
-    text = " ".join(str(item.get("message") or item.get("text") or "").split())
+    text = str(item.get("message") or item.get("text") or "").strip()
     if text:
         print(f"{role}{field_sep}{text}")
 PY
@@ -342,11 +343,9 @@ PY
 
     if [[ -n "$message" ]]; then
       if [[ "$event_type" == "user_turn" || "$event_type" == "customer_reply" ]]; then
-        print_colored_block "$YELLOW_COLOR" "User: " "$message"
+        print_colored_block "$YELLOW_COLOR" "" "$message"
       elif [[ "$event_type" == "transcript_turn" && "$role" == "agent" ]]; then
-        print_colored_block "$BLUE_COLOR" "Agent: " "$message"
-      elif [[ "$event_type" == "transcript_turn" && "$role" == "user_transcript" ]]; then
-        print_colored_block "$YELLOW_COLOR" "User: " "$message"
+        print_colored_block "$BLUE_COLOR" "" "$message"
       else
         print_colored_block "$GRAY_COLOR" "" "$message"
       fi

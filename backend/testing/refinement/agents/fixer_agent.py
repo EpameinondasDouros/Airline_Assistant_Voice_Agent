@@ -56,6 +56,12 @@ Strict rules:
 - Do not propose edits outside backend/app or backend/agents.
 
 Good fixes are narrow, testable, and directly tied to the diagnosed root cause.
+
+Important behavioral-fix rule:
+- If the root cause is prompt_based, or the suggested fix type is prompt_change or task_rubric_change, you must propose at least one bounded edit to the active agent prompt or task rubric instead of returning zero edits.
+- For behavioral issues, prefer updating backend/agents/prompts/flight_booking_agent.md or the smallest relevant markdown prompt file.
+- The edit should directly change the agent's instruction, closing language, clarification behavior, or response strategy so the observed behavior is more likely to improve.
+- Do not describe the fix as code-only when the root cause is behavioral unless there is a concrete code change required in addition to the prompt update.
 """
 
 
@@ -128,6 +134,11 @@ def _artifact_prompt(
         "root_cause": root_cause,
         "candidate_files": _select_candidate_files(root_cause),
         "scope_rule": "Only propose edits to files inside backend/app or backend/agents.",
+        "behavioral_fix_rule": (
+            "If the root cause category is prompt_based, or the suggested fix type is prompt_change "
+            "or task_rubric_change, include at least one edit to the active agent prompt or rubric. "
+            "Do not return zero edits for a behavioral problem if a prompt file is available."
+        ),
     }
     return (
         "Produce a bounded fix plan for this failing or weak task artifact.\n\n"
