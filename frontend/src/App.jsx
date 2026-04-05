@@ -2001,7 +2001,6 @@ function App() {
                   {pipelineTimeline.globalStartEvents.length ? (
                     <section className="pipeline-phase-group">
                       <div className="pipeline-phase-group__header">
-                        <span className="eyebrow">Pipeline</span>
                         <strong>Start Pipeline</strong>
                       </div>
                       <div className="pipeline-event-list">
@@ -2033,7 +2032,7 @@ function App() {
                         <div className="pipeline-iteration-card__header">
                           <div>
                             <span className="eyebrow">Iteration {group.iterationNumber}</span>
-                            <strong>{group.record?.status || "running"}</strong>
+                            <strong>{formatSeatClass(group.record?.status || "running")}</strong>
                           </div>
                           <button
                             type="button"
@@ -2051,7 +2050,6 @@ function App() {
                           {group.phases.map((phase) => (
                             <section className="pipeline-phase-group" key={`${group.iterationNumber}-${phase.key}`}>
                               <div className="pipeline-phase-group__header">
-                                <span className="eyebrow">Phase</span>
                                 <strong>{phase.label}</strong>
                               </div>
                               <div className="pipeline-event-list">
@@ -2093,7 +2091,6 @@ function App() {
                   {pipelineTimeline.globalFinalEvents.length ? (
                     <section className="pipeline-phase-group">
                       <div className="pipeline-phase-group__header">
-                        <span className="eyebrow">Pipeline</span>
                         <strong>Final Summary</strong>
                       </div>
                       <div className="pipeline-event-list">
