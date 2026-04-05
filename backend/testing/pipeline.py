@@ -866,13 +866,13 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
         _append_event(
             pipeline_id,
             "iteration_complete",
-            f"Iteration {iteration_number} met the target score for all selected tasks.",
+            f"Iteration {iteration_number} met the criterion threshold for all selected tasks.",
             iteration=iteration_number,
             target_score=manifest["target_score"],
         )
         _mark_completed(
             pipeline_id,
-            f"All selected tasks reached goal achieved and score >= {manifest['target_score']}.",
+            f"All selected tasks reached goal achieved and all criterion scores >= {manifest['target_score']}.",
             manifest=manifest,
         )
         return False

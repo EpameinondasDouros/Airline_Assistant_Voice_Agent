@@ -211,15 +211,15 @@ def stage_for(event_type: str) -> str:
         "evaluation_criterion",
         "evaluation_finding",
         "evaluation_error",
-        "refinement_started",
-        "critique_complete",
-        "critic_verdict",
-        "critic_criterion",
-        "critic_finding",
-        "critic_next_step",
-        "root_cause_complete",
+        "refinement_gate",
     }:
         return "Evaluation"
+    if event_type in {
+        "refinement_started",
+        "root_cause_complete",
+        "refinement_error",
+    }:
+        return "Refinement Analysis"
     if event_type in {
         "fix_plan_ready",
         "fixer_summary",

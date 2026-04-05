@@ -308,19 +308,19 @@ function App() {
   const visibleFlights = useMemo(() => uniqueFlights(flights), [flights]);
   const refinementSections = useMemo(() => {
     const evaluation = [];
-    const rootCause = [];
+    const refinementAnalysis = [];
     const fixPlan = [];
     const fixerEdits = [];
     const completion = [];
 
     for (const event of testingRefinementEvents) {
       if (!event) continue;
-      if (event.kind === "evaluation" || event.kind === "criterion" || event.kind === "finding") {
+      if (event.kind === "evaluation" || event.kind === "criterion" || event.kind === "finding" || event.kind === "evaluation_error") {
         evaluation.push(event);
         continue;
       }
-      if (event.kind === "root_cause") {
-        rootCause.push(event);
+      if (event.kind === "refinement" || event.kind === "refinement_error") {
+        refinementAnalysis.push(event);
         continue;
       }
       if (event.kind === "fixer") {
@@ -336,7 +336,7 @@ function App() {
       }
     }
 
-    return { evaluation, rootCause, fixPlan, fixerEdits, completion };
+    return { evaluation, refinementAnalysis, fixPlan, fixerEdits, completion };
   }, [testingRefinementEvents]);
   const bookedTripSummary = useMemo(() => {
     const passengerCount = bookedTrips.reduce((total, trip) => total + (trip.passengers?.length || 0), 0);
@@ -787,6 +787,28 @@ function App() {
         ]);
         return;
       }
+      if (event.type === "elevenlabs_analysis") {
+        setTestingRefinementEvents((current) => [
+          ...current,
+          {
+            kind: "evaluation",
+            title: "ElevenLabs analysis",
+            subtitle: event.task || "task",
+            timestamp: new Date().toISOString(),
+            body: [
+              event.call_summary_title || null,
+              typeof event.call_successful !== "undefined"
+                ? `Call successful: ${event.call_successful ? "yes" : "no"}`
+                : null,
+              event.transcript_summary || null,
+              event.termination_reason ? `Termination: ${event.termination_reason}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          },
+        ]);
+        return;
+      }
       if (event.type === "evaluation_criterion") {
         setTestingRefinementEvents((current) => [
           ...current,
@@ -798,6 +820,20 @@ function App() {
             score: event.score,
             body: event.summary || "",
             details: event.evidence_quotes || [],
+          },
+        ]);
+        return;
+      }
+      if (event.type === "refinement_gate") {
+        setTestingRefinementEvents((current) => [
+          ...current,
+          {
+            kind: "evaluation",
+            title: "Refinement gate",
+            subtitle: event.task || "task",
+            timestamp: new Date().toISOString(),
+            body: event.message || "",
+            details: Array.isArray(event.criteria_below_target) ? event.criteria_below_target : [],
           },
         ]);
         return;
@@ -819,8 +855,8 @@ function App() {
         setTestingRefinementEvents((current) => [
           ...current,
           {
-            kind: "root_cause",
-            title: "Root cause",
+            kind: "refinement",
+            title: "Refinement analysis",
             subtitle: event.root_cause_category || event.category || event.task || "analysis",
             timestamp: new Date().toISOString(),
             body: [
@@ -829,6 +865,20 @@ function App() {
             ]
               .filter(Boolean)
               .join("\n"),
+          },
+        ]);
+        return;
+      }
+      if (event.type === "refinement_error") {
+        setTestingLiveEvents((current) => [...current, { tag: "error", text: event.error || "Refinement analysis failed." }]);
+        setTestingRefinementEvents((current) => [
+          ...current,
+          {
+            kind: "refinement_error",
+            title: "Refinement error",
+            subtitle: event.stage || event.task || "refinement",
+            timestamp: new Date().toISOString(),
+            body: event.error || "Refinement analysis failed.",
           },
         ]);
         return;
@@ -858,7 +908,7 @@ function App() {
         setTestingRefinementEvents((current) => [
           ...current,
           {
-            kind: "error",
+            kind: "evaluation_error",
             title: "Evaluation error",
             subtitle: event.task || "task",
             timestamp: new Date().toISOString(),
@@ -1482,11 +1532,11 @@ function App() {
 
                     <article className="testing-refinement__mini">
                       <div className="testing-refinement__mini-head">
-                        <span className="eyebrow">Root cause</span>
-                        <strong>{refinementSections.rootCause.length ? "Detected" : "Waiting"}</strong>
+                        <span className="eyebrow">Refinement analysis</span>
+                        <strong>{refinementSections.refinementAnalysis.length ? "Ready" : "Waiting"}</strong>
                       </div>
-                      {refinementSections.rootCause.length ? (
-                        refinementSections.rootCause.map((item, index) => (
+                      {refinementSections.refinementAnalysis.length ? (
+                        refinementSections.refinementAnalysis.map((item, index) => (
                           <div className="refinement-snippet" key={`root-${index}`}>
                             <div className="refinement-snippet__head">
                               <strong>{item.title}</strong>
@@ -1497,7 +1547,7 @@ function App() {
                           </div>
                         ))
                       ) : (
-                        <p className="testing-muted">No root-cause analysis yet.</p>
+                        <p className="testing-muted">No refinement analysis yet.</p>
                       )}
                     </article>
 
