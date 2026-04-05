@@ -2353,7 +2353,14 @@ function App() {
 
                           {expanded ? (
                             <div className="pipeline-accordion__content">
-                              {iteration.sections.map((section) => (
+                              {iteration.sections.map((section) => {
+                                const codeChanges = section.key === "code_change" ? iteration.applyResult : null;
+                                const hasCodeChanges = Boolean(
+                                  codeChanges &&
+                                    (codeChanges.error ||
+                                      (Array.isArray(codeChanges.applied_changes) && codeChanges.applied_changes.length))
+                                );
+                                return (
                                 <section className={`pipeline-phase-section pipeline-phase-section--${section.key}`} key={`${iteration.iterationNumber}-${section.key}`}>
                                   <div className="pipeline-phase-section__head">
                                     <strong>{section.label}</strong>
@@ -2387,7 +2394,7 @@ function App() {
                                     ) : (
                                       <p className="testing-muted">{section.emptyText}</p>
                                     )
-                                  ) : section.events.length ? (
+                                  ) : section.events.length || hasCodeChanges ? (
                                     <div className="pipeline-section-card__list">
                                       {section.events.map((event, index) => (
                                         <article className="pipeline-detail-event" key={`${event.timestamp}-${event.type}-${index}`}>
@@ -2398,6 +2405,53 @@ function App() {
                                           <p>{formatPipelineEventBody(event)}</p>
                                         </article>
                                       ))}
+                                      {section.key === "code_change" && hasCodeChanges ? (
+                                        <div className="pipeline-code-changes">
+                                          <div className="pipeline-code-summary">
+                                            {Array.isArray(codeChanges?.applied_changes) ? (
+                                              <span>
+                                                {codeChanges.applied_changes.filter((change) => change.applied).length} applied change
+                                                {codeChanges.applied_changes.filter((change) => change.applied).length === 1 ? "" : "s"}
+                                              </span>
+                                            ) : null}
+                                            {iteration.record?.git_commit_sha ? (
+                                              <span>Commit {String(iteration.record.git_commit_sha).slice(0, 12)}</span>
+                                            ) : null}
+                                            {typeof codeChanges?.compile_result?.success === "boolean" ? (
+                                              <span>Validation {codeChanges.compile_result.success ? "passed" : "failed"}</span>
+                                            ) : null}
+                                          </div>
+                                          {codeChanges?.error ? (
+                                            <article className="pipeline-detail-event pipeline-detail-event--error">
+                                              <p>{codeChanges.error}</p>
+                                            </article>
+                                          ) : null}
+                                          {Array.isArray(codeChanges?.applied_changes)
+                                            ? codeChanges.applied_changes.map((change, index) => (
+                                                <details className="pipeline-change-card" key={`${change.path}-${change.selector_value}-${index}`}>
+                                                  <summary className="pipeline-change-card__summary">
+                                                    <div className="pipeline-change-card__summary-copy">
+                                                      <strong>{change.path}</strong>
+                                                      <span>{change.selector_type}:{change.selector_value}</span>
+                                                    </div>
+                                                    <span>{change.applied ? "Applied" : "Not applied"}</span>
+                                                  </summary>
+                                                  {change.error ? <p className="testing-muted">{change.error}</p> : null}
+                                                  <div className="pipeline-change-diff">
+                                                    <div className="pipeline-change-pane">
+                                                      <span className="eyebrow">Before</span>
+                                                      <pre>{change.before_content || "—"}</pre>
+                                                    </div>
+                                                    <div className="pipeline-change-pane">
+                                                      <span className="eyebrow">After</span>
+                                                      <pre>{change.after_content || "—"}</pre>
+                                                    </div>
+                                                  </div>
+                                                </details>
+                                              ))
+                                            : null}
+                                        </div>
+                                      ) : null}
                                       {section.key === "approval" &&
                                       Number(selectedPipeline?.approval_pending_iteration || 0) === Number(iteration.iterationNumber) ? (
                                         <div className="pipeline-inline-actions">
@@ -2451,7 +2505,8 @@ function App() {
                                     </>
                                   )}
                                 </section>
-                              ))}
+                                );
+                              })}
                             </div>
                           ) : null}
                         </section>
