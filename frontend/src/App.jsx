@@ -304,6 +304,7 @@ function App() {
   const [testingLiveActive, setTestingLiveActive] = useState(false);
   const transcriptConsoleRef = useRef(null);
   const liveConsoleRef = useRef(null);
+  const logConsoleRef = useRef(null);
   const pipelineConsoleRef = useRef(null);
   const visibleFlights = useMemo(() => uniqueFlights(flights), [flights]);
   const refinementSections = useMemo(() => {
@@ -417,6 +418,12 @@ function App() {
       liveConsoleRef.current.scrollTop = liveConsoleRef.current.scrollHeight;
     }
   }, [testingLiveEvents, testingLiveActive]);
+
+  useEffect(() => {
+    if (logConsoleRef.current) {
+      logConsoleRef.current.scrollTop = logConsoleRef.current.scrollHeight;
+    }
+  }, [testingLogLines, testingLiveActive]);
 
   useEffect(() => {
     if (pipelineConsoleRef.current) {
@@ -955,7 +962,7 @@ function App() {
       }
       if (event.type === "log") {
         const cleaned = stripAnsi(event.message || "");
-        if (cleaned && cleaned !== "{" && cleaned !== "}") {
+        if (cleaned) {
           setTestingLogLines((current) => [...current, cleaned]);
         }
         return;
@@ -1462,6 +1469,19 @@ function App() {
                           </div>
                         )) : <p className="testing-muted">[waiting] No live step output yet.</p>}
                       </div>
+                    </div>
+                    <div className="testing-live__panel">
+                      <div className="testing-live__panel-head">
+                        <span className="eyebrow">Logs</span>
+                        <strong>Raw runner logs</strong>
+                      </div>
+                      {testingLogLines.length ? (
+                        <pre className="testing-live__console testing-live__console--logs" ref={logConsoleRef}>
+                          {testingLogLines.join("\n")}
+                        </pre>
+                      ) : (
+                        <p className="testing-muted">No raw log lines yet.</p>
+                      )}
                     </div>
                   </div>
                 </section>

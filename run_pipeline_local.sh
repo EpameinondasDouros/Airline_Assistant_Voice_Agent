@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PIPELINE_API_DEFAULT="${VITE_PIPELINE_API_BASE_URL:-http://127.0.0.1:8000}"
 PRODUCT_API_DEFAULT="${VITE_API_BASE_URL:-https://airlineassistantvoiceagent.up.railway.app}"
 RESET_COLOR=$'\033[0m'
+GRAY_COLOR=$'\033[90m'
 YELLOW_COLOR=$'\033[93m'
 BLUE_COLOR=$'\033[94m'
 
@@ -252,7 +253,8 @@ for idx, event in enumerate(events[start:], start=start + 1):
     stage = stage_for(event_type)
     iteration = event.get("iteration")
     iteration_text = "" if iteration is None else str(iteration)
-    role = str(event.get("role") or "")
+    payload = event.get("event_payload") or {}
+    role = str(event.get("role") or payload.get("role") or "")
     message = " ".join(str(event.get("message") or "").split())
     print(f"{idx}\x1f{stage}\x1f{iteration_text}\x1f{event_type}\x1f{role}\x1f{message}")
 PY
@@ -274,17 +276,15 @@ PY
       continue
     fi
     if [[ -n "$message" ]]; then
-      if [[ "$event_type" == "elevenlabs_analysis" || "$event_type" == "transcript_turn" && "$role" == "agent" || "$event_type" == "user_turn" || "$event_type" == "customer_reply" ]]; then
-        if [[ "$event_type" == "user_turn" || "$event_type" == "customer_reply" ]]; then
-          print_colored_step "$YELLOW_COLOR" "$message"
-        else
-          print_colored_step "$BLUE_COLOR" "$message"
-        fi
+      if [[ "$event_type" == "user_turn" || "$event_type" == "customer_reply" ]]; then
+        print_colored_step "$YELLOW_COLOR" "$message"
+      elif [[ "$event_type" == "transcript_turn" && "$role" == "agent" ]]; then
+        print_colored_step "$BLUE_COLOR" "$message"
       else
-        echo "- $message"
+        print_colored_step "$GRAY_COLOR" "$message"
       fi
     else
-      echo "- $event_type"
+      print_colored_step "$GRAY_COLOR" "$event_type"
     fi
   done <"$events_file"
 
