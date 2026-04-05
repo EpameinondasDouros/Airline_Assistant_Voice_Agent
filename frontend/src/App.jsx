@@ -75,6 +75,57 @@ function pipelineIsTerminal(status) {
   return ["completed", "failed", "blocked_manual_fix", "canceled"].includes(String(status || ""));
 }
 
+function pipelineEventCategory(type) {
+  const eventType = String(type || "").toLowerCase();
+  if (eventType.includes("error") || eventType.includes("failed") || eventType.includes("blocked")) return "error";
+  if (eventType.includes("approval")) return "approval";
+  if (eventType.includes("deploy") || eventType.includes("git") || eventType.includes("code_apply")) return "code";
+  if (eventType.includes("fix") || eventType.includes("refinement") || eventType.includes("root_cause")) return "refine";
+  if (eventType.includes("evaluation") || eventType.includes("criterion") || eventType.includes("finding")) return "evaluation";
+  if (eventType.includes("iteration") || eventType.includes("testing") || eventType.includes("task") || eventType.includes("run")) return "testing";
+  return "note";
+}
+
+function formatPipelineEventTitle(type) {
+  const eventType = String(type || "").replaceAll("_", " ").trim();
+  if (!eventType) return "Pipeline event";
+  return eventType.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatPipelineEventBody(event) {
+  const parts = [];
+  if (event.message) parts.push(String(event.message));
+  const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+  const extraLines = [];
+
+  if (payload.task && !parts.some((line) => line.includes(String(payload.task)))) {
+    extraLines.push(`Task: ${payload.task}`);
+  }
+  if (typeof payload.iteration !== "undefined") {
+    extraLines.push(`Iteration: ${payload.iteration}`);
+  }
+  if (typeof payload.overall_score !== "undefined") {
+    extraLines.push(`Score: ${payload.overall_score}/10`);
+  }
+  if (typeof payload.goal_achieved !== "undefined") {
+    extraLines.push(`Goal achieved: ${payload.goal_achieved ? "yes" : "no"}`);
+  }
+  if (typeof payload.edit_count !== "undefined") {
+    extraLines.push(`Edit count: ${payload.edit_count}`);
+  }
+  if (Array.isArray(payload.changed_paths) && payload.changed_paths.length) {
+    extraLines.push(`Changed paths: ${payload.changed_paths.join(", ")}`);
+  }
+  if (typeof payload.approved !== "undefined") {
+    extraLines.push(`Approved: ${payload.approved ? "yes" : "no"}`);
+  }
+
+  if (extraLines.length) {
+    parts.push(extraLines.join("\n"));
+  }
+  return parts.join("\n");
+}
+
 function getTestingConversationTurns(run) {
   const topLevelTranscript = run?.transcript;
   if (Array.isArray(topLevelTranscript) && topLevelTranscript.length) {

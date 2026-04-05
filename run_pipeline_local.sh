@@ -316,8 +316,12 @@ PY
       print_colored_block "$GREEN_COLOR" "" "$message"
       if [[ -n "$transcript_json" && "$transcript_json" != "[]" ]]; then
         print_colored_step "$GREEN_COLOR" "ElevenLabs transcript:"
-        while IFS="$field_sep" read -r item_kind transcript_role transcript_text; do
+        while IFS="$field_sep" read -r item_kind transcript_role transcript_text_json; do
           [[ -z "$item_kind" ]] && continue
+          local transcript_text=""
+          if [[ -n "$transcript_text_json" ]]; then
+            transcript_text="$(decode_json_string "$transcript_text_json")"
+          fi
           case "$item_kind" in
             turn)
               case "$transcript_role" in
@@ -371,11 +375,15 @@ def pretty_json_block(value, *, max_lines=40):
     return "\n".join(lines)
 
 
+def emit_record(kind, role, text):
+    print(f"{kind}{field_sep}{role}{field_sep}{json.dumps(text)}")
+
+
 for item in json.loads(os.environ["TRANSCRIPT_JSON"]):
     role = str(item.get("role") or "")
     text = str(item.get("message") or item.get("text") or "").strip()
     if text:
-        print(f"turn{field_sep}{role}{field_sep}{text}")
+        emit_record("turn", role, text)
 
     for tool_call in item.get("tool_calls") or []:
         tool_name = one_line(tool_call.get("tool_name")) or "unknown_tool"
@@ -392,9 +400,9 @@ for item in json.loads(os.environ["TRANSCRIPT_JSON"]):
         elif tool_type:
             parts.append(tool_type)
         if params:
-            print(f"tool_call{field_sep}{role}{field_sep}{' | '.join(parts)}\nparams:\n{params}")
+            emit_record("tool_call", role, f"{' | '.join(parts)}\nparams:\n{params}")
         else:
-            print(f"tool_call{field_sep}{role}{field_sep}{' | '.join(parts)}")
+            emit_record("tool_call", role, " | ".join(parts))
 
     for tool_result in item.get("tool_results") or []:
         tool_name = one_line(tool_result.get("tool_name")) or "unknown_tool"
@@ -411,9 +419,9 @@ for item in json.loads(os.environ["TRANSCRIPT_JSON"]):
         if latency_text:
             parts.append(f"latency={latency_text}")
         if result_value:
-            print(f"tool_result{field_sep}{role}{field_sep}{' | '.join(parts)}\nresult:\n{result_value}")
+            emit_record("tool_result", role, f"{' | '.join(parts)}\nresult:\n{result_value}")
         else:
-            print(f"tool_result{field_sep}{role}{field_sep}{' | '.join(parts)}")
+            emit_record("tool_result", role, " | ".join(parts))
 PY
         )
       fi
