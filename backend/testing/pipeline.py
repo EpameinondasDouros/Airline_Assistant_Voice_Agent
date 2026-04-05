@@ -16,7 +16,7 @@ from uuid import uuid4
 
 from agents.config import get_agent_settings
 from app.config import get_settings
-from testing.refinement.core.section_editors import apply_section_edit, path_is_blocked
+from testing.refinement.core.section_editors import apply_section_edit, normalize_repo_path, path_is_blocked
 from testing.refinement.core.workflow import create_fix_plan_report, load_report
 from testing.run_conversation_tests import run_task
 from testing.tasks import get_task
@@ -363,6 +363,10 @@ def _agent_sync_commands(changed_paths: list[str]) -> list[list[str]]:
     if any(path.startswith(AGENT_EDIT_ROOT) for path in changed_paths):
         return [["bash", "./update_agent.sh"]]
     return []
+
+
+def _requires_agent_sync(changed_paths: list[str]) -> bool:
+    return any(path.startswith(AGENT_EDIT_ROOT) for path in changed_paths)
 
 
 def _requires_remote_deploy(changed_paths: list[str]) -> bool:
@@ -1012,11 +1016,25 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
     _save_manifest(manifest)
 
     if manifest["require_manual_approval"]:
+        planned_changed_paths = [normalize_repo_path(edit.path) for edit in report.fix_plan.section_edits]
+        requires_agent_sync = _requires_agent_sync(planned_changed_paths)
+        requires_remote_deploy = _requires_remote_deploy(planned_changed_paths)
+        if requires_agent_sync and requires_remote_deploy:
+            approval_message = "Iteration is ready for approval before code apply, update_agent.sh, and git push."
+        elif requires_agent_sync:
+            approval_message = "Iteration is ready for approval before code apply and update_agent.sh."
+        elif requires_remote_deploy:
+            approval_message = "Iteration is ready for approval before code apply and git push."
+        else:
+            approval_message = "Iteration is ready for approval before code apply."
         _append_event(
             pipeline_id,
             "approval_required",
-            "Iteration is ready for approval before code apply and git push.",
+            approval_message,
             iteration=iteration_number,
+            requires_agent_sync=requires_agent_sync,
+            requires_remote_deploy=requires_remote_deploy,
+            planned_changed_paths=planned_changed_paths,
         )
         return False
 

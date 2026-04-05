@@ -24,6 +24,7 @@ PRODUCT_API="$PRODUCT_API_DEFAULT"
 LAST_EVENT_INDEX=0
 LAST_STAGE_KEY=""
 LAST_APPROVAL_ITERATION=""
+LAST_APPROVAL_MESSAGE=""
 
 usage() {
   cat <<EOF
@@ -289,6 +290,9 @@ PY
   while IFS="$field_sep" read -r index stage iteration event_type role message_json transcript_json; do
     [[ -z "$index" ]] && continue
     LAST_EVENT_INDEX="$index"
+    if [[ "$event_type" == "approval_required" && -n "$message_json" ]]; then
+      LAST_APPROVAL_MESSAGE="$(decode_json_string "$message_json")"
+    fi
     local stage_key="${iteration}|${stage}"
     if [[ "$stage_key" != "$LAST_STAGE_KEY" ]]; then
       echo
@@ -486,7 +490,10 @@ while true; do
       print_step "auto-approving iteration $CURRENT_ITERATION"
       approve_iteration "$PIPELINE_ID"
     else
-      read -r -p "Approve iteration $CURRENT_ITERATION? [y/N]: " answer
+      if [[ -n "$LAST_APPROVAL_MESSAGE" ]]; then
+        print_step "$LAST_APPROVAL_MESSAGE"
+      fi
+      read -r -p "Approve iteration $CURRENT_ITERATION and continue? [y/N]: " answer
       if [[ "$answer" =~ ^[Yy]$ ]]; then
         approve_iteration "$PIPELINE_ID"
         print_step "approved"
