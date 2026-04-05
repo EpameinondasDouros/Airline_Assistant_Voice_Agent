@@ -1967,51 +1967,6 @@ function App() {
                 </details>
               </section>
 
-              <section className="pipeline-summary-card">
-                <div className="pipeline-summary-card__head">
-                  <div>
-                    <span className="eyebrow">Pipeline summary</span>
-                    <strong>{effectivePipelineSummary.pipeline_id || "No pipeline selected"}</strong>
-                    <p>{effectivePipelineSummary.pipeline_id ? `Tracking persisted pipeline events from the backend manifest.` : "Start a pipeline or select an existing one to inspect its iterations."}</p>
-                  </div>
-                  <span className="status-pill status-pill--center pipeline-summary-card__status">
-                    {effectivePipelineSummary.status || "idle"}
-                  </span>
-                </div>
-                <div className="pipeline-summary-card__grid">
-                  <article>
-                    <span>Stage</span>
-                    <strong>{effectivePipelineSummary.stage || "—"}</strong>
-                  </article>
-                  <article>
-                    <span>Current iteration</span>
-                    <strong>{effectivePipelineSummary.current_iteration || 0}</strong>
-                  </article>
-                  <article>
-                    <span>Latest score</span>
-                    <strong>{typeof effectivePipelineSummary.latest_evaluator_score === "number" ? `${effectivePipelineSummary.latest_evaluator_score}/10` : "—"}</strong>
-                  </article>
-                  <article>
-                    <span>Latest task</span>
-                    <strong>{effectivePipelineSummary.latest_task_slug || "—"}</strong>
-                  </article>
-                  <article>
-                    <span>Branch</span>
-                    <strong>{effectivePipelineSummary.branch_name || "—"}</strong>
-                  </article>
-                  <article>
-                    <span>Approval mode</span>
-                    <strong>{effectivePipelineSummary.require_manual_approval ? "Manual" : "Automatic"}</strong>
-                  </article>
-                  {effectivePipelineSummary.stop_reason ? (
-                    <article className="pipeline-summary-card__wide">
-                      <span>Stop reason</span>
-                      <strong>{effectivePipelineSummary.stop_reason}</strong>
-                    </article>
-                  ) : null}
-                </div>
-              </section>
-
               {effectivePipelineSummary.status === "waiting_approval" && latestApprovalEvent ? (
                 <section className="pipeline-approval-banner">
                   <div>
