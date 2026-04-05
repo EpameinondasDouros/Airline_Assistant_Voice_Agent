@@ -47,6 +47,7 @@ class TestingRunRequest(BaseModel):
     response_timeout: float = 20.0
     settle_timeout: float = 6.0
     quiet_window: float = 2.0
+    include_evaluation: bool = True
 
 
 class TestingRunExecutionRead(BaseModel):
