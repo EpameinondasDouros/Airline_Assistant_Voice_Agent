@@ -54,8 +54,6 @@ def search_flights(
     limit: int = Query(default=100, ge=1, le=100),
     session: Session = Depends(get_db_session),
 ) -> list[FlightRead]:
-    raise HTTPException(status_code=503, detail="Flight search is temporarily unavailable.")
-
     service = FlightService(session)
     flights = service.search_flights(
         origin=origin,
