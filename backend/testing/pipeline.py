@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -12,7 +13,6 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-from uuid import uuid4
 
 from agents.config import get_agent_settings
 from app.config import get_settings
@@ -41,14 +41,32 @@ BLOCKED_EDIT_ROOTS = (
 )
 AGENT_EDIT_ROOT = "backend/agents/"
 APP_EDIT_ROOT = "backend/app/"
+MAIN_BRANCH = "main"
+RAILWAY_WARMUP_SECONDS = 180
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _pipeline_id() -> str:
-    return datetime.now(timezone.utc).strftime("pl_%Y%m%dT%H%M%S_") + uuid4().hex[:8]
+def _pipeline_task_key(task_slugs: list[str]) -> str:
+    if len(task_slugs) == 1 and task_slugs[0]:
+        return str(task_slugs[0]).strip()
+    return "multi"
+
+
+def _pipeline_id(task_slugs: list[str]) -> str:
+    task_key = _pipeline_task_key(task_slugs)
+    pattern = re.compile(rf"^refiniment-{re.escape(task_key)}-V(\d+)$")
+    max_version = 0
+    if PIPELINES_ROOT.exists():
+        for path in PIPELINES_ROOT.iterdir():
+            if not path.is_dir():
+                continue
+            match = pattern.match(path.name)
+            if match:
+                max_version = max(max_version, int(match.group(1)))
+    return f"refiniment-{task_key}-V{max_version + 1}"
 
 
 def _pipeline_dir(pipeline_id: str) -> Path:
@@ -443,18 +461,34 @@ def _deploy_meta() -> dict[str, Any]:
     return _call_json_endpoint(f"{base_url}/api/meta")
 
 
+def _deploy_health() -> dict[str, Any]:
+    base_url = _resolve_remote_base_url()
+    return _call_json_endpoint(f"{base_url}/health")
+
+
 def wait_for_remote_deploy(commit_sha: str) -> dict[str, Any]:
     settings = get_settings()
     agent_settings = get_agent_settings()
     if not agent_settings.backend_public_url:
         return {"success": False, "error": "BACKEND_PUBLIC_URL is not configured for deploy verification."}
 
-    deadline = time.time() + settings.testing_pipeline_deploy_timeout_seconds
+    started_at = time.time()
+    minimum_wait_deadline = started_at + RAILWAY_WARMUP_SECONDS
+    deadline = started_at + max(settings.testing_pipeline_deploy_timeout_seconds, RAILWAY_WARMUP_SECONDS)
     attempts = 0
     last_payload: dict[str, Any] | None = None
+    last_health: dict[str, Any] | None = None
 
     while time.time() < deadline:
         attempts += 1
+        try:
+            health_payload = _deploy_health()
+            last_health = health_payload
+        except Exception as exc:  # pragma: no cover - network/runtime path
+            last_health = {"error": str(exc)}
+            time.sleep(settings.testing_pipeline_deploy_poll_interval_seconds)
+            continue
+
         try:
             payload = _deploy_meta()
         except Exception as exc:  # pragma: no cover - network/runtime path
@@ -464,11 +498,16 @@ def wait_for_remote_deploy(commit_sha: str) -> dict[str, Any]:
 
         last_payload = payload
         deployed_sha = payload.get("git_commit_hash")
-        if payload.get("status") == "ok" and deployed_sha == commit_sha:
+        health_ready = health_payload.get("status") == "ok"
+        meta_ready = payload.get("status") == "ok" and deployed_sha == commit_sha
+        if time.time() >= minimum_wait_deadline and health_ready and meta_ready:
             return {
                 "success": True,
                 "attempts": attempts,
                 "deployed_commit_sha": deployed_sha,
+                "warmup_wait_seconds": RAILWAY_WARMUP_SECONDS,
+                "elapsed_seconds": round(time.time() - started_at, 1),
+                "health_payload": health_payload,
                 "payload": payload,
             }
         time.sleep(settings.testing_pipeline_deploy_poll_interval_seconds)
@@ -476,9 +515,12 @@ def wait_for_remote_deploy(commit_sha: str) -> dict[str, Any]:
     return {
         "success": False,
         "attempts": attempts,
+        "warmup_wait_seconds": RAILWAY_WARMUP_SECONDS,
+        "elapsed_seconds": round(time.time() - started_at, 1),
+        "health_payload": last_health,
         "deployed_commit_sha": (last_payload or {}).get("git_commit_hash") if last_payload else None,
         "payload": last_payload,
-        "error": "Timed out waiting for the staging backend to report the pushed commit.",
+        "error": "Timed out waiting for Railway to pass the warmup window, return /health ok, and expose the pushed commit SHA.",
     }
 
 
@@ -589,7 +631,7 @@ def _build_pipeline_manifest(
         "fixer_model": fixer_model,
         "require_manual_approval": require_manual_approval,
         "skip_fixture_reset": True,
-        "branch_name": f"{settings.testing_pipeline_branch_prefix}/{pipeline_id}",
+        "branch_name": MAIN_BRANCH,
         "current_iteration": 0,
         "latest_commit_sha": None,
         "latest_deploy_sha": None,
@@ -615,7 +657,7 @@ def start_pipeline(
     for slug in task_slugs:
         get_task(slug)
 
-    pipeline_id = _pipeline_id()
+    pipeline_id = _pipeline_id(task_slugs)
     manifest = _build_pipeline_manifest(
         pipeline_id=pipeline_id,
         task_slugs=task_slugs,
@@ -1006,11 +1048,11 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
         requires_agent_sync = _requires_agent_sync(planned_changed_paths)
         requires_remote_deploy = _requires_remote_deploy(planned_changed_paths)
         if requires_agent_sync and requires_remote_deploy:
-            approval_message = "Iteration is ready for approval before code apply, update_agent.sh, and git push."
+            approval_message = "Iteration is ready for approval before code apply, update_agent.sh, and git push to main."
         elif requires_agent_sync:
             approval_message = "Iteration is ready for approval before code apply and update_agent.sh."
         elif requires_remote_deploy:
-            approval_message = "Iteration is ready for approval before code apply and git push."
+            approval_message = "Iteration is ready for approval before code apply and git push to main."
         else:
             approval_message = "Iteration is ready for approval before code apply."
         _append_event(
@@ -1056,13 +1098,12 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
         return False
 
     branch_name = manifest["branch_name"]
-    first_pipeline_commit = manifest["latest_commit_sha"] is None
-    checkout_result = _git_checkout_branch(branch_name, create=first_pipeline_commit)
+    checkout_result = _git_checkout_branch(branch_name, create=False)
     if not checkout_result["success"]:
         ( _iteration_dir(pipeline_id, iteration_number) / "git_result.json").write_text(json.dumps(checkout_result, indent=2), encoding="utf-8")
         _mark_failed(
             pipeline_id,
-            "Failed to checkout the pipeline branch before applying edits.",
+            f"Failed to checkout {branch_name} before applying edits.",
             stage="applying",
             manifest=manifest,
         )
@@ -1232,14 +1273,14 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
         )
         return True
 
-    push_result = _git_push(branch_name, set_upstream=first_pipeline_commit)
+    push_result = _git_push(branch_name, set_upstream=False)
     git_payload["push"] = push_result
     git_result_path.write_text(json.dumps(git_payload, indent=2), encoding="utf-8")
 
     if not push_result["success"]:
         _mark_failed(
             pipeline_id,
-            "git push failed for the pipeline branch.",
+            f"git push failed for {branch_name}.",
             stage="pushing",
             manifest=manifest,
         )
@@ -1260,7 +1301,7 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
     _append_event(
         pipeline_id,
         "deploy_wait_started",
-        "Waiting for the staging backend to redeploy the pushed commit.",
+        f"Waiting up to {RAILWAY_WARMUP_SECONDS} seconds for Railway to warm up, return /health ok, and redeploy the pushed commit.",
         iteration=iteration_number,
         commit_sha=commit_sha,
     )
@@ -1275,7 +1316,7 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
     if not deploy_result.get("success"):
         _mark_failed(
             pipeline_id,
-            "Timed out waiting for the staging deploy to expose the pushed commit SHA.",
+            "Timed out waiting for Railway warmup, a healthy /health response, and the pushed commit SHA to appear on staging.",
             stage="deploy_wait",
             manifest=manifest,
         )

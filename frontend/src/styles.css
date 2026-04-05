@@ -1318,11 +1318,48 @@ button, input { font: inherit; }
   gap: 0.75rem;
   padding: 0.95rem 1rem;
   border-radius: 1rem;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(124, 138, 137, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(124, 138, 137, 0.18);
+}
+.pipeline-phase-section--testing {
+  background: rgba(182, 220, 206, 0.62);
+  border-color: rgba(70, 126, 108, 0.42);
+}
+.pipeline-phase-section--evaluation {
+  background: rgba(245, 217, 147, 0.64);
+  border-color: rgba(173, 122, 23, 0.4);
+}
+.pipeline-phase-section--analysis {
+  background: rgba(233, 194, 189, 0.66);
+  border-color: rgba(167, 92, 85, 0.38);
+}
+.pipeline-phase-section--fix_planning {
+  background: rgba(193, 209, 235, 0.66);
+  border-color: rgba(86, 112, 161, 0.36);
+}
+.pipeline-phase-section--approval {
+  background: rgba(221, 205, 234, 0.68);
+  border-color: rgba(124, 90, 152, 0.36);
+}
+.pipeline-phase-section--code_change {
+  background: rgba(188, 211, 225, 0.68);
+  border-color: rgba(73, 114, 141, 0.38);
+}
+.pipeline-phase-section--sync_post_deploy {
+  background: rgba(190, 225, 221, 0.68);
+  border-color: rgba(58, 128, 119, 0.38);
+}
+.pipeline-phase-section--iteration_results {
+  background: rgba(226, 215, 176, 0.68);
+  border-color: rgba(151, 123, 39, 0.34);
+}
+.pipeline-phase-section--complete {
+  background: rgba(204, 217, 227, 0.7);
+  border-color: rgba(92, 111, 130, 0.34);
 }
 .pipeline-phase-section__head strong {
   font-size: 0.98rem;
+  font-weight: 900;
 }
 .pipeline-iteration-card,
 .pipeline-phase-group {
