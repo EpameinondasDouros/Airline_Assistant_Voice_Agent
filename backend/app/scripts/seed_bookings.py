@@ -8,13 +8,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.flight_schema import ensure_flight_seat_columns
-from app.db.seat_inventory import sync_seat_inventory
+from app.db.seat_inventory import reconcile_seat_state, sync_seat_inventory
 from app.db.session import SessionLocal, engine
 from app.models.booking import Booking, BookingStatus, RefundStatus
 from app.models.booking_event import BookingEvent, BookingEventType
 from app.models.booking_extra import BookingExtra, ExtraType
 from app.models.booking_passenger import BookingPassenger
-from app.models.flight import Flight, SeatClass, SeatPreference
+from app.models.flight import Flight, SeatClass
 
 
 @dataclass(frozen=True)
@@ -207,15 +207,6 @@ def build_total_price(seed: BookingSeed, flight: Flight) -> Decimal:
     return (passengers_total + extras_total).quantize(Decimal("0.01"))
 
 
-def apply_preference_booking(flight: Flight, seat_preference: str | None) -> None:
-    if seat_preference == SeatPreference.WINDOW.value:
-        flight.window_seat_booked += 1
-    elif seat_preference == SeatPreference.AISLE.value:
-        flight.aisle_seat_booked += 1
-    elif seat_preference == SeatPreference.EXTRA_LEGROOM.value:
-        flight.extra_legroom_booked += 1
-
-
 def build_booking_events(seed: BookingSeed, booking_id: int) -> list[BookingEvent]:
     events = [
         BookingEvent(
@@ -277,6 +268,7 @@ def main() -> None:
     sync_seat_inventory(engine)
     session = SessionLocal()
     try:
+        reconcile_seat_state(session)
         existing_refs = set(session.scalars(select(Booking.booking_reference)))
         booking_ids_by_reference = {
             booking.booking_reference: booking.id
@@ -342,21 +334,17 @@ def main() -> None:
                         description=extra.description,
                         quantity=extra.quantity,
                         price=extra.price,
-                        )
+                    )
                 )
 
             for event in build_booking_events(seed, booking.id):
                 session.add(event)
 
-            if seed.status != BookingStatus.CANCELLED:
-                flight.booked_seats += passenger_count
-                for passenger in seed.passengers:
-                    apply_preference_booking(flight, passenger.seat_preference)
-
             existing_refs.add(seed.booking_reference)
             booking_ids_by_reference[seed.booking_reference] = booking.id
             created += 1
 
+        reconcile_seat_state(session)
         session.commit()
         print(f"Seed complete. Inserted {created} bookings.")
     finally:

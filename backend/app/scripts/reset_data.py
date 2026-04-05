@@ -10,6 +10,7 @@ TABLES = [
     "booking_extras",
     "booking_passengers",
     "bookings",
+    "seat_inventory",
     "knowledge_articles",
     "flights",
 ]

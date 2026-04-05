@@ -7,6 +7,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from .critic import evaluate_artifact
+from ..core.artifact_context import compact_elevenlabs_analysis
 from ..core.debug_output import print_agent_json
 from ..core.models import CritiqueVerdict, RootCauseVerdict
 
@@ -72,6 +73,7 @@ def _artifact_prompt(payload: dict[str, Any], critique: dict[str, Any]) -> str:
         "final_agent_message": payload.get("final_agent_message"),
         "tool_trace": payload.get("tool_trace") or [],
         "backend_verification": payload.get("backend_verification"),
+        "elevenlabs_analysis": compact_elevenlabs_analysis(payload),
         "transcript": payload.get("transcript") or [],
         "critique": critique,
     }

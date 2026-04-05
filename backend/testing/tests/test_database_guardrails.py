@@ -4,13 +4,14 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401  # ensure ORM models are registered
 from app.db.base import Base
+from app.db.seat_inventory import reconcile_seat_state
 from app.models.booking import Booking, BookingStatus, RefundStatus
 from app.models.booking_extra import BookingExtra, ExtraType
 from app.models.booking_passenger import BookingPassenger
@@ -234,6 +235,49 @@ def test_booking_extras_constraints_reject_bad_values(session):
 
     with pytest.raises(IntegrityError):
         session.commit()
+
+
+def test_seat_state_reconciliation_syncs_inventory_and_flight_counters(session):
+    flight = _make_flight(session)
+    session.commit()
+
+    booking = Booking(
+        booking_reference="TMTEST04",
+        flight_id=flight.id,
+        contact_name="Test Contact",
+        contact_email="test4@example.com",
+        total_price=Decimal("540.00"),
+        status=BookingStatus.CONFIRMED,
+        refund_status=RefundStatus.NOT_REQUESTED,
+    )
+    session.add(booking)
+    session.flush()
+    session.add(
+        BookingPassenger(
+            booking_id=booking.id,
+            first_name="Eleni",
+            last_name="Pappas",
+            date_of_birth=datetime(1992, 4, 16, tzinfo=UTC).date(),
+            passenger_type="adult",
+            seat_preference="window",
+            seat_number="1A",
+        )
+    )
+    session.flush()
+
+    flight.booked_seats = 0
+    flight.window_seat_booked = 0
+    flight.aisle_seat_booked = 0
+
+    summary = reconcile_seat_state(session)
+
+    seat = session.scalar(select(SeatInventory).where(SeatInventory.flight_id == flight.id, SeatInventory.seat_number == "1A"))
+    assert seat is not None
+    assert seat.is_booked is True
+    assert flight.booked_seats == 1
+    assert flight.window_seat_booked == 1
+    assert flight.aisle_seat_booked == 0
+    assert summary["inventory_rows_marked_booked"] == 1
 
 
 def test_knowledge_articles_must_be_unique_per_topic_and_title(session):

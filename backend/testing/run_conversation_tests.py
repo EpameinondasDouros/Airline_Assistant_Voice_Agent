@@ -26,6 +26,7 @@ from agents.config import get_agent_settings  # noqa: E402
 from testing.refinement.agents.critic import evaluate_artifact  # noqa: E402
 from testing.refinement.agents.customer_agent import CustomerReply, CustomerSimulator  # noqa: E402
 from testing.refinement.agents.root_cause_evaluator import evaluate_root_cause  # noqa: E402
+from testing.refinement.core.artifact_context import compact_elevenlabs_analysis  # noqa: E402
 from testing.refinement.core.workflow import create_fix_plan_report  # noqa: E402
 from testing.tasks import CapabilityTask, TASKS, get_task  # noqa: E402
 
@@ -1105,13 +1106,25 @@ def run_task(
             raise RuntimeError(f"Unsupported customer simulator action: {decision.action}")
     finally:
         conversation_id = agent.conversation_id or conversation_id
-        agent.stop()
+        _emit_event(
+            event_sink,
+            "conversation_finalizing",
+            task=task.slug,
+            message="Stopping the ElevenLabs session and collecting the finalized conversation history.",
+        )
+        agent.stop(wait_timeout_seconds=5.0)
 
     finished_at = datetime.now(timezone.utc).isoformat()
     conversation_data = _fetch_finalized_conversation_history(
         settings,
         conversation_id,
-        timeout_seconds=max(response_timeout_seconds + settle_timeout_seconds + 5.0, 15.0),
+        timeout_seconds=max(settle_timeout_seconds + quiet_window_seconds + 4.0, 10.0),
+    )
+    _emit_event(
+        event_sink,
+        "conversation_finalizing",
+        task=task.slug,
+        message="Conversation history ready. Starting evaluation.",
     )
     compact_conversation = _compact_conversation_history(conversation_data)
     transcript = [asdict(entry) for entry in recorder.entries]
@@ -1163,6 +1176,7 @@ def run_task(
         "stats": stats,
         "backend_verification": backend_verification,
         "elevenlabs_conversation": compact_conversation,
+        "elevenlabs_analysis": compact_elevenlabs_analysis({"elevenlabs_conversation": compact_conversation}),
     }
 
     # Persist the base artifact before refinement so the fix-plan workflow can
@@ -1189,6 +1203,17 @@ def run_task(
             suggested_next_step=critique.suggested_next_step,
             root_cause_category=root_cause.root_cause_category,
             primary_root_cause=root_cause.primary_root_cause,
+        )
+        elevenlabs_analysis = payload.get("elevenlabs_analysis") or {}
+        _emit_event(
+            event_sink,
+            "elevenlabs_analysis",
+            task=task.slug,
+            call_successful=elevenlabs_analysis.get("call_successful"),
+            call_summary_title=elevenlabs_analysis.get("call_summary_title"),
+            transcript_summary=elevenlabs_analysis.get("transcript_summary"),
+            termination_reason=elevenlabs_analysis.get("termination_reason"),
+            conversation_status=elevenlabs_analysis.get("conversation_status"),
         )
         for criterion in critique.criterion_scores:
             _emit_event(

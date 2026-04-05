@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import threading
 import time
 
 from elevenlabs.client import ElevenLabs
@@ -63,15 +64,24 @@ class ElevenLabsChatAgent:
             raise RuntimeError("Conversation has not been started.")
         self._conversation.send_user_message(message)
 
-    def stop(self) -> None:
+    def stop(self, *, wait_timeout_seconds: float = 5.0) -> None:
         if self._conversation is None:
             return
         conversation = self._conversation
         conversation.end_session()
-        try:
-            conversation.wait_for_session_end()
-        except RuntimeError:
-            pass
+        finished = threading.Event()
+
+        def wait_for_end() -> None:
+            try:
+                conversation.wait_for_session_end()
+            except RuntimeError:
+                pass
+            finally:
+                finished.set()
+
+        waiter = threading.Thread(target=wait_for_end, name="elevenlabs-session-stop", daemon=True)
+        waiter.start()
+        finished.wait(wait_timeout_seconds)
         self._conversation = None
 
     @property

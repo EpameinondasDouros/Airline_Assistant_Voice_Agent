@@ -6,6 +6,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from ..core.artifact_context import compact_elevenlabs_analysis
 from ..core.debug_output import print_agent_json
 from ..core.models import CritiqueVerdict
 
@@ -29,9 +30,10 @@ Judge the run primarily on:
 2. whether the tool and data usage looked appropriate
 3. whether the final user-facing answer was clear and adequate
 4. whether backend evidence supports the claimed outcome for write actions
+5. whether the ElevenLabs conversation analysis suggests anything important about how the call actually went
 
 Be concrete and conservative. Do not fail a run only because it used a different but still reasonable phrasing.
-Do not rely on rigid keyword matching. Use the transcript, tool trace, final answer, and backend verification as evidence.
+Do not rely on rigid keyword matching. Use the transcript, tool trace, final answer, backend verification, and ElevenLabs analysis as evidence.
 
 Return explicit 1-10 criterion scores for exactly these four criteria:
 - request_understanding
@@ -78,6 +80,7 @@ def _artifact_prompt(payload: dict[str, Any]) -> str:
         "stats": payload.get("stats") or {},
         "tool_trace": payload.get("tool_trace") or [],
         "backend_verification": payload.get("backend_verification"),
+        "elevenlabs_analysis": compact_elevenlabs_analysis(payload),
         "transcript": payload.get("transcript") or [],
     }
     return (

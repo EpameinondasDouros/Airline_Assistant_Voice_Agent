@@ -4,8 +4,10 @@ from collections.abc import Iterable
 
 from sqlalchemy import inspect, select, func
 from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, selectinload
 
 from app.db.session import SessionLocal
+from app.models.booking import Booking, BookingStatus
 from app.models.flight import Flight, SeatClass, SeatPreference
 from app.models.seat_inventory import SeatInventory
 
@@ -170,4 +172,59 @@ def seat_inventory_counts(session, flight_id: int) -> dict[str, int]:
         "extra_legroom_capacity": extra_capacity,
         "extra_legroom_booked": extra_booked,
         "extra_legroom_available": extra_available,
+    }
+
+
+def refresh_flight_seat_state(session: Session, flight: Flight) -> dict[str, int]:
+    """Synchronize denormalized flight seat counters from inventory rows."""
+
+    session.flush()
+    counts = seat_inventory_counts(session, flight.id)
+    flight.booked_seats = counts["booked_seats"]
+    flight.window_seat_capacity = counts["window_seat_capacity"]
+    flight.window_seat_booked = counts["window_seat_booked"]
+    flight.aisle_seat_capacity = counts["aisle_seat_capacity"]
+    flight.aisle_seat_booked = counts["aisle_seat_booked"]
+    flight.extra_legroom_capacity = counts["extra_legroom_capacity"]
+    flight.extra_legroom_booked = counts["extra_legroom_booked"]
+    return counts
+
+
+def reconcile_seat_state(session: Session) -> dict[str, int]:
+    """Rebuild booked seat flags and flight counters from confirmed bookings."""
+
+    flights = list(session.scalars(select(Flight)))
+    for inventory in session.scalars(select(SeatInventory)):
+        inventory.is_booked = False
+
+    marked_inventory = 0
+    confirmed_bookings = session.scalars(
+        select(Booking)
+        .where(Booking.status == BookingStatus.CONFIRMED)
+        .options(selectinload(Booking.passengers))
+    )
+    for booking in confirmed_bookings:
+        for passenger in booking.passengers:
+            if passenger.seat_number is None:
+                continue
+            inventory = session.scalar(
+                select(SeatInventory).where(
+                    SeatInventory.flight_id == booking.flight_id,
+                    SeatInventory.seat_number == passenger.seat_number.upper().strip(),
+                )
+            )
+            if inventory is None:
+                continue
+            inventory.is_booked = True
+            marked_inventory += 1
+
+    reconciled_flights = 0
+    for flight in flights:
+        refresh_flight_seat_state(session, flight)
+        reconciled_flights += 1
+
+    session.flush()
+    return {
+        "inventory_rows_marked_booked": marked_inventory,
+        "flights_reconciled": reconciled_flights,
     }

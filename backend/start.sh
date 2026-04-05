@@ -31,4 +31,6 @@ if [[ "${RUN_SEEDS_ON_STARTUP}" == "true" ]]; then
   python -m app.scripts.seed_knowledge
 fi
 
+python -m app.scripts.reconcile_seat_state
+
 exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"

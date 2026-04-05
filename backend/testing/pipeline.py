@@ -126,6 +126,8 @@ def _task_runtime_event_message(event: dict[str, Any]) -> str | None:
         return f"{label}: {text}" if text else f"{label} turn received."
     if event_type == "evaluation_started":
         return f"Evaluation started for {task_slug or 'task'}."
+    if event_type == "conversation_finalizing":
+        return str(event.get("message") or "Finalizing the conversation before evaluation.")
     if event_type == "evaluation_complete":
         score = event.get("overall_score")
         goal = "goal achieved" if event.get("goal_achieved") else "goal not met"
@@ -139,6 +141,18 @@ def _task_runtime_event_message(event: dict[str, Any]) -> str | None:
             parts.append(verdict)
         if root_cause:
             parts.append(f"root cause: {root_cause}")
+        return " | ".join(parts)
+    if event_type == "elevenlabs_analysis":
+        title = str(event.get("call_summary_title") or "").strip()
+        summary = str(event.get("transcript_summary") or "").strip()
+        call_successful = event.get("call_successful")
+        parts = ["ElevenLabs analysis"]
+        if title:
+            parts.append(title)
+        if call_successful is not None:
+            parts.append("call successful" if call_successful else "call not marked successful")
+        if summary:
+            parts.append(summary)
         return " | ".join(parts)
     if event_type == "evaluation_criterion":
         criterion = str(event.get("criterion") or "").strip().replace("_", " ")

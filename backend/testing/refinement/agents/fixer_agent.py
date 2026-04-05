@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from .critic import evaluate_artifact, load_artifact
 from .root_cause_evaluator import evaluate_root_cause
+from ..core.artifact_context import compact_elevenlabs_analysis
 from ..core.debug_output import print_agent_json
 from ..core.models import BoundedFixPlan, CritiqueVerdict
 from ..core.section_editors import (
@@ -35,6 +36,7 @@ You receive:
 - a task-based testing artifact
 - a critique verdict
 - a root-cause verdict
+- the ElevenLabs conversation analysis for the run
 - a small set of candidate files with real current contents and policy metadata
 
 Your job is to propose the smallest set of bounded edits that most likely fixes the root cause.
@@ -115,6 +117,7 @@ def _artifact_prompt(
         "final_agent_message": payload.get("final_agent_message"),
         "tool_trace": payload.get("tool_trace") or [],
         "backend_verification": payload.get("backend_verification"),
+        "elevenlabs_analysis": compact_elevenlabs_analysis(payload),
         "critique": critique,
         "root_cause": root_cause,
         "candidate_files": _select_candidate_files(root_cause),

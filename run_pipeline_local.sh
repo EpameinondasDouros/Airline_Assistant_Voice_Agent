@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 PIPELINE_API_DEFAULT="${VITE_PIPELINE_API_BASE_URL:-http://127.0.0.1:8000}"
 PRODUCT_API_DEFAULT="${VITE_API_BASE_URL:-https://airlineassistantvoiceagent.up.railway.app}"
+RESET_COLOR=$'\033[0m'
+BLUE_COLOR=$'\033[94m'
 
 TASK_SLUG=""
 TARGET_SCORE=8
@@ -138,6 +140,12 @@ print_step() {
   echo "- $1"
 }
 
+print_colored_step() {
+  local color="$1"
+  local message="$2"
+  printf "%b- %s%b\n" "$color" "$message" "$RESET_COLOR"
+}
+
 pipeline_summary_field() {
   local json_payload="$1"
   local field="$2"
@@ -191,6 +199,7 @@ def stage_for(event_type: str) -> str:
         "user_turn",
         "customer_reply",
         "transcript_turn",
+        "conversation_finalizing",
         "task_finished",
         "testing_complete",
     }:
@@ -198,6 +207,7 @@ def stage_for(event_type: str) -> str:
     if event_type in {
         "evaluation_started",
         "evaluation_complete",
+        "elevenlabs_analysis",
         "evaluation_criterion",
         "evaluation_finding",
         "evaluation_error",
@@ -259,7 +269,11 @@ PY
       LAST_STAGE_KEY="$stage_key"
     fi
     if [[ -n "$message" ]]; then
-      echo "- $message"
+      if [[ "$event_type" == "elevenlabs_analysis" ]]; then
+        print_colored_step "$BLUE_COLOR" "$message"
+      else
+        echo "- $message"
+      fi
     else
       echo "- $event_type"
     fi
