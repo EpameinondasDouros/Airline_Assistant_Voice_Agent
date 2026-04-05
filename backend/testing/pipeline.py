@@ -346,6 +346,73 @@ def _subprocess_result(
         }
 
 
+def _subprocess_result_with_progress(
+    command: list[str],
+    *,
+    cwd: Path = REPO_ROOT,
+    env: dict[str, str] | None = None,
+    timeout_seconds: int | None = None,
+    progress_interval_seconds: float = 5.0,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
+
+    started_at = time.time()
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=merged_env,
+    )
+    last_progress_at = started_at
+
+    while True:
+        return_code = process.poll()
+        now = time.time()
+        elapsed_seconds = now - started_at
+
+        if return_code is not None:
+            stdout, stderr = process.communicate()
+            return {
+                "command": " ".join(shlex.quote(part) for part in command),
+                "success": return_code == 0,
+                "exit_code": return_code,
+                "stdout": stdout,
+                "stderr": stderr,
+                "timed_out": False,
+            }
+
+        if timeout_seconds is not None and elapsed_seconds >= timeout_seconds:
+            process.kill()
+            stdout, stderr = process.communicate()
+            return {
+                "command": " ".join(shlex.quote(part) for part in command),
+                "success": False,
+                "exit_code": None,
+                "stdout": stdout,
+                "stderr": stderr,
+                "timed_out": True,
+                "error": f"Command timed out after {timeout_seconds} seconds.",
+            }
+
+        if progress_callback is not None and (now - last_progress_at) >= progress_interval_seconds:
+            progress_callback(
+                {
+                    "command": " ".join(shlex.quote(part) for part in command),
+                    "elapsed_seconds": round(elapsed_seconds, 1),
+                    "timeout_seconds": timeout_seconds,
+                    "pid": process.pid,
+                }
+            )
+            last_progress_at = now
+
+        time.sleep(0.5)
+
+
 def _repo_status() -> dict[str, Any]:
     result = _subprocess_result(["git", "status", "--porcelain"])
     dirty_entries = [line for line in (result["stdout"] or "").splitlines() if line.strip()]
@@ -367,10 +434,15 @@ def _git_commit(message: str) -> dict[str, Any]:
     return _subprocess_result(["git", "commit", "-m", message])
 
 
-def _git_push(branch_name: str, *, set_upstream: bool) -> dict[str, Any]:
+def _git_push(
+    branch_name: str,
+    *,
+    set_upstream: bool,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
     settings = get_settings()
     command = ["git", "push", "-u", "origin", branch_name] if set_upstream else ["git", "push", "origin", branch_name]
-    return _subprocess_result(
+    return _subprocess_result_with_progress(
         command,
         env={
             "GIT_TERMINAL_PROMPT": "0",
@@ -378,6 +450,8 @@ def _git_push(branch_name: str, *, set_upstream: bool) -> dict[str, Any]:
             "GH_PROMPT_DISABLED": "1",
         },
         timeout_seconds=settings.testing_pipeline_git_timeout_seconds,
+        progress_interval_seconds=settings.testing_pipeline_git_progress_interval_seconds,
+        progress_callback=progress_callback,
     )
 
 
@@ -1348,6 +1422,22 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
         changed_paths=changed_paths,
     )
 
+    if not changed_paths:
+        _append_event(
+            pipeline_id,
+            "code_apply_noop",
+            "The approved fix plan produced no effective file changes. Stopping before git add/commit.",
+            iteration=iteration_number,
+            changed_paths=changed_paths,
+        )
+        _mark_failed(
+            pipeline_id,
+            "The approved fix plan produced no effective file changes.",
+            stage="applying",
+            manifest=manifest,
+        )
+        return False
+
     add_result = _git_add(changed_paths)
     if not add_result["success"]:
         git_result_path = _iteration_dir(pipeline_id, iteration_number) / "git_result.json"
@@ -1401,7 +1491,30 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
         branch_name=branch_name,
         commit_sha=commit_sha,
     )
-    push_result = _git_push(branch_name, set_upstream=False)
+    push_result = _git_push(
+        branch_name,
+        set_upstream=False,
+        progress_callback=lambda payload: _append_event(
+            pipeline_id,
+            "git_push_progress",
+            (
+                f"Still waiting for git push to origin/{branch_name} "
+                f"({payload.get('elapsed_seconds', 0):.1f}s elapsed"
+                + (
+                    f", timeout {payload.get('timeout_seconds')}s"
+                    if payload.get("timeout_seconds") is not None
+                    else ""
+                )
+                + ")."
+            ),
+            iteration=iteration_number,
+            branch_name=branch_name,
+            commit_sha=commit_sha,
+            elapsed_seconds=payload.get("elapsed_seconds"),
+            timeout_seconds=payload.get("timeout_seconds"),
+            pid=payload.get("pid"),
+        ),
+    )
     git_payload["push"] = push_result
     git_result_path.write_text(json.dumps(git_payload, indent=2), encoding="utf-8")
 

@@ -286,7 +286,7 @@ def stage_for(event_type: str) -> str:
         return "Fix Planning"
     if event_type == "approval_required":
         return "Approval"
-    if event_type in {"code_apply_started", "code_apply_change", "code_apply_finished"}:
+    if event_type in {"code_apply_started", "code_apply_change", "code_apply_finished", "code_apply_noop"}:
         return "Code Change"
     if event_type in {
         "agent_sync_started",
@@ -294,6 +294,7 @@ def stage_for(event_type: str) -> str:
         "agent_sync_failed",
         "git_commit_finished",
         "git_push_started",
+        "git_push_progress",
         "git_push_finished",
         "git_push_skipped",
         "deploy_wait_started",
@@ -343,6 +344,8 @@ for idx, event in enumerate(events[start:], start=start + 1):
         "deployed_commit_sha",
         "attempt",
         "elapsed_seconds",
+        "timeout_seconds",
+        "pid",
         "health_ready",
         "health_status",
         "health_url",
@@ -535,7 +538,7 @@ PY
         print_colored_block "$YELLOW_COLOR" "" "$message"
       elif [[ "$event_type" == "transcript_turn" && ( "$role" == "agent" || "$message" == Agent:* ) ]]; then
         print_colored_block "$BLUE_COLOR" "" "$message"
-      elif [[ "$event_type" == "deploy_wait_started" || "$event_type" == "deploy_wait_health_check" || "$event_type" == "deploy_wait_progress" || "$event_type" == "deploy_verified" ]]; then
+      elif [[ "$event_type" == "git_push_progress" || "$event_type" == "deploy_wait_started" || "$event_type" == "deploy_wait_health_check" || "$event_type" == "deploy_wait_progress" || "$event_type" == "deploy_verified" ]]; then
         print_colored_block "$GREEN_COLOR" "" "$message"
       else
         print_colored_block "$GRAY_COLOR" "" "$message"
@@ -608,6 +611,8 @@ label_map = {
     "deployed_commit_sha": "deployed commit",
     "attempt": "attempt",
     "elapsed_seconds": "elapsed seconds",
+    "timeout_seconds": "timeout seconds",
+    "pid": "pid",
     "health_ready": "health ready",
     "health_status": "health status",
     "health_url": "health url",
