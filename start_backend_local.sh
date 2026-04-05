@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
+BACKEND_RELOAD="${BACKEND_RELOAD:-false}"
 
 if [[ -n "${BACKEND_PYTHON:-}" && -x "${BACKEND_PYTHON}" ]]; then
   PYTHON_BIN="${BACKEND_PYTHON}"
@@ -35,4 +36,10 @@ cd "$BACKEND_DIR"
 echo "Starting local backend control plane on http://$HOST:$PORT"
 echo "Backend root: $BACKEND_DIR"
 echo "Python: $PYTHON_BIN"
-exec "$PYTHON_BIN" -m uvicorn app.main:app --reload --host "$HOST" --port "$PORT"
+echo "Reload: $BACKEND_RELOAD"
+
+if [[ "$BACKEND_RELOAD" == "true" ]]; then
+  exec "$PYTHON_BIN" -m uvicorn app.main:app --reload --host "$HOST" --port "$PORT"
+fi
+
+exec "$PYTHON_BIN" -m uvicorn app.main:app --host "$HOST" --port "$PORT"
