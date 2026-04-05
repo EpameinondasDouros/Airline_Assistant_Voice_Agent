@@ -1,0 +1,38 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: sqlite:////app/data/techmellon_airline.db
+      RUN_MIGRATIONS_ON_STARTUP: "true"
+      RUN_SEEDS_ON_STARTUP: "true"
+      RESET_DATA_ON_STARTUP: "false"
+      BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-http://127.0.0.1:8000}
+      PORT: "8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://127.0.0.1:8000}
+      VITE_PIPELINE_API_BASE_URL: ${VITE_PIPELINE_API_BASE_URL:-http://127.0.0.1:8000}
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  backend_data:

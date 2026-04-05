@@ -256,6 +256,10 @@ def stage_for(event_type: str) -> str:
     }:
         return "Refinement Analysis"
     if event_type in {
+        "fix_plan_validation_started",
+        "fix_plan_validation_failed",
+        "fix_plan_repair_started",
+        "fix_plan_repair_finished",
         "fix_plan_ready",
         "fixer_summary",
         "fixer_expected_improvement",
@@ -301,6 +305,9 @@ for idx, event in enumerate(events[start:], start=start + 1):
         "summary",
         "verification_command",
         "edit_count",
+        "invalid_count",
+        "repaired_count",
+        "edit_index",
         "path",
         "selector_type",
         "selector_value",

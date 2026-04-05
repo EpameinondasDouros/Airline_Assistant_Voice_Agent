@@ -5,26 +5,19 @@ import shlex
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
-from .models import (
-    AcceptanceDecision,
-    AppliedSectionChange,
-    BoundedFixPlan,
-    CritiqueVerdict,
-    RefinementReport,
-    RootCauseVerdict,
-    VerificationResult,
-)
-from .section_editors import apply_section_edit
+from .models import AcceptanceDecision, AppliedSectionChange, BoundedFixPlan, CritiqueVerdict, RefinementReport, RootCauseVerdict, VerificationResult
+from .section_editors import apply_section_edit, validate_markdown_fix_plan_edits
 from ..agents.critic import evaluate_artifact, load_artifact
-from ..agents.fixer_agent import generate_fix_plan_from_artifact
+from ..agents.fixer_agent import RefinementGenerationError, generate_fix_plan_from_artifact, repair_invalid_markdown_edits
 from ..agents.root_cause_evaluator import evaluate_root_cause
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 REPORTS_ROOT = BACKEND_ROOT / "testing" / "refinement" / "reports"
 Logger = Callable[[str], None]
+WorkflowEventCallback = Callable[[str, str, dict[str, Any]], None]
 
 
 def _timestamp() -> str:
@@ -33,6 +26,18 @@ def _timestamp() -> str:
 
 def _default_logger(message: str) -> None:
     print(message)
+
+
+def _emit_workflow_event(
+    callback: WorkflowEventCallback | None,
+    logger: Logger,
+    event_type: str,
+    message: str,
+    **payload: Any,
+) -> None:
+    logger(message)
+    if callback is not None:
+        callback(event_type, message, payload)
 
 
 def _report_path(task_slug: str) -> Path:
@@ -151,6 +156,7 @@ def create_fix_plan_report(
     root_cause: RootCauseVerdict | dict | None = None,
     report_path: str | Path | None = None,
     logger: Logger | None = None,
+    event_callback: WorkflowEventCallback | None = None,
     verbose: bool = False,
 ) -> tuple[RefinementReport, Path]:
     active_logger = logger or _default_logger
@@ -212,11 +218,80 @@ def create_fix_plan_report(
             remaining = len(plan.section_edits) - 1
             active_logger(f"  - and {remaining} more edit{'s' if remaining != 1 else ''}")
             break
+
+    validation_issues = validate_markdown_fix_plan_edits(plan.section_edits)
+    initial_validation_issues = list(validation_issues)
+    _emit_workflow_event(
+        event_callback,
+        active_logger,
+        "fix_plan_validation_started",
+        f"Validating {len(plan.section_edits)} proposed section edit(s) before approval.",
+        edit_count=len(plan.section_edits),
+        invalid_count=len(validation_issues),
+    )
+    if validation_issues:
+        for issue in validation_issues:
+            _emit_workflow_event(
+                event_callback,
+                active_logger,
+                "fix_plan_validation_failed",
+                (
+                    f"Invalid markdown selector for {issue.path}: "
+                    f"{issue.selector_type}:{issue.selector_value} -> {issue.error}"
+                ),
+                path=issue.path,
+                selector_type=issue.selector_type,
+                selector_value=issue.selector_value,
+                error=issue.error,
+                edit_index=issue.edit_index,
+            )
+        _emit_workflow_event(
+            event_callback,
+            active_logger,
+            "fix_plan_repair_started",
+            f"Repairing {len(validation_issues)} invalid markdown edit(s) before approval.",
+            invalid_count=len(validation_issues),
+        )
+        plan = repair_invalid_markdown_edits(
+            payload,
+            critique=critique_data,
+            root_cause=root_cause_data,
+            plan=plan,
+            issues=validation_issues,
+            model=fixer_model or model or review_model,
+        )
+        repaired_issues = validate_markdown_fix_plan_edits(plan.section_edits)
+        if repaired_issues:
+            error_preview = "; ".join(
+                f"{issue.path} [{issue.selector_type}:{issue.selector_value}] {issue.error}"
+                for issue in repaired_issues[:3]
+            )
+            raise RefinementGenerationError(
+                "fix_plan_validation",
+                "Markdown fix-plan validation still failed after one repair pass. " + error_preview,
+            )
+        _emit_workflow_event(
+            event_callback,
+            active_logger,
+            "fix_plan_repair_finished",
+            f"Repaired invalid markdown selectors and revalidated the fix plan successfully.",
+            repaired_count=len(validation_issues),
+            repaired_edits=[
+                {
+                    "path": edit.path,
+                    "selector_type": edit.selector_type,
+                    "selector_value": edit.selector_value,
+                }
+                for edit in plan.section_edits
+                if edit.path.endswith(".md")
+            ],
+        )
     report = RefinementReport(
         artifact_path=str(Path(artifact_path)),
         critique=CritiqueVerdict.model_validate(critique_data),
         root_cause=RootCauseVerdict.model_validate(root_cause_data),
         fix_plan=plan,
+        validation_issues=initial_validation_issues,
     )
     report_path = Path(report_path) if report_path else _report_path(plan.task_slug)
     report_path.parent.mkdir(parents=True, exist_ok=True)

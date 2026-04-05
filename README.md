@@ -46,27 +46,14 @@ Expanded testing coverage currently includes:
 
 ## How Easy Is It To Run?
 
-For the normal repo experience, it is very simple on macOS because the product API is already remote.
+There are now two clear ways to run the repo on macOS:
 
-If someone only wants to launch the app UI against the deployed backend, the shortest path is:
+- easiest UI-only path, using the remote product backend:
+  `./start_frontend_local.sh`
+- easiest full local path, using Docker Compose:
+  `make up`
 
-```bash
-./start_frontend_local.sh
-```
-
-That script installs frontend dependencies if needed and starts the UI with the remote backend by default.
-
-If someone wants the full local stack instead, there is now a separate macOS helper flow:
-
-```bash
-./setup_macos.sh
-./start_local_stack.sh
-```
-
-So the repo now supports two paths:
-
-- quickest path: frontend only, backed by the remote API
-- full local path: backend + frontend on the same machine
+For another laptop, the best reproducible setup is now the Docker path because it avoids host-specific Python and Node drift.
 
 ## Architecture
 
@@ -120,7 +107,49 @@ By default, this points to:
 
 If you only want to explore the app UI, flight search, bookings view, and the remote-backed experience, this is the intended default.
 
-## Full Local Setup
+### Best Full Local Setup: One Command With Docker
+
+Requirements:
+
+- Docker Desktop for Mac
+- `make`
+
+Run:
+
+```bash
+make up
+```
+
+Then open:
+
+- `http://127.0.0.1:5173`
+
+This command:
+
+- copies `backend/.env.example` to `backend/.env` if needed
+- builds the backend container
+- builds the frontend container
+- starts the backend on `http://127.0.0.1:8000`
+- starts the frontend on `http://127.0.0.1:5173`
+- persists the SQLite database in a Docker volume
+
+Useful companion commands:
+
+```bash
+make down
+make logs
+make rebuild
+make ps
+```
+
+If you want a shell inside a running container:
+
+```bash
+make shell-backend
+make shell-frontend
+```
+
+## Alternative Full Local Setup
 
 ### Requirements
 
@@ -173,6 +202,8 @@ BACKEND_PUBLIC_URL=http://127.0.0.1:8000
 ELEVENLABS_BRANCH_ID=...
 ```
 
+If ElevenLabs needs to call your laptop from the public internet, replace the local `BACKEND_PUBLIC_URL` with a tunnel URL such as an `ngrok` HTTPS endpoint.
+
 ### 4. Sync ElevenLabs Tools
 
 After the backend is reachable publicly or locally through your chosen setup, sync the tool definitions:
@@ -183,7 +214,7 @@ source .venv/bin/activate
 python -m agents.tools.sync
 ```
 
-### 4. Run A Testing Task
+### 5. Run A Testing Task
 
 To run a single live conversation test through the backend API:
 

@@ -10,10 +10,17 @@ from .critic import evaluate_artifact, load_artifact
 from .root_cause_evaluator import evaluate_root_cause
 from ..core.artifact_context import compact_elevenlabs_analysis
 from ..core.debug_output import print_agent_json
-from ..core.models import BoundedFixPlan, CritiqueVerdict, RootCauseVerdict
+from ..core.models import (
+    BoundedFixPlan,
+    CritiqueVerdict,
+    FixPlanValidationIssue,
+    MarkdownEditRepairPlan,
+    RootCauseVerdict,
+)
 from ..core.section_editors import (
     candidate_paths_for_category,
     get_policy,
+    markdown_text_between_hints,
     read_target_file,
     selector_hints,
 )
@@ -70,6 +77,32 @@ Important capability-expansion rule:
 - If the task would be solved more robustly by expanding an existing tool or API capability, you may propose a bounded edit in backend/app or backend/agents/tools instead of forcing a prompt-only workaround.
 - Prefer a capability expansion when the transcript or tool trace shows the agent lacked a clean way to retrieve, compute, confirm, or mutate the required information.
 - Do not propose a fake prompt-only fix when the real issue is that the current API or tool contract is insufficient.
+
+Markdown selector guidance:
+- For markdown files, prefer markdown_heading whenever you are changing a prompt or rules section.
+- Only use text_between for markdown when a heading-level replacement would be too broad.
+- For markdown text_between edits, use one of the provided safe anchor pairs exactly as given. Do not invent new anchors.
+"""
+
+
+REPAIR_PROMPT = """You repair invalid markdown section-edit selectors inside an existing bounded fix plan.
+
+You receive:
+- the artifact context
+- the critique and root cause
+- the original bounded fix plan
+- the exact markdown validation errors
+- the current candidate files with real headings and safe text_between anchor pairs
+
+Your job is to repair only the invalid markdown edits.
+
+Strict rules:
+- Return replacement edits only for the invalid markdown edits listed in the validation errors.
+- Keep the original intent of each invalid edit. Repair selectors, anchors, and section targeting; do not redesign the whole fix.
+- Prefer markdown_heading whenever possible.
+- Use text_between only when the provided safe anchor pairs are a better fit than a heading-level replacement.
+- For markdown text_between, selector_value must be one of the provided safe anchor pairs exactly, formatted as START|END.
+- Do not invent headings or prose anchors that are not present in the file.
 """
 
 
@@ -88,6 +121,18 @@ def _build_agent(model: str) -> Agent[None, BoundedFixPlan]:
         model,
         output_type=BoundedFixPlan,
         system_prompt=PROMPT,
+    )
+
+
+def _build_repair_agent(model: str) -> Agent[None, MarkdownEditRepairPlan]:
+    if Agent is None:  # pragma: no cover - guarded at runtime
+        raise RuntimeError(
+            "pydantic-ai is not installed. Install it before using the bounded fixer agent."
+        ) from _IMPORT_ERROR
+    return Agent(
+        model,
+        output_type=MarkdownEditRepairPlan,
+        system_prompt=REPAIR_PROMPT,
     )
 
 
@@ -110,6 +155,7 @@ def _select_candidate_files(root_cause: dict[str, Any]) -> list[dict[str, Any]]:
                     "note": policy.note,
                 },
                 "selector_hints": selector_hints(path, content),
+                "safe_text_between_anchor_pairs": markdown_text_between_hints(path, content),
                 "content": content,
             }
         )
@@ -213,6 +259,87 @@ def generate_fix_plan(
         critique_verdict.model_dump(mode="json"),
         root_cause_verdict.model_dump(mode="json"),
     )
+
+
+def repair_invalid_markdown_edits(
+    payload: dict[str, Any],
+    *,
+    critique: CritiqueVerdict | dict[str, Any],
+    root_cause: RootCauseVerdict | dict[str, Any],
+    plan: BoundedFixPlan,
+    issues: list[FixPlanValidationIssue],
+    model: str | None = None,
+) -> BoundedFixPlan:
+    critique_verdict = (
+        critique
+        if isinstance(critique, CritiqueVerdict)
+        else CritiqueVerdict.model_validate(critique)
+    )
+    root_cause_verdict = (
+        root_cause
+        if isinstance(root_cause, RootCauseVerdict)
+        else RootCauseVerdict.model_validate(root_cause)
+    )
+
+    repair_agent = _build_repair_agent(model or "openai:gpt-4o-mini")
+    invalid_indices = {issue.edit_index for issue in issues}
+    invalid_paths = {issue.path for issue in issues}
+    invalid_edits = [
+        {
+            "edit_index": issue.edit_index,
+            "path": issue.path,
+            "selector_type": issue.selector_type,
+            "selector_value": issue.selector_value,
+            "reason": plan.section_edits[issue.edit_index].reason,
+            "replacement": plan.section_edits[issue.edit_index].replacement,
+            "error": issue.error,
+        }
+        for issue in issues
+    ]
+
+    candidate_files = [
+        candidate
+        for candidate in _select_candidate_files(root_cause_verdict.model_dump(mode="json"))
+        if candidate.get("path") in invalid_paths
+    ]
+
+    prompt_payload = {
+        "task": payload.get("task") or payload.get("scenario") or {},
+        "final_agent_message": payload.get("final_agent_message"),
+        "tool_trace": payload.get("tool_trace") or [],
+        "elevenlabs_analysis": compact_elevenlabs_analysis(payload),
+        "critique": critique_verdict.model_dump(mode="json"),
+        "root_cause": root_cause_verdict.model_dump(mode="json"),
+        "original_fix_plan": plan.model_dump(mode="json"),
+        "invalid_markdown_edits": invalid_edits,
+        "candidate_files": candidate_files,
+    }
+
+    try:
+        result = repair_agent.run_sync(
+            "Repair the invalid markdown selectors in this bounded fix plan.\n\n"
+            + json.dumps(prompt_payload, indent=2)
+        )
+    except Exception as exc:  # pragma: no cover - runtime integration failure path
+        raise RefinementGenerationError("fix_plan_repair", str(exc)) from exc
+
+    print_agent_json("fixer_repair_agent", result.output)
+    if len(result.output.repaired_section_edits) != len(issues):
+        raise RefinementGenerationError(
+            "fix_plan_repair",
+            (
+                "The markdown repair pass returned "
+                f"{len(result.output.repaired_section_edits)} edit(s) for {len(issues)} invalid markdown edit(s)."
+            ),
+        )
+
+    merged_edits = [
+        edit
+        for index, edit in enumerate(plan.section_edits)
+        if index not in invalid_indices
+    ]
+    merged_edits.extend(result.output.repaired_section_edits)
+    return plan.model_copy(update={"section_edits": merged_edits}, deep=True)
 
 
 def generate_fix_plan_from_artifact(

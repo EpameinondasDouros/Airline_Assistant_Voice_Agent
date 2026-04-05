@@ -69,6 +69,14 @@ class SectionEdit(BaseModel):
     replacement: str = Field(description="Replacement content for the matched section only.")
 
 
+class FixPlanValidationIssue(BaseModel):
+    edit_index: int = Field(ge=0, description="Zero-based index of the failing section edit in the fix plan.")
+    path: str = Field(description="Repo-relative path for the invalid edit.")
+    selector_type: str = Field(description="Selector type used by the invalid edit.")
+    selector_value: str = Field(description="Selector payload used by the invalid edit.")
+    error: str = Field(description="Concrete validation error for this edit.")
+
+
 class BoundedFixPlan(BaseModel):
     task_slug: str
     summary: str = Field(description="Short summary of the proposed fix.")
@@ -76,6 +84,13 @@ class BoundedFixPlan(BaseModel):
     expected_improvement: str = Field(description="What should improve after applying the fix.")
     verification_command: str = Field(description="Single command to rerun the most relevant validation.")
     section_edits: list[SectionEdit] = Field(default_factory=list)
+
+
+class MarkdownEditRepairPlan(BaseModel):
+    repaired_section_edits: list[SectionEdit] = Field(
+        default_factory=list,
+        description="Replacement edits for the invalid markdown section edits only.",
+    )
 
 
 class AppliedSectionChange(BaseModel):
@@ -108,6 +123,7 @@ class RefinementReport(BaseModel):
     critique: CritiqueVerdict
     root_cause: RootCauseVerdict
     fix_plan: BoundedFixPlan
+    validation_issues: list[FixPlanValidationIssue] = Field(default_factory=list)
     applied_changes: list[AppliedSectionChange] = Field(default_factory=list)
     sync_commands: list[str] = Field(default_factory=list)
     verification: VerificationResult | None = None

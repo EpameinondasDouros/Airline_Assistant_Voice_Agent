@@ -983,6 +983,17 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
     selected_payload = _load_json(Path(selected["artifact_path"]))
     selected_critique = (selected_payload.get("evaluator_verdict") or None)
     selected_root_cause = selected_payload.get("root_cause") or None
+
+    def refinement_event_callback(event_type: str, message: str, payload: dict[str, Any]) -> None:
+        _append_event(
+            pipeline_id,
+            event_type,
+            message,
+            iteration=iteration_number,
+            task=selected["task_slug"],
+            **payload,
+        )
+
     try:
         report, saved_report_path = create_fix_plan_report(
             selected["artifact_path"],
@@ -992,6 +1003,7 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
             critique=selected_critique,
             root_cause=selected_root_cause,
             report_path=report_path,
+            event_callback=refinement_event_callback,
             verbose=False,
         )
     except Exception as exc:

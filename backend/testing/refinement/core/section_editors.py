@@ -4,7 +4,7 @@ import ast
 from dataclasses import dataclass
 from pathlib import Path
 
-from .models import AppliedSectionChange, SectionEdit
+from .models import AppliedSectionChange, FixPlanValidationIssue, SectionEdit
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
@@ -108,6 +108,23 @@ def selector_hints(path: str, text: str) -> list[str]:
     return []
 
 
+def markdown_text_between_hints(path: str, text: str) -> list[str]:
+    normalized = normalize_repo_path(path)
+    if not normalized.endswith(".md"):
+        return []
+
+    headings: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            headings.append(stripped)
+
+    hints: list[str] = []
+    for index in range(len(headings) - 1):
+        hints.append(f"{headings[index]}|{headings[index + 1]}")
+    return hints
+
+
 def _normalize_markdown_heading_selector(selector_value: str) -> str:
     stripped = selector_value.strip()
     if stripped.startswith("#"):
@@ -187,7 +204,7 @@ def _locate_text_between(text: str, selector_value: str) -> tuple[int, int, str,
     return start_index, end_index, start_anchor, end_anchor
 
 
-def apply_section_edit(edit: SectionEdit) -> AppliedSectionChange:
+def _resolve_section_edit(edit: SectionEdit, *, write: bool) -> AppliedSectionChange:
     normalized_path = normalize_repo_path(edit.path)
     policy = get_policy(normalized_path)
     if policy is None:
@@ -261,7 +278,8 @@ def apply_section_edit(edit: SectionEdit) -> AppliedSectionChange:
             after_content=after_content,
         )
 
-    absolute_path.write_text(updated_text, encoding="utf-8")
+    if write:
+        absolute_path.write_text(updated_text, encoding="utf-8")
     return AppliedSectionChange(
         path=normalized_path,
         selector_type=edit.selector_type,
@@ -271,3 +289,32 @@ def apply_section_edit(edit: SectionEdit) -> AppliedSectionChange:
         before_content=before_content,
         after_content=after_content,
     )
+
+
+def validate_section_edit(edit: SectionEdit) -> AppliedSectionChange:
+    return _resolve_section_edit(edit, write=False)
+
+
+def apply_section_edit(edit: SectionEdit) -> AppliedSectionChange:
+    return _resolve_section_edit(edit, write=True)
+
+
+def validate_markdown_fix_plan_edits(section_edits: list[SectionEdit]) -> list[FixPlanValidationIssue]:
+    issues: list[FixPlanValidationIssue] = []
+    for index, edit in enumerate(section_edits):
+        normalized_path = normalize_repo_path(edit.path)
+        if not normalized_path.endswith(".md"):
+            continue
+        result = validate_section_edit(edit)
+        if result.applied:
+            continue
+        issues.append(
+            FixPlanValidationIssue(
+                edit_index=index,
+                path=normalized_path,
+                selector_type=edit.selector_type,
+                selector_value=edit.selector_value,
+                error=result.error or "Unknown markdown validation error.",
+            )
+        )
+    return issues

@@ -93,6 +93,53 @@ function formatPipelineEventTitle(type) {
   return eventType.replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function formatElevenLabsTranscriptItems(transcript) {
+  if (!Array.isArray(transcript) || transcript.length === 0) return [];
+
+  const lines = ["ElevenLabs transcript:"];
+  for (const item of transcript) {
+    const role = String(item?.role || "");
+    const text = String(item?.message || item?.text || "").trim();
+    if (text) {
+      if (role === "agent") {
+        lines.push(`- Agent: ${text}`);
+      } else if (role === "user" || role === "user_transcript") {
+        lines.push(`- User: ${text}`);
+      } else {
+        lines.push(`- ${role || "Transcript"}: ${text}`);
+      }
+    }
+
+    for (const toolCall of item?.tool_calls || []) {
+      const name = String(toolCall?.tool_name || "unknown_tool").trim();
+      const method = String(toolCall?.tool_details?.method || "").trim();
+      const url = String(toolCall?.tool_details?.url || "").trim();
+      const params = String(toolCall?.params_as_json || "").trim();
+      const parts = [name];
+      if (method) parts.push(method);
+      if (url) parts.push(url);
+      let line = `- Tool call: ${parts.filter(Boolean).join(" | ")}`;
+      if (params) line += ` | params=${params}`;
+      lines.push(line);
+    }
+
+    for (const toolResult of item?.tool_results || []) {
+      const name = String(toolResult?.tool_name || "unknown_tool").trim();
+      const status = toolResult?.is_error ? "error" : "ok";
+      const latency = toolResult?.tool_latency_secs;
+      const resultValue = String(toolResult?.result_value || "").trim();
+      const parts = [name, status];
+      if (typeof latency !== "undefined" && latency !== null && latency !== "") {
+        parts.push(`latency=${latency}s`);
+      }
+      let line = `- Tool result: ${parts.join(" | ")}`;
+      if (resultValue) line += ` | ${resultValue}`;
+      lines.push(line);
+    }
+  }
+  return lines;
+}
+
 function formatPipelineEventBody(event) {
   const parts = [];
   if (event.message) parts.push(String(event.message));
@@ -115,6 +162,24 @@ function formatPipelineEventBody(event) {
   if (typeof payload.edit_count !== "undefined") {
     extraLines.push(`Edit count: ${payload.edit_count}`);
   }
+  if (typeof payload.invalid_count !== "undefined") {
+    extraLines.push(`Invalid edits: ${payload.invalid_count}`);
+  }
+  if (typeof payload.repaired_count !== "undefined") {
+    extraLines.push(`Repaired edits: ${payload.repaired_count}`);
+  }
+  if (typeof payload.edit_index !== "undefined") {
+    extraLines.push(`Edit index: ${payload.edit_index}`);
+  }
+  if (payload.path) {
+    extraLines.push(`Path: ${payload.path}`);
+  }
+  if (payload.selector_type || payload.selector_value) {
+    extraLines.push(`Selector: ${payload.selector_type || "unknown"}:${payload.selector_value || ""}`);
+  }
+  if (payload.error && !parts.some((line) => line.includes(String(payload.error)))) {
+    extraLines.push(`Error: ${payload.error}`);
+  }
   if (Array.isArray(payload.changed_paths) && payload.changed_paths.length) {
     extraLines.push(`Changed paths: ${payload.changed_paths.join(", ")}`);
   }
@@ -132,6 +197,9 @@ function formatPipelineEventBody(event) {
   }
   if (runtime.message && !parts.some((line) => line.includes(String(runtime.message)))) {
     extraLines.push(String(runtime.message));
+  }
+  if (String(event.type || "") === "elevenlabs_analysis") {
+    extraLines.push(...formatElevenLabsTranscriptItems(payload.transcript));
   }
 
   if (extraLines.length) {
@@ -217,7 +285,16 @@ function getPipelinePhase(type) {
   if (["refinement_started", "root_cause_complete", "refinement_error"].includes(eventType)) {
     return "refinement";
   }
-  if (["fix_plan_ready", "fixer_summary", "fixer_expected_improvement", "fixer_edit"].includes(eventType)) {
+  if ([
+    "fix_plan_validation_started",
+    "fix_plan_validation_failed",
+    "fix_plan_repair_started",
+    "fix_plan_repair_finished",
+    "fix_plan_ready",
+    "fixer_summary",
+    "fixer_expected_improvement",
+    "fixer_edit",
+  ].includes(eventType)) {
     return "fix_plan";
   }
   if (eventType === "approval_required") return "approval";
@@ -706,7 +783,15 @@ function App() {
         sections.rootCause.push(item);
         continue;
       }
-      if (["fix_plan_ready", "fixer_summary", "fixer_expected_improvement"].includes(event.type)) {
+      if ([
+        "fix_plan_validation_started",
+        "fix_plan_validation_failed",
+        "fix_plan_repair_started",
+        "fix_plan_repair_finished",
+        "fix_plan_ready",
+        "fixer_summary",
+        "fixer_expected_improvement",
+      ].includes(event.type)) {
         sections.fixPlan.push(item);
         continue;
       }
@@ -755,7 +840,16 @@ function App() {
         ["refinement_started", "root_cause_complete", "refinement_error"].includes(String(event.type || ""))
       );
       const fixPlanEvents = events.filter((event) =>
-        ["fix_plan_ready", "fixer_summary", "fixer_expected_improvement", "fixer_edit"].includes(String(event.type || ""))
+        [
+          "fix_plan_validation_started",
+          "fix_plan_validation_failed",
+          "fix_plan_repair_started",
+          "fix_plan_repair_finished",
+          "fix_plan_ready",
+          "fixer_summary",
+          "fixer_expected_improvement",
+          "fixer_edit",
+        ].includes(String(event.type || ""))
       );
       const approvalEvents = events.filter((event) => String(event.type || "") === "approval_required");
       const codeChangeEvents = events.filter((event) =>
@@ -871,7 +965,17 @@ function App() {
     };
   }, [bookedTrips]);
   useEffect(() => {
-    listFlights(3)
+    searchFlights({
+      origin: "ATH",
+      destination: "JFK",
+      departure_date_from: "2026-04-01",
+      departure_date_to: "2026-04-30",
+      seat_class: "",
+      max_price: "2500",
+      sort_by: "departure_time",
+      only_available: true,
+      limit: 20,
+    })
       .then((items) => {
         setFlights(items);
         setFlightStatus(uniqueFlights(items).length ? `Loaded ${uniqueFlights(items).length} flights` : "No flights returned");
@@ -1531,6 +1635,7 @@ function App() {
                 : null,
               event.transcript_summary || null,
               event.termination_reason ? `Termination: ${event.termination_reason}` : null,
+              ...formatElevenLabsTranscriptItems(event.transcript),
             ]
               .filter(Boolean)
               .join("\n"),
@@ -1617,13 +1722,30 @@ function App() {
         ]);
         return;
       }
-      if (event.type === "fix_plan_ready" || event.type === "fixer_summary" || event.type === "fixer_expected_improvement" || event.type === "fixer_edit") {
+      if (
+        event.type === "fix_plan_validation_started" ||
+        event.type === "fix_plan_validation_failed" ||
+        event.type === "fix_plan_repair_started" ||
+        event.type === "fix_plan_repair_finished" ||
+        event.type === "fix_plan_ready" ||
+        event.type === "fixer_summary" ||
+        event.type === "fixer_expected_improvement" ||
+        event.type === "fixer_edit"
+      ) {
         setTestingRefinementEvents((current) => [
           ...current,
           {
             kind: "fixer",
             title:
-              event.type === "fix_plan_ready"
+              event.type === "fix_plan_validation_started"
+                ? "Fix plan validation started"
+                : event.type === "fix_plan_validation_failed"
+                  ? "Fix plan validation failed"
+                  : event.type === "fix_plan_repair_started"
+                    ? "Fix plan repair started"
+                    : event.type === "fix_plan_repair_finished"
+                      ? "Fix plan repair finished"
+                      : event.type === "fix_plan_ready"
                 ? "Fix plan ready"
                 : event.type === "fixer_summary"
                   ? "Fixer summary"
@@ -1749,7 +1871,6 @@ function App() {
           <button className={screen === "concierge" ? "sidebar__item active" : "sidebar__item"} onClick={() => setScreen("concierge")}>Concierge</button>
           <button className={screen === "refinement" ? "sidebar__item active" : "sidebar__item"} onClick={() => setScreen("refinement")}>Refinement</button>
           <button className={screen === "testing" ? "sidebar__item active" : "sidebar__item"} onClick={() => setScreen("testing")}>Testing</button>
-          <a className="sidebar__item" href="#">Policy Hub</a>
         </nav>
       </aside>
 
