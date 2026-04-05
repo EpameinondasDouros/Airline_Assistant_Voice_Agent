@@ -2109,366 +2109,106 @@ function App() {
               <section className="pipeline-timeline-card">
                 <div className="pipeline-timeline-card__head">
                   <div>
-                    <span className="eyebrow">Pipeline timeline</span>
-                    <strong>Staged workflow</strong>
+                    <span className="eyebrow">Pipeline iterations</span>
+                    <strong>Iteration workflow</strong>
                   </div>
                   <span className="testing-muted">
-                    {selectedPipelineEvents.length ? `${selectedPipelineEvents.length} event${selectedPipelineEvents.length === 1 ? "" : "s"}` : "No events yet"}
+                    {pipelineIterationAccordions.length ? `${pipelineIterationAccordions.length} iteration${pipelineIterationAccordions.length === 1 ? "" : "s"}` : "No iterations yet"}
                   </span>
                 </div>
 
-                <div className="pipeline-timeline" ref={pipelineConsoleRef}>
-                  {pipelineTimeline.globalStartEvents.length ? (
-                    <section className="pipeline-phase-group">
-                      <div className="pipeline-phase-group__header">
-                        <strong>Start Pipeline</strong>
-                      </div>
-                      <div className="pipeline-event-list">
-                        {pipelineTimeline.globalStartEvents.map((event, index) => (
+                <div className="pipeline-accordions" ref={pipelineConsoleRef}>
+                  {pipelineIterationAccordions.length ? (
+                    pipelineIterationAccordions.map((iteration) => {
+                      const expanded = expandedPipelineIterations.includes(Number(iteration.iterationNumber));
+                      return (
+                        <section className="pipeline-accordion" key={`iteration-${iteration.iterationNumber}`}>
                           <button
                             type="button"
-                            className="pipeline-event-card"
-                            key={`${event.timestamp}-${event.type}-${index}`}
-                            onClick={() => {
-                              if (pipelineIterationNumbers.length) {
-                                setSelectedPipelineIterationNumber(pipelineIterationNumbers[0]);
-                              }
-                            }}
+                            className="pipeline-accordion__trigger"
+                            onClick={() =>
+                              setExpandedPipelineIterations((current) =>
+                                current.includes(Number(iteration.iterationNumber))
+                                  ? current.filter((value) => Number(value) !== Number(iteration.iterationNumber))
+                                  : [...current, Number(iteration.iterationNumber)].sort((left, right) => left - right)
+                              )
+                            }
+                            aria-expanded={expanded}
                           >
-                            <div className="pipeline-event-card__meta">
-                              <span>{formatPipelineEventTitle(event.type)}</span>
-                              <time>{formatTimestamp(event.timestamp)}</time>
+                            <div className="pipeline-accordion__summary">
+                              <span className="eyebrow">Iteration {iteration.iterationNumber}</span>
+                              <strong>{iteration.taskSlug || effectivePipelineSummary.latest_task_slug || "Pipeline task"}</strong>
+                              <small>
+                                {formatSeatClass(iteration.record?.status || "running")}
+                                {typeof iteration.overallScore === "number" ? ` · ${iteration.overallScore}/10` : ""}
+                              </small>
                             </div>
-                            <p>{formatPipelineEventBody(event)}</p>
+                            <span className={expanded ? "pipeline-accordion__chevron pipeline-accordion__chevron--open" : "pipeline-accordion__chevron"}>
+                              <span className="material-symbols-outlined">expand_more</span>
+                            </span>
                           </button>
-                        ))}
-                      </div>
-                    </section>
-                  ) : null}
 
-                  {pipelineTimeline.iterationGroups.length ? (
-                    pipelineTimeline.iterationGroups.map((group) => (
-                      <section className="pipeline-iteration-card" key={`iteration-${group.iterationNumber}`}>
-                        <div className="pipeline-iteration-card__header">
-                          <div>
-                            <span className="eyebrow">Iteration {group.iterationNumber}</span>
-                            <strong>{formatSeatClass(group.record?.status || "running")}</strong>
-                          </div>
-                          <button
-                            type="button"
-                            className={Number(selectedIterationRecord?.iteration) === Number(group.iterationNumber) ? "pipeline-select-link active" : "pipeline-select-link"}
-                            onClick={() => {
-                              setSelectedPipelineIterationNumber(group.iterationNumber);
-                              setSelectedPipelineTaskSlug(getIterationTaskSlug(group.record, effectivePipelineSummary.latest_task_slug ? [effectivePipelineSummary.latest_task_slug] : selectedPipeline?.task_slugs || []));
-                            }}
-                          >
-                            View details
-                          </button>
-                        </div>
+                          {expanded ? (
+                            <div className="pipeline-accordion__content">
+                              {iteration.sections.map((section) => (
+                                <section className="pipeline-phase-section" key={`${iteration.iterationNumber}-${section.key}`}>
+                                  <div className="pipeline-phase-section__head">
+                                    <strong>{section.label}</strong>
+                                  </div>
 
-                        <div className="pipeline-phase-stack">
-                          {group.phases.map((phase) => (
-                            <section className="pipeline-phase-group" key={`${group.iterationNumber}-${phase.key}`}>
-                              <div className="pipeline-phase-group__header">
-                                <strong>{phase.label}</strong>
-                              </div>
-                              <div className="pipeline-event-list">
-                                {phase.events.map((event, index) => {
-                                  const eventTaskSlug = getPipelineEventTaskSlug(event);
-                                  const active =
-                                    Number(selectedIterationRecord?.iteration) === Number(group.iterationNumber) &&
-                                    (!eventTaskSlug || eventTaskSlug === selectedPipelineTaskSlug);
-                                  return (
-                                    <button
-                                      type="button"
-                                      className={active ? "pipeline-event-card pipeline-event-card--active" : "pipeline-event-card"}
-                                      key={`${event.timestamp}-${event.type}-${index}`}
-                                      onClick={() => {
-                                        setSelectedPipelineIterationNumber(group.iterationNumber);
-                                        if (eventTaskSlug) {
-                                          setSelectedPipelineTaskSlug(eventTaskSlug);
-                                        }
-                                      }}
-                                    >
-                                      <div className="pipeline-event-card__meta">
-                                        <span>{formatPipelineEventTitle(event.type)}</span>
-                                        <time>{formatTimestamp(event.timestamp)}</time>
+                                  {section.key === "testing" ? (
+                                    section.transcriptTurns && section.transcriptTurns.length ? (
+                                      <div className="pipeline-transcript pipeline-transcript--inline">
+                                        {section.transcriptTurns.map((item, index) => (
+                                          <article className={item.role === "user" ? "transcript-turn transcript-turn--user" : "transcript-turn transcript-turn--agent"} key={`${iteration.iterationNumber}-${item.role}-${item.timestamp || index}`}>
+                                            <div className="transcript-turn__meta">
+                                              <span>{item.role === "user" ? "User" : item.role === "agent" ? "Agent" : item.role}</span>
+                                              <time>{formatTimestamp(item.timestamp)}</time>
+                                            </div>
+                                            <p>{item.text}</p>
+                                          </article>
+                                        ))}
                                       </div>
-                                      <p>{formatPipelineEventBody(event)}</p>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </section>
-                          ))}
-                        </div>
-                      </section>
-                    ))
+                                    ) : section.events.length ? (
+                                      <div className="pipeline-section-card__list">
+                                        {section.events.map((event, index) => (
+                                          <article className={`pipeline-step-card pipeline-step-card--${pipelineEventCategory(event.type)}`} key={`${event.timestamp}-${event.type}-${index}`}>
+                                            <div className="pipeline-event-card__meta">
+                                              <span>{formatPipelineEventTitle(event.type)}</span>
+                                              <time>{formatTimestamp(event.timestamp)}</time>
+                                            </div>
+                                            <p>{formatPipelineEventBody(event)}</p>
+                                          </article>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="testing-muted">{section.emptyText}</p>
+                                    )
+                                  ) : section.events.length ? (
+                                    <div className="pipeline-section-card__list">
+                                      {section.events.map((event, index) => (
+                                        <article className="pipeline-detail-event" key={`${event.timestamp}-${event.type}-${index}`}>
+                                          <div className="pipeline-event-card__meta">
+                                            <span>{formatPipelineEventTitle(event.type)}</span>
+                                            <time>{formatTimestamp(event.timestamp)}</time>
+                                          </div>
+                                          <p>{formatPipelineEventBody(event)}</p>
+                                        </article>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="testing-muted">{section.emptyText}</p>
+                                  )}
+                                </section>
+                              ))}
+                            </div>
+                          ) : null}
+                        </section>
+                      );
+                    })
                   ) : (
                     <p className="testing-muted">No pipeline iterations yet.</p>
                   )}
-
-                  {pipelineTimeline.globalFinalEvents.length ? (
-                    <section className="pipeline-phase-group">
-                      <div className="pipeline-phase-group__header">
-                        <strong>Final Summary</strong>
-                      </div>
-                      <div className="pipeline-event-list">
-                        {pipelineTimeline.globalFinalEvents.map((event, index) => (
-                          <article className="pipeline-event-card" key={`${event.timestamp}-${event.type}-${index}`}>
-                            <div className="pipeline-event-card__meta">
-                              <span>{formatPipelineEventTitle(event.type)}</span>
-                              <time>{formatTimestamp(event.timestamp)}</time>
-                            </div>
-                            <p>{formatPipelineEventBody(event)}</p>
-                          </article>
-                        ))}
-                      </div>
-                    </section>
-                  ) : null}
-                </div>
-              </section>
-
-              <section className="pipeline-detail-workspace">
-                <div className="pipeline-detail-column">
-                  <section className="pipeline-detail-panel">
-                    <div className="pipeline-detail-panel__head">
-                      <div>
-                        <span className="eyebrow">Conversation transcript</span>
-                        <strong>{selectedPipelineTaskSlug || effectivePipelineSummary.latest_task_slug || "No task selected"}</strong>
-                      </div>
-                      {selectedIterationRecord ? <span className="testing-muted">Iteration {selectedIterationRecord.iteration}</span> : null}
-                    </div>
-
-                    {selectedIterationTaskOptions.length > 1 ? (
-                      <label className="pipeline-field">
-                        <span>Task in view</span>
-                        <select
-                          value={selectedPipelineTaskSlug}
-                          onChange={(event) => setSelectedPipelineTaskSlug(event.target.value)}
-                          className="testing-select testing-select--full"
-                        >
-                          {selectedIterationTaskOptions.map((taskSlug) => (
-                            <option key={taskSlug} value={taskSlug}>
-                              {taskSlug}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : null}
-
-                    <div className="pipeline-transcript">
-                      {pipelineConversationTurns.length ? (
-                        pipelineConversationTurns.map((item, index) => (
-                          <article className={item.role === "user" ? "transcript-turn transcript-turn--user" : "transcript-turn transcript-turn--agent"} key={`${item.role}-${item.timestamp || index}`}>
-                            <div className="transcript-turn__meta">
-                              <span>{item.role === "user" ? "User" : item.role === "agent" ? "Agent" : item.role}</span>
-                              <time>{formatTimestamp(item.timestamp)}</time>
-                            </div>
-                            <p>{item.text}</p>
-                          </article>
-                        ))
-                      ) : (
-                        <p className="testing-muted">No conversation turns are available for this iteration yet.</p>
-                      )}
-                    </div>
-                  </section>
-
-                  <section className="pipeline-detail-panel">
-                    <div className="pipeline-detail-panel__head">
-                      <div>
-                        <span className="eyebrow">Testing phase</span>
-                        <strong>Execution steps</strong>
-                      </div>
-                    </div>
-                    <div className="pipeline-step-list">
-                      {pipelineTestingStepEvents.length ? (
-                        pipelineTestingStepEvents.map((event, index) => (
-                          <article className={`pipeline-step-card pipeline-step-card--${pipelineEventCategory(event.type)}`} key={`${event.timestamp}-${event.type}-${index}`}>
-                            <div className="pipeline-event-card__meta">
-                              <span>{formatPipelineEventTitle(event.type)}</span>
-                              <time>{formatTimestamp(event.timestamp)}</time>
-                            </div>
-                            <p>{formatPipelineEventBody(event)}</p>
-                          </article>
-                        ))
-                      ) : (
-                        <p className="testing-muted">No testing steps are available for this selection yet.</p>
-                      )}
-                    </div>
-                  </section>
-                </div>
-
-                <div className="pipeline-detail-column">
-                  <section className="pipeline-detail-panel">
-                    <div className="pipeline-detail-panel__head">
-                      <div>
-                        <span className="eyebrow">Iteration detail</span>
-                        <strong>Evaluation, refinement, and apply flow</strong>
-                      </div>
-                    </div>
-
-                    {selectedTaskResult ? (
-                      <div className="pipeline-task-summary">
-                        <article>
-                          <span>Overall score</span>
-                          <strong>{typeof selectedTaskResult.overall_score === "number" ? `${selectedTaskResult.overall_score}/10` : "—"}</strong>
-                        </article>
-                        <article>
-                          <span>Goal achieved</span>
-                          <strong>{typeof selectedTaskResult.goal_achieved === "boolean" ? (selectedTaskResult.goal_achieved ? "Yes" : "No") : "—"}</strong>
-                        </article>
-                        <article>
-                          <span>Needs refinement</span>
-                          <strong>{typeof selectedTaskResult.needs_refinement === "boolean" ? (selectedTaskResult.needs_refinement ? "Yes" : "No") : "—"}</strong>
-                        </article>
-                        <article>
-                          <span>Root cause</span>
-                          <strong>{selectedTaskResult.root_cause_category || "—"}</strong>
-                        </article>
-                      </div>
-                    ) : null}
-
-                    <div className="pipeline-right-stack">
-                      <article className="pipeline-section-card">
-                        <div className="pipeline-section-card__head">
-                          <span className="eyebrow">Evaluation</span>
-                          <strong>{pipelineDetailSections.evaluation.length ? `${pipelineDetailSections.evaluation.length} event${pipelineDetailSections.evaluation.length === 1 ? "" : "s"}` : "No events"}</strong>
-                        </div>
-                        {pipelineDetailSections.evaluation.length ? (
-                          <div className="pipeline-section-card__list">
-                            {pipelineDetailSections.evaluation.map((item) => (
-                              <article className="pipeline-detail-event" key={item.id}>
-                                <div className="pipeline-event-card__meta">
-                                  <span>{item.title}</span>
-                                  <time>{formatTimestamp(item.timestamp)}</time>
-                                </div>
-                                {item.body ? <p>{item.body}</p> : null}
-                              </article>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="testing-muted">No evaluation output yet.</p>
-                        )}
-                      </article>
-
-                      <article className="pipeline-section-card">
-                        <div className="pipeline-section-card__head">
-                          <span className="eyebrow">Root cause</span>
-                          <strong>{pipelineDetailSections.rootCause.length ? "Ready" : "Waiting"}</strong>
-                        </div>
-                        {pipelineDetailSections.rootCause.length ? (
-                          <div className="pipeline-section-card__list">
-                            {pipelineDetailSections.rootCause.map((item) => (
-                              <article className="pipeline-detail-event" key={item.id}>
-                                <div className="pipeline-event-card__meta">
-                                  <span>{item.title}</span>
-                                  <time>{formatTimestamp(item.timestamp)}</time>
-                                </div>
-                                {item.body ? <p>{item.body}</p> : null}
-                              </article>
-                            ))}
-                          </div>
-                        ) : selectedTaskResult && selectedTaskResult.needs_refinement === false ? (
-                          <p className="testing-muted">No root-cause analysis was needed because this task already met the target threshold.</p>
-                        ) : (
-                          <p className="testing-muted">No root-cause analysis yet.</p>
-                        )}
-                      </article>
-
-                      <article className="pipeline-section-card">
-                        <div className="pipeline-section-card__head">
-                          <span className="eyebrow">Fix plan</span>
-                          <strong>{pipelineDetailSections.fixPlan.length ? "Ready" : "Waiting"}</strong>
-                        </div>
-                        {pipelineDetailSections.fixPlan.length ? (
-                          <div className="pipeline-section-card__list">
-                            {pipelineDetailSections.fixPlan.map((item) => (
-                              <article className="pipeline-detail-event" key={item.id}>
-                                <div className="pipeline-event-card__meta">
-                                  <span>{item.title}</span>
-                                  <time>{formatTimestamp(item.timestamp)}</time>
-                                </div>
-                                {item.body ? <p>{item.body}</p> : null}
-                              </article>
-                            ))}
-                          </div>
-                        ) : selectedTaskResult && selectedTaskResult.needs_refinement === false ? (
-                          <p className="testing-muted">No fix plan was required for this iteration.</p>
-                        ) : (
-                          <p className="testing-muted">No fix plan yet.</p>
-                        )}
-                      </article>
-
-                      <article className="pipeline-section-card">
-                        <div className="pipeline-section-card__head">
-                          <span className="eyebrow">Fixer edits</span>
-                          <strong>{pipelineDetailSections.fixerEdits.length ? `${pipelineDetailSections.fixerEdits.length} edit${pipelineDetailSections.fixerEdits.length === 1 ? "" : "s"}` : "Waiting"}</strong>
-                        </div>
-                        {pipelineDetailSections.fixerEdits.length ? (
-                          <div className="pipeline-section-card__list">
-                            {pipelineDetailSections.fixerEdits.map((item) => (
-                              <article className="pipeline-detail-event" key={item.id}>
-                                <div className="pipeline-event-card__meta">
-                                  <span>{item.title}</span>
-                                  <time>{formatTimestamp(item.timestamp)}</time>
-                                </div>
-                                {item.body ? <p>{item.body}</p> : null}
-                              </article>
-                            ))}
-                          </div>
-                        ) : selectedTaskResult && selectedTaskResult.needs_refinement === false ? (
-                          <p className="testing-muted">No fixer edits were generated because the iteration passed evaluation.</p>
-                        ) : (
-                          <p className="testing-muted">No fixer edits yet.</p>
-                        )}
-                      </article>
-
-                      <article className="pipeline-section-card">
-                        <div className="pipeline-section-card__head">
-                          <span className="eyebrow">Code and deploy</span>
-                          <strong>{pipelineDetailSections.codeDeploy.length ? `${pipelineDetailSections.codeDeploy.length} event${pipelineDetailSections.codeDeploy.length === 1 ? "" : "s"}` : "Waiting"}</strong>
-                        </div>
-                        {pipelineDetailSections.codeDeploy.length ? (
-                          <div className="pipeline-section-card__list">
-                            {pipelineDetailSections.codeDeploy.map((item) => (
-                              <article className="pipeline-detail-event" key={item.id}>
-                                <div className="pipeline-event-card__meta">
-                                  <span>{item.title}</span>
-                                  <time>{formatTimestamp(item.timestamp)}</time>
-                                </div>
-                                {item.body ? <p>{item.body}</p> : null}
-                              </article>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="testing-muted">No code or deploy events are available for this selection.</p>
-                        )}
-                      </article>
-
-                      <article className="pipeline-section-card">
-                        <div className="pipeline-section-card__head">
-                          <span className="eyebrow">Outcome</span>
-                          <strong>{pipelineDetailSections.completion.length ? "Ready" : "Waiting"}</strong>
-                        </div>
-                        {pipelineDetailSections.completion.length ? (
-                          <div className="pipeline-section-card__list">
-                            {pipelineDetailSections.completion.map((item) => (
-                              <article className="pipeline-detail-event" key={item.id}>
-                                <div className="pipeline-event-card__meta">
-                                  <span>{item.title}</span>
-                                  <time>{formatTimestamp(item.timestamp)}</time>
-                                </div>
-                                {item.body ? <p>{item.body}</p> : null}
-                              </article>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="testing-muted">No completion output yet.</p>
-                        )}
-                      </article>
-                    </div>
-                  </section>
                 </div>
               </section>
 

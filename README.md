@@ -127,7 +127,6 @@ If you only want to explore the app UI, flight search, bookings view, and the re
 - Python 3.11+
 - Node.js 18+
 - `npm`
-- `npm`
 - An ElevenLabs API key if you want live chat/testing against ElevenLabs
 - An ElevenLabs agent configured to use this backend's tools if you want live chat/testing
 
@@ -174,7 +173,7 @@ BACKEND_PUBLIC_URL=http://127.0.0.1:8000
 ELEVENLABS_BRANCH_ID=...
 ```
 
-### 3. Sync ElevenLabs Tools
+### 4. Sync ElevenLabs Tools
 
 After the backend is reachable publicly or locally through your chosen setup, sync the tool definitions:
 

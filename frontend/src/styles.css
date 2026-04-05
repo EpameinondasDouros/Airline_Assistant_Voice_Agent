@@ -1236,6 +1236,66 @@ button, input { font: inherit; }
   overflow: auto;
   padding-right: 0.2rem;
 }
+.pipeline-accordions {
+  display: grid;
+  gap: 1rem;
+}
+.pipeline-accordion {
+  display: grid;
+  gap: 0;
+  border-radius: 1.2rem;
+  border: 1px solid rgba(124, 138, 137, 0.14);
+  background: rgba(248, 250, 249, 0.92);
+}
+.pipeline-accordion__trigger {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.05rem;
+  cursor: pointer;
+  text-align: left;
+}
+.pipeline-accordion__summary {
+  display: grid;
+  gap: 0.18rem;
+}
+.pipeline-accordion__summary strong {
+  font-size: 1rem;
+}
+.pipeline-accordion__summary small {
+  color: var(--muted);
+  font-weight: 700;
+}
+.pipeline-accordion__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  transition: transform 160ms ease;
+}
+.pipeline-accordion__chevron--open {
+  transform: rotate(180deg);
+}
+.pipeline-accordion__content {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0 1.05rem 1.05rem;
+}
+.pipeline-phase-section {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(124, 138, 137, 0.12);
+}
+.pipeline-phase-section__head strong {
+  font-size: 0.98rem;
+}
 .pipeline-iteration-card,
 .pipeline-phase-group {
   display: grid;
@@ -1336,6 +1396,11 @@ button, input { font: inherit; }
   max-height: 42rem;
   overflow: auto;
   padding-right: 0.2rem;
+}
+.pipeline-transcript--inline {
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
 }
 .pipeline-section-card {
   display: grid;
@@ -1539,8 +1604,10 @@ button, input { font: inherit; }
   .pipeline-approval-banner,
   .pipeline-iteration-card__header,
   .pipeline-phase-group__header,
-  .pipeline-section-card__head {
+  .pipeline-section-card__head,
+  .pipeline-accordion__trigger {
     flex-direction: column;
+    align-items: flex-start;
   }
   .testing-workspace,
   .testing-live__panels,
