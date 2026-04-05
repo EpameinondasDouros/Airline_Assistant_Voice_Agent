@@ -39,7 +39,7 @@ Options:
   --review-model <model>    Review model. Default: $REVIEW_MODEL
   --fixer-model <model>     Fixer model. Default: $FIXER_MODEL
   --auto-approve            Auto-approve each waiting iteration.
-  --reset-fixtures          Reset staging fixtures before each iteration. Default is disabled.
+  --reset-fixtures          Ignored. Fixture reset is permanently disabled.
   --pipeline-api <url>      Local pipeline API base. Default: $PIPELINE_API_DEFAULT
   --product-api <url>       Product backend API base. Default: $PRODUCT_API_DEFAULT
   --poll-interval <sec>     Poll interval in seconds. Default: $POLL_INTERVAL
@@ -74,7 +74,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --reset-fixtures)
-      SKIP_FIXTURE_RESET=false
+      SKIP_FIXTURE_RESET=true
       shift
       ;;
     --pipeline-api)
@@ -507,11 +507,7 @@ if [[ "$AUTO_APPROVE" == true ]]; then
 else
   print_step "approval mode: manual"
 fi
-if [[ "$SKIP_FIXTURE_RESET" == true ]]; then
-  print_step "fixture reset: disabled"
-else
-  print_step "fixture reset: enabled"
-fi
+print_step "fixture reset: disabled"
 
 while true; do
   request_json "GET" "$PIPELINE_API/api/testing/pipelines/$PIPELINE_ID"

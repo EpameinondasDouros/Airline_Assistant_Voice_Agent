@@ -210,35 +210,10 @@ def _pipeline_task_event_sink(pipeline_id: str, iteration_number: int, task_slug
 
 
 def _iteration_reset_policy(task_slugs: list[str], iteration_number: int, manifest: dict[str, Any]) -> dict[str, Any]:
-    if bool(manifest.get("skip_fixture_reset")):
-        return {
-            "reset_mode": "never",
-            "should_reset": False,
-            "reason": "Fixture reset disabled for this pipeline run.",
-        }
-    modes = {get_task(task_slug).reset_mode for task_slug in task_slugs}
-    if "always" in modes:
-        return {
-            "reset_mode": "always",
-            "should_reset": True,
-            "reason": "At least one selected task requires clean fixtures on every iteration.",
-        }
-    if "once_per_pipeline" in modes:
-        if iteration_number == 1:
-            return {
-                "reset_mode": "once_per_pipeline",
-                "should_reset": True,
-                "reason": "Selected task state should start clean once, then persist across later iterations.",
-            }
-        return {
-            "reset_mode": "once_per_pipeline",
-            "should_reset": False,
-            "reason": "Skipping fixture reset so state from the first iteration is preserved.",
-        }
     return {
         "reset_mode": "never",
         "should_reset": False,
-        "reason": "Selected task preserves staging state across all iterations.",
+        "reason": "Fixture reset is permanently disabled. Pipeline runs preserve existing staging data.",
     }
 
 
@@ -613,7 +588,7 @@ def _build_pipeline_manifest(
         "review_model": review_model,
         "fixer_model": fixer_model,
         "require_manual_approval": require_manual_approval,
-        "skip_fixture_reset": skip_fixture_reset,
+        "skip_fixture_reset": True,
         "branch_name": f"{settings.testing_pipeline_branch_prefix}/{pipeline_id}",
         "current_iteration": 0,
         "latest_commit_sha": None,
@@ -635,7 +610,7 @@ def start_pipeline(
     review_model: str = "openai:gpt-4o-mini",
     fixer_model: str = "openai:gpt-4o-mini",
     require_manual_approval: bool = True,
-    skip_fixture_reset: bool = False,
+    skip_fixture_reset: bool = True,
 ) -> dict[str, Any]:
     for slug in task_slugs:
         get_task(slug)
@@ -649,7 +624,7 @@ def start_pipeline(
         review_model=review_model,
         fixer_model=fixer_model,
         require_manual_approval=require_manual_approval,
-        skip_fixture_reset=skip_fixture_reset,
+        skip_fixture_reset=True,
     )
     _ensure_pipeline_dirs(pipeline_id)
     _save_manifest(manifest)

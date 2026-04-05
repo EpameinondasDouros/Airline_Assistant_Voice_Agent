@@ -22,6 +22,10 @@ fi
 
 cd "${BACKEND_DIR}"
 
-echo "Updating ElevenLabs tools and agent with ${RUNNER_PYTHON}"
+echo "********** update_agent **********"
+echo "* Updating ElevenLabs tools and agent with ${RUNNER_PYTHON}"
+echo "* ${RUNNER_PYTHON} -m agents.tools.sync"
 "${RUNNER_PYTHON}" -m agents.tools.sync
+echo "* ${RUNNER_PYTHON} -m agents.management.sync_agent"
 "${RUNNER_PYTHON}" -m agents.management.sync_agent
+echo "********** update_agent complete **********"

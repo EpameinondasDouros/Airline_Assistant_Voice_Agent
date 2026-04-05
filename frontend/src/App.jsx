@@ -516,7 +516,7 @@ function App() {
     review_model: "openai:gpt-5.4-mini",
     fixer_model: "openai:gpt-5.4-mini",
     require_manual_approval: true,
-    skip_fixture_reset: false,
+    skip_fixture_reset: true,
   });
   const [selectedPipelineIterationNumber, setSelectedPipelineIterationNumber] = useState(null);
   const [selectedPipelineTaskSlug, setSelectedPipelineTaskSlug] = useState("");
@@ -1949,20 +1949,9 @@ function App() {
                       />
                       <span>Require manual approval before apply</span>
                     </label>
-                    <label className="pipeline-toggle">
-                      <input
-                        type="checkbox"
-                        checked={pipelineForm.skip_fixture_reset}
-                        onChange={(event) =>
-                          setPipelineForm((current) => ({
-                            ...current,
-                            skip_fixture_reset: event.target.checked,
-                          }))
-                        }
-                        disabled={pipelineBusy}
-                      />
-                      <span>Skip fixture reset</span>
-                    </label>
+                    <div className="pipeline-toggle pipeline-toggle--static">
+                      <span>Database reset is disabled. Pipeline runs always preserve existing data.</span>
+                    </div>
                   </div>
                 </details>
               </section>
