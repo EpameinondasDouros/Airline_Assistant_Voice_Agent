@@ -10,6 +10,9 @@ set -euo pipefail
 if [[ -n "${RAILWAY_VOLUME_MOUNT_PATH:-}" ]]; then
   mkdir -p "${RAILWAY_VOLUME_MOUNT_PATH}"
   export DATABASE_URL="${DATABASE_URL:-sqlite:///${RAILWAY_VOLUME_MOUNT_PATH}/techmellon_airline.db}"
+  DATA_BOOTSTRAP_MARKER="${RAILWAY_VOLUME_MOUNT_PATH}/.data_bootstrapped"
+else
+  DATA_BOOTSTRAP_MARKER=".data_bootstrapped"
 fi
 
 echo "Starting backend with:"
@@ -23,12 +26,18 @@ fi
 
 if [[ "${RESET_DATA_ON_STARTUP}" == "true" ]]; then
   python -m app.scripts.reset_data
+  rm -f "${DATA_BOOTSTRAP_MARKER}"
 fi
 
 if [[ "${RUN_SEEDS_ON_STARTUP}" == "true" ]]; then
-  python -m app.scripts.seed_flights
-  python -m app.scripts.seed_bookings
-  python -m app.scripts.seed_knowledge
+  if [[ -f "${DATA_BOOTSTRAP_MARKER}" ]]; then
+    echo "Seed data already bootstrapped; skipping reseed."
+  else
+    python -m app.scripts.seed_flights
+    python -m app.scripts.seed_bookings
+    python -m app.scripts.seed_knowledge
+    touch "${DATA_BOOTSTRAP_MARKER}"
+  fi
 fi
 
 python -m app.scripts.reconcile_seat_state

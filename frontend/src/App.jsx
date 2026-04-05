@@ -3,7 +3,6 @@ import {
   approveTestingPipeline,
   cancelTestingPipeline,
   createBooking,
-  getChatHistory,
   getTestingPipeline,
   getTestingPipelineEvents,
   listAllTripsBooked,
@@ -14,6 +13,7 @@ import {
   runTestingTaskLive,
   searchFlights,
   sendChatMessage,
+  resetChatSession,
   startTestingPipeline,
 } from "./api";
 
@@ -69,10 +69,6 @@ function formatJson(value) {
 
 function stripAnsi(value) {
   return String(value || "").replace(/\u001b\[[0-9;]*m/g, "");
-}
-
-function normalizeChatHistory(items) {
-  return items.map((item) => ({ role: item.role, text: item.content, createdAt: item.created_at }));
 }
 
 function pipelineIsTerminal(status) {
@@ -372,10 +368,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    getChatHistory()
-      .then((items) => {
-        setChatMessages(normalizeChatHistory(items));
-        setChatStatus(items.length ? "Connected" : "Ready");
+    resetChatSession()
+      .then(() => {
+        setChatMessages([]);
+        setChatStatus("Ready");
       })
       .catch((error) => {
         setChatMessages([]);

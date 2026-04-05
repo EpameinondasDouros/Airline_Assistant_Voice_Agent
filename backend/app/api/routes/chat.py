@@ -88,6 +88,15 @@ def get_history() -> list[ChatHistoryItemOut]:
     ]
 
 
+@router.post("/reset")
+def reset_chat_session() -> dict[str, str]:
+    global _SESSION
+    if _SESSION is not None:
+        _SESSION.stop()
+    _SESSION = None
+    return {"status": "reset"}
+
+
 class RefinementRunOut(BaseModel):
     accepted: bool
     version: int

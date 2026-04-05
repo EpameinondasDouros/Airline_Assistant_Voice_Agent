@@ -76,6 +76,12 @@ export function getChatHistory() {
   return request("/api/chat/history");
 }
 
+export function resetChatSession() {
+  return request("/api/chat/reset", {
+    method: "POST",
+  });
+}
+
 export function createBooking(payload) {
   return request("/api/bookings", {
     method: "POST",
