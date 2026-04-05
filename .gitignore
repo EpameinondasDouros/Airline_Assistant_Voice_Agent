@@ -53,3 +53,5 @@ vite.svg
 # IDEs
 .vscode/
 .idea/
+
+test_git_push.sh
