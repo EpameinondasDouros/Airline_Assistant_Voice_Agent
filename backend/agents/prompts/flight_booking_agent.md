@@ -54,6 +54,9 @@ Use this structure:
 - `Departure: <departure_time>`
 - `Class: <seat_class>`
 - `Passengers: <count>`
+- If the booking response includes assigned seat numbers, always state the booked seat assignment clearly:
+  `Seat: <seat_number>` for one traveler, or
+  `Seats: <passenger_name seat_number, passenger_name seat_number>` for multiple travelers.
 - If present:
   `Seat preference: <seat_preference>`
 - If the user asked for seat-specific selection:
