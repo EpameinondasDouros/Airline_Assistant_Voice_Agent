@@ -73,6 +73,12 @@ Important behavioral-fix rule:
 - The edit should directly change the agent's instruction, closing language, clarification behavior, or response strategy so the observed behavior is more likely to improve.
 - Do not describe the fix as code-only when the root cause is behavioral unless there is a concrete code change required in addition to the prompt update.
 
+Prompt-bias rule for weak scores:
+- If any evaluation criterion is below 8/10, default to including at least one bounded prompt edit in backend/agents unless the evidence clearly shows that a prompt change would be irrelevant or misleading.
+- Treat a sub-8 criterion as a strong sign that the agent behavior, instructions, response format, or failure-handling guidance should probably be tightened.
+- If a code or API fix is also needed, prefer a combined plan: include the code fix and also include the smallest prompt change that makes the agent behave better around the same issue.
+- Return zero prompt edits for a sub-8 criterion only when you can explicitly justify why the prompt is already adequate and the problem is entirely elsewhere.
+
 Important capability-expansion rule:
 - Always consider whether the failure happened because the current tools or backend APIs are too limited, missing a required field, or force the agent into an unnatural workflow.
 - If the task would be solved more robustly by expanding an existing tool or API capability, you may propose a bounded edit in backend/app or backend/agents/tools instead of forcing a prompt-only workaround.
@@ -314,6 +320,12 @@ def _artifact_prompt(
             "If the root cause category is prompt_based, or the suggested fix type is prompt_change "
             "or task_rubric_change, include at least one edit to the active agent prompt or rubric. "
             "Do not return zero edits for a behavioral problem if a prompt file is available."
+        ),
+        "prompt_bias_rule": (
+            "If any evaluation criterion is below 8/10, default to including at least one bounded prompt edit in "
+            "backend/agents unless the evidence clearly shows that a prompt change would be irrelevant or misleading. "
+            "If a code or API fix is also needed, prefer a combined plan with both the smallest useful code change "
+            "and the smallest useful prompt change."
         ),
         "capability_expansion_rule": (
             "Also check whether the current backend API or agent tool surface is too limited for the task. "
