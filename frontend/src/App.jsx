@@ -470,6 +470,7 @@ function App() {
     destination: "JFK",
     departure_date_from: "2026-04-01",
     departure_date_to: "2026-04-30",
+    seat_class: "",
     max_price: "2500",
     sort_by: "departure_time",
     only_available: true,
@@ -1789,6 +1790,18 @@ function App() {
                 <div>
                   <small>To</small>
                   <input type="date" value={flightFilters.departure_date_to} onChange={(event) => setFlightFilters((current) => ({ ...current, departure_date_to: event.target.value }))} />
+                </div>
+              </label>
+              <label className="search-field search-field--input">
+                <span className="material-symbols-outlined">airline_seat_recline_normal</span>
+                <div>
+                  <small>Ticket class</small>
+                  <select value={flightFilters.seat_class} onChange={(event) => setFlightFilters((current) => ({ ...current, seat_class: event.target.value }))}>
+                    <option value="">All classes</option>
+                    <option value="economy">Economy</option>
+                    <option value="premium_economy">Premium Economy</option>
+                    <option value="business">Business</option>
+                  </select>
                 </div>
               </label>
               <label className="search-field search-field--input">
