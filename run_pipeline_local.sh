@@ -274,6 +274,7 @@ def stage_for(event_type: str) -> str:
         "git_push_finished",
         "git_push_skipped",
         "deploy_wait_started",
+        "deploy_wait_progress",
         "deploy_verified",
         "deploy_skipped",
     }:
@@ -307,6 +308,9 @@ for idx, event in enumerate(events[start:], start=start + 1):
         "branch_name",
         "commit_sha",
         "deployed_commit_sha",
+        "attempt",
+        "elapsed_seconds",
+        "health_ready",
         "planned_changed_paths",
         "requires_agent_sync",
         "requires_remote_deploy",
@@ -479,6 +483,8 @@ PY
         print_colored_block "$YELLOW_COLOR" "" "$message"
       elif [[ "$event_type" == "transcript_turn" && ( "$role" == "agent" || "$message" == Agent:* ) ]]; then
         print_colored_block "$BLUE_COLOR" "" "$message"
+      elif [[ "$event_type" == "deploy_wait_started" || "$event_type" == "deploy_wait_progress" || "$event_type" == "deploy_verified" ]]; then
+        print_colored_block "$GREEN_COLOR" "" "$message"
       else
         print_colored_block "$GRAY_COLOR" "" "$message"
       fi
@@ -548,6 +554,9 @@ label_map = {
     "branch_name": "branch",
     "commit_sha": "commit",
     "deployed_commit_sha": "deployed commit",
+    "attempt": "attempt",
+    "elapsed_seconds": "elapsed seconds",
+    "health_ready": "health ready",
     "planned_changed_paths": "planned changed paths",
     "requires_agent_sync": "requires agent sync",
     "requires_remote_deploy": "requires deploy",

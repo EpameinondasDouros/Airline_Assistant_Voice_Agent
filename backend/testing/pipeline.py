@@ -42,7 +42,6 @@ BLOCKED_EDIT_ROOTS = (
 AGENT_EDIT_ROOT = "backend/agents/"
 APP_EDIT_ROOT = "backend/app/"
 MAIN_BRANCH = "main"
-RAILWAY_WARMUP_SECONDS = 180
 
 
 def _now() -> str:
@@ -466,26 +465,58 @@ def _deploy_health() -> dict[str, Any]:
     return _call_json_endpoint(f"{base_url}/health")
 
 
-def wait_for_remote_deploy(commit_sha: str) -> dict[str, Any]:
+def _deploy_progress_message(*, attempt: int, elapsed_seconds: float, health_ready: bool, deployed_sha: str | None, expected_sha: str) -> str:
+    prefix = [
+        "Railway is waking up",
+        "Backend is stretching its legs",
+        "Still waiting for the new container to come online",
+        "Health check is doing its rounds",
+    ][(attempt - 1) % 4]
+    if not health_ready:
+        return f"{prefix}... /health is not ready yet ({elapsed_seconds:.1f}s elapsed, attempt {attempt})."
+    if deployed_sha != expected_sha:
+        current_sha = deployed_sha or "unknown"
+        return (
+            f"{prefix}... /health is back, but staging is still serving commit {current_sha} "
+            f"instead of {expected_sha} ({elapsed_seconds:.1f}s elapsed, attempt {attempt})."
+        )
+    return f"{prefix}... /health is ready and the new commit is visible ({elapsed_seconds:.1f}s elapsed)."
+
+
+def wait_for_remote_deploy(
+    commit_sha: str,
+    *,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
     settings = get_settings()
     agent_settings = get_agent_settings()
     if not agent_settings.backend_public_url:
         return {"success": False, "error": "BACKEND_PUBLIC_URL is not configured for deploy verification."}
 
     started_at = time.time()
-    minimum_wait_deadline = started_at + RAILWAY_WARMUP_SECONDS
-    deadline = started_at + max(settings.testing_pipeline_deploy_timeout_seconds, RAILWAY_WARMUP_SECONDS)
+    deadline = started_at + settings.testing_pipeline_deploy_timeout_seconds
     attempts = 0
     last_payload: dict[str, Any] | None = None
     last_health: dict[str, Any] | None = None
 
     while time.time() < deadline:
         attempts += 1
+        elapsed_seconds = round(time.time() - started_at, 1)
         try:
             health_payload = _deploy_health()
             last_health = health_payload
         except Exception as exc:  # pragma: no cover - network/runtime path
             last_health = {"error": str(exc)}
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "attempt": attempts,
+                        "elapsed_seconds": elapsed_seconds,
+                        "health_ready": False,
+                        "deployed_commit_sha": (last_payload or {}).get("git_commit_hash") if last_payload else None,
+                        "message": f"Railway is still waking up... /health is not reachable yet ({elapsed_seconds:.1f}s elapsed, attempt {attempts}).",
+                    }
+                )
             time.sleep(settings.testing_pipeline_deploy_poll_interval_seconds)
             continue
 
@@ -500,12 +531,27 @@ def wait_for_remote_deploy(commit_sha: str) -> dict[str, Any]:
         deployed_sha = payload.get("git_commit_hash")
         health_ready = health_payload.get("status") == "ok"
         meta_ready = payload.get("status") == "ok" and deployed_sha == commit_sha
-        if time.time() >= minimum_wait_deadline and health_ready and meta_ready:
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "attempt": attempts,
+                    "elapsed_seconds": elapsed_seconds,
+                    "health_ready": health_ready,
+                    "deployed_commit_sha": deployed_sha,
+                    "message": _deploy_progress_message(
+                        attempt=attempts,
+                        elapsed_seconds=elapsed_seconds,
+                        health_ready=health_ready,
+                        deployed_sha=deployed_sha,
+                        expected_sha=commit_sha,
+                    ),
+                }
+            )
+        if health_ready and meta_ready:
             return {
                 "success": True,
                 "attempts": attempts,
                 "deployed_commit_sha": deployed_sha,
-                "warmup_wait_seconds": RAILWAY_WARMUP_SECONDS,
                 "elapsed_seconds": round(time.time() - started_at, 1),
                 "health_payload": health_payload,
                 "payload": payload,
@@ -515,12 +561,11 @@ def wait_for_remote_deploy(commit_sha: str) -> dict[str, Any]:
     return {
         "success": False,
         "attempts": attempts,
-        "warmup_wait_seconds": RAILWAY_WARMUP_SECONDS,
         "elapsed_seconds": round(time.time() - started_at, 1),
         "health_payload": last_health,
         "deployed_commit_sha": (last_payload or {}).get("git_commit_hash") if last_payload else None,
         "payload": last_payload,
-        "error": "Timed out waiting for Railway to pass the warmup window, return /health ok, and expose the pushed commit SHA.",
+        "error": "Timed out waiting for Railway to return /health ok and expose the pushed commit SHA.",
     }
 
 
@@ -1300,12 +1345,25 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
     _append_event(
         pipeline_id,
         "deploy_wait_started",
-        f"Waiting up to {RAILWAY_WARMUP_SECONDS} seconds for Railway to warm up, return /health ok, and redeploy the pushed commit.",
+        "Waiting for Railway to bring the backend back on /health and expose the pushed commit.",
         iteration=iteration_number,
         commit_sha=commit_sha,
     )
 
-    deploy_result = wait_for_remote_deploy(commit_sha or "")
+    deploy_result = wait_for_remote_deploy(
+        commit_sha or "",
+        progress_callback=lambda payload: _append_event(
+            pipeline_id,
+            "deploy_wait_progress",
+            str(payload.get("message") or "Still waiting for Railway redeploy."),
+            iteration=iteration_number,
+            commit_sha=commit_sha,
+            attempt=payload.get("attempt"),
+            elapsed_seconds=payload.get("elapsed_seconds"),
+            health_ready=payload.get("health_ready"),
+            deployed_commit_sha=payload.get("deployed_commit_sha"),
+        ),
+    )
     deploy_path = _iteration_dir(pipeline_id, iteration_number) / "deploy_verification.json"
     deploy_path.write_text(json.dumps(deploy_result, indent=2), encoding="utf-8")
     iteration["deploy_verification_path"] = str(deploy_path)
@@ -1315,7 +1373,7 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
     if not deploy_result.get("success"):
         _mark_failed(
             pipeline_id,
-            "Timed out waiting for Railway warmup, a healthy /health response, and the pushed commit SHA to appear on staging.",
+            "Timed out waiting for a healthy /health response and the pushed commit SHA to appear on staging.",
             stage="deploy_wait",
             manifest=manifest,
         )
