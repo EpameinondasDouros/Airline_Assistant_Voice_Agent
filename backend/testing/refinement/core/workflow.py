@@ -166,13 +166,44 @@ def create_fix_plan_report(
     payload = payload or loaded_payload
     task = payload.get("task") or payload.get("scenario") or {}
     active_logger(f"[2/5] refinement analysis ready for task: {task.get('slug')}")
-    active_logger(f"[3/5] root cause: {root_cause_data.get('root_cause_category')} | {root_cause_data.get('primary_root_cause')}")
+    active_logger(
+        f"[3/5] root cause: {root_cause_data.get('root_cause_category')} | "
+        f"{root_cause_data.get('primary_root_cause')}"
+    )
+    confidence = root_cause_data.get("confidence")
+    if confidence is not None:
+        active_logger(f"[3/5] confidence: {confidence}")
+    suggested_fix_type = root_cause_data.get("suggested_fix_type")
+    suggested_next_step = root_cause_data.get("suggested_next_step")
+    if suggested_fix_type:
+        active_logger(f"[3/5] suggested fix type: {suggested_fix_type}")
+    if suggested_next_step:
+        active_logger(f"[3/5] next step: {suggested_next_step}")
+    findings = root_cause_data.get("findings") or []
+    if findings:
+        active_logger("[3/5] evidence:")
+        for finding in findings[:3]:
+            title = finding.get("title") or "finding"
+            category = finding.get("category") or root_cause_data.get("root_cause_category") or "unknown"
+            evidence = finding.get("evidence") or ""
+            impact = finding.get("impact") or ""
+            active_logger(f"  - {title} [{category}]")
+            if evidence:
+                active_logger(f"    evidence: {evidence}")
+            if impact:
+                active_logger(f"    impact: {impact}")
     active_logger(
         "[4/5] generated bounded fix plan with "
         f"{len(plan.section_edits)} section edit(s)"
     )
+    if plan.rationale:
+        active_logger(f"[4/5] rationale: {plan.rationale}")
+    if plan.expected_improvement:
+        active_logger(f"[4/5] expected improvement: {plan.expected_improvement}")
     for index, edit in enumerate(plan.section_edits, start=1):
         message = f"  - edit {index}: {edit.path} | {edit.selector_type}:{edit.selector_value}"
+        if edit.reason:
+            message += f" | reason: {edit.reason}"
         if verbose:
             active_logger(message)
         elif index == 1:
