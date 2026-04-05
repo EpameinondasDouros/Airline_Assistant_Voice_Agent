@@ -113,6 +113,14 @@ export function getTestingPipelineEvents(pipelineId) {
   return request(`/api/testing/pipelines/${encodeURIComponent(pipelineId)}/events`, {}, getPipelineApiBase());
 }
 
+export function getTestingPipelineApplyResult(pipelineId, iterationNumber) {
+  return request(
+    `/api/testing/pipelines/${encodeURIComponent(pipelineId)}/iterations/${encodeURIComponent(iterationNumber)}/apply-result`,
+    {},
+    getPipelineApiBase(),
+  );
+}
+
 export function startTestingPipeline(payload) {
   return request(
     "/api/testing/pipelines",

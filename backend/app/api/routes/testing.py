@@ -61,6 +61,13 @@ def _load_run_payload(path: Path) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Failed to read testing artifact '{path.name}': {exc}") from exc
 
 
+def _load_json_payload(path: Path, *, label: str) -> dict[str, Any]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read {label} '{path.name}': {exc}") from exc
+
+
 def _build_summary(path: Path, payload: dict[str, Any]) -> TestingRunSummaryRead:
     task = _task_payload(payload)
     run = payload.get("run") or {}
@@ -153,6 +160,13 @@ def _find_refinement_report_path(run_id: str) -> Path:
     return matching_reports[0]
 
 
+def _find_pipeline_iteration(manifest: dict[str, Any], iteration_number: int) -> dict[str, Any]:
+    for iteration in manifest.get("iterations") or []:
+        if int(iteration.get("iteration") or 0) == int(iteration_number):
+            return iteration
+    raise HTTPException(status_code=404, detail=f"Pipeline iteration '{iteration_number}' was not found.")
+
+
 def _task_slug_from_request(request: TestingRunRequest) -> str | None:
     return request.task or request.scenario
 
@@ -194,6 +208,8 @@ def _build_run_command(request: TestingRunRequest, selected_task: str | None) ->
     ]
     if selected_task:
         command.extend(["--task", selected_task])
+    if not request.include_evaluation:
+        command.append("--skip-evaluation")
     return command
 
 
@@ -287,6 +303,19 @@ def get_testing_pipeline_events(pipeline_id: str) -> list[TestingPipelineEventRe
         )
         for event in events
     ]
+
+
+@router.get("/pipelines/{pipeline_id}/iterations/{iteration_number}/apply-result")
+def get_testing_pipeline_apply_result(pipeline_id: str, iteration_number: int) -> dict[str, Any]:
+    try:
+        manifest = load_pipeline(pipeline_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    iteration = _find_pipeline_iteration(manifest, iteration_number)
+    apply_result_path = iteration.get("apply_result_path")
+    if not apply_result_path:
+        raise HTTPException(status_code=404, detail="No apply result exists for this iteration.")
+    return _load_json_payload(Path(apply_result_path), label="apply result")
 
 
 @router.post("/pipelines", response_model=TestingPipelineRead)

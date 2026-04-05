@@ -4,6 +4,7 @@ import {
   cancelTestingPipeline,
   createBooking,
   getTestingPipeline,
+  getTestingPipelineApplyResult,
   getTestingPipelineEvents,
   listAllTripsBooked,
   listFlights,
@@ -521,6 +522,7 @@ function App() {
   const [selectedPipelineIterationNumber, setSelectedPipelineIterationNumber] = useState(null);
   const [selectedPipelineTaskSlug, setSelectedPipelineTaskSlug] = useState("");
   const [expandedPipelineIterations, setExpandedPipelineIterations] = useState([]);
+  const [pipelineApplyResults, setPipelineApplyResults] = useState({});
   const [testingConversation, setTestingConversation] = useState([]);
   const [testingLiveEvents, setTestingLiveEvents] = useState([]);
   const [testingLogLines, setTestingLogLines] = useState([]);
@@ -794,6 +796,7 @@ function App() {
         record,
         taskSlug,
         overallScore: latestTaskResult?.overall_score ?? null,
+        applyResult: pipelineApplyResults[Number(iterationNumber)] || null,
         sections: [
           {
             key: "testing",
@@ -862,7 +865,7 @@ function App() {
         ],
       };
     });
-  }, [selectedPipelineEvents, pipelineIterationNumbers, pipelineIterations, pipelineEventsByIteration, selectedPipeline?.task_slugs]);
+  }, [selectedPipelineEvents, pipelineIterationNumbers, pipelineIterations, pipelineEventsByIteration, selectedPipeline?.task_slugs, pipelineApplyResults]);
   const latestApprovalEvent = useMemo(() => {
     for (let index = selectedPipelineEvents.length - 1; index >= 0; index -= 1) {
       const event = selectedPipelineEvents[index];
@@ -973,12 +976,53 @@ function App() {
     if (!selectedPipelineId) {
       setSelectedPipeline(null);
       setSelectedPipelineEvents([]);
+      setPipelineApplyResults({});
       return;
     }
+    setPipelineApplyResults({});
     refreshPipelineDetails(selectedPipelineId).catch((error) => {
       setPipelineStatus(error.message);
     });
   }, [selectedPipelineId]);
+
+  useEffect(() => {
+    if (!selectedPipelineId) return;
+    const pendingIterations = pipelineIterations.filter((iteration) => {
+      const iterationNumber = Number(iteration?.iteration || 0);
+      if (!iterationNumber || !expandedPipelineIterations.includes(iterationNumber)) return false;
+      if (!iteration?.apply_result_path) return false;
+      return !pipelineApplyResults[iterationNumber];
+    });
+    if (!pendingIterations.length) return;
+
+    let canceled = false;
+    Promise.all(
+      pendingIterations.map((iteration) =>
+        getTestingPipelineApplyResult(selectedPipelineId, Number(iteration.iteration))
+          .then((payload) => ({
+            iterationNumber: Number(iteration.iteration),
+            payload,
+          }))
+          .catch((error) => ({
+            iterationNumber: Number(iteration.iteration),
+            payload: { error: error.message },
+          }))
+      )
+    ).then((results) => {
+      if (canceled) return;
+      setPipelineApplyResults((current) => {
+        const next = { ...current };
+        for (const result of results) {
+          next[result.iterationNumber] = result.payload;
+        }
+        return next;
+      });
+    });
+
+    return () => {
+      canceled = true;
+    };
+  }, [selectedPipelineId, pipelineIterations, expandedPipelineIterations, pipelineApplyResults]);
 
   useEffect(() => {
     if (!pipelineIterationNumbers.length) {
@@ -2276,7 +2320,7 @@ function App() {
               <section className="testing-quickrun testing-quickrun--standalone">
                 <div className="testing-quickrun__content">
                   <section className="testing-toolbar">
-                    <button type="button" className="button button--primary" onClick={() => executeTestingRun()} disabled={testingBusy}>
+                    <button type="button" className="button button--primary" onClick={() => executeTestingRun({ include_evaluation: false })} disabled={testingBusy}>
                       <span className="material-symbols-outlined">play_arrow</span>
                       Run all tasks
                     </button>
@@ -2295,7 +2339,7 @@ function App() {
                     <button
                       type="button"
                       className="button button--secondary"
-                      onClick={() => executeTestingRun(selectedTaskSlug ? { task: selectedTaskSlug } : {})}
+                      onClick={() => executeTestingRun(selectedTaskSlug ? { task: selectedTaskSlug, include_evaluation: false } : { include_evaluation: false })}
                       disabled={testingBusy || !selectedTaskSlug}
                     >
                       <span className="material-symbols-outlined">terminal</span>

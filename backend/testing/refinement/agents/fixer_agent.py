@@ -62,6 +62,12 @@ Important behavioral-fix rule:
 - For behavioral issues, prefer updating backend/agents/prompts/flight_booking_agent.md or the smallest relevant markdown prompt file.
 - The edit should directly change the agent's instruction, closing language, clarification behavior, or response strategy so the observed behavior is more likely to improve.
 - Do not describe the fix as code-only when the root cause is behavioral unless there is a concrete code change required in addition to the prompt update.
+
+Important capability-expansion rule:
+- Always consider whether the failure happened because the current tools or backend APIs are too limited, missing a required field, or force the agent into an unnatural workflow.
+- If the task would be solved more robustly by expanding an existing tool or API capability, you may propose a bounded edit in backend/app or backend/agents/tools instead of forcing a prompt-only workaround.
+- Prefer a capability expansion when the transcript or tool trace shows the agent lacked a clean way to retrieve, compute, confirm, or mutate the required information.
+- Do not propose a fake prompt-only fix when the real issue is that the current API or tool contract is insufficient.
 """
 
 
@@ -138,6 +144,12 @@ def _artifact_prompt(
             "If the root cause category is prompt_based, or the suggested fix type is prompt_change "
             "or task_rubric_change, include at least one edit to the active agent prompt or rubric. "
             "Do not return zero edits for a behavioral problem if a prompt file is available."
+        ),
+        "capability_expansion_rule": (
+            "Also check whether the current backend API or agent tool surface is too limited for the task. "
+            "If the real issue is missing capability, missing response fields, or an awkward tool contract, "
+            "prefer a bounded backend/app or backend/agents/tools edit that expands the capability cleanly "
+            "instead of proposing a prompt-only workaround."
         ),
     }
     return (
