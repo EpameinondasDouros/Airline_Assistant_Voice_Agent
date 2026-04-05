@@ -122,6 +122,8 @@ def _task_runtime_event_message(event: dict[str, Any]) -> str | None:
     if event_type == "transcript_turn":
         role = str(event.get("role") or "turn")
         text = str(event.get("text") or "").strip()
+        if role in {"user", "user_transcript"}:
+            return None
         label = "Agent" if role == "agent" else "User" if role == "user" else role.replace("_", " ").title()
         return f"{label}: {text}" if text else f"{label} turn received."
     if event_type == "evaluation_started":
