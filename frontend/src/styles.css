@@ -71,6 +71,11 @@ button, input { font: inherit; }
   background: rgba(255, 255, 255, 0.7); border: 1px solid var(--line); font-size: 0.82rem; font-weight: 700;
 }
 .status-pill--center { justify-content: center; width: 100%; }
+.status-pill--error {
+  color: #8e1f1f;
+  background: rgba(186, 26, 26, 0.1);
+  border-color: rgba(186, 26, 26, 0.2);
+}
 
 .search-bar {
   position: relative;
@@ -908,6 +913,29 @@ button, input { font: inherit; }
   background: rgba(255, 255, 255, 0.78);
   box-shadow: var(--shadow);
   width: 100%;
+}
+.testing-task-blocks {
+  display: grid;
+  gap: 1rem;
+}
+.testing-task-block {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(124, 138, 137, 0.16);
+  background: rgba(246, 249, 248, 0.78);
+}
+.testing-task-block__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+.testing-task-block__header strong {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 1.05rem;
 }
 .testing-live__title {
   display: grid;
