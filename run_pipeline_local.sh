@@ -148,6 +148,30 @@ print_colored_step() {
   printf "%b- %s%b\n" "$color" "$message" "$RESET_COLOR"
 }
 
+print_colored_block() {
+  local color="$1"
+  local prefix="$2"
+  local text="$3"
+  local first_line=true
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$first_line" == true ]]; then
+      printf "%b- %s%s%b\n" "$color" "$prefix" "$line" "$RESET_COLOR"
+      first_line=false
+    else
+      printf "%b  %s%b\n" "$color" "$line" "$RESET_COLOR"
+    fi
+  done <<< "$text"
+}
+
+decode_json_string() {
+  local json_string="$1"
+  JSON_STRING="$json_string" python3 - <<'PY'
+import json
+import os
+print(json.loads(os.environ["JSON_STRING"]))
+PY
+}
+
 pipeline_summary_field() {
   local json_payload="$1"
   local field="$2"
@@ -175,7 +199,7 @@ PY
 emit_new_events() {
   local events_json="$1"
   local events_file
-  local line index stage iteration event_type message transcript_json
+  local line index stage iteration event_type message_json transcript_json
   local field_sep
 
   field_sep=$'\x1f'
@@ -255,12 +279,12 @@ for idx, event in enumerate(events[start:], start=start + 1):
     iteration_text = "" if iteration is None else str(iteration)
     payload = event.get("event_payload") or {}
     role = str(event.get("role") or payload.get("role") or "")
+    message_json = json.dumps(str(event.get("message") or ""))
     transcript_json = json.dumps(payload.get("transcript") or [])
-    message = " ".join(str(event.get("message") or "").split())
-    print(f"{idx}\x1f{stage}\x1f{iteration_text}\x1f{event_type}\x1f{role}\x1f{message}\x1f{transcript_json}")
+    print(f"{idx}\x1f{stage}\x1f{iteration_text}\x1f{event_type}\x1f{role}\x1f{message_json}\x1f{transcript_json}")
 PY
 
-  while IFS="$field_sep" read -r index stage iteration event_type role message transcript_json; do
+  while IFS="$field_sep" read -r index stage iteration event_type role message_json transcript_json; do
     [[ -z "$index" ]] && continue
     LAST_EVENT_INDEX="$index"
     local stage_key="${iteration}|${stage}"
@@ -277,6 +301,11 @@ PY
       continue
     fi
 
+    local message=""
+    if [[ -n "$message_json" ]]; then
+      message="$(decode_json_string "$message_json")"
+    fi
+
     if [[ "$event_type" == "elevenlabs_analysis" ]]; then
       print_colored_step "$BLUE_COLOR" "$message"
       if [[ -n "$transcript_json" && "$transcript_json" != "[]" ]]; then
@@ -284,13 +313,13 @@ PY
           [[ -z "$transcript_role" ]] && continue
           case "$transcript_role" in
             agent)
-              print_colored_step "$BLUE_COLOR" "Transcript: $transcript_text"
+              print_colored_block "$BLUE_COLOR" "Transcript: " "$transcript_text"
               ;;
             user|user_transcript)
-              print_colored_step "$YELLOW_COLOR" "Transcript: $transcript_text"
+              print_colored_block "$YELLOW_COLOR" "Transcript: " "$transcript_text"
               ;;
             *)
-              print_colored_step "$GRAY_COLOR" "Transcript: $transcript_text"
+              print_colored_block "$GRAY_COLOR" "Transcript: " "$transcript_text"
               ;;
           esac
         done < <(
@@ -312,11 +341,13 @@ PY
 
     if [[ -n "$message" ]]; then
       if [[ "$event_type" == "user_turn" || "$event_type" == "customer_reply" ]]; then
-        print_colored_step "$YELLOW_COLOR" "$message"
+        print_colored_block "$YELLOW_COLOR" "User: " "$message"
       elif [[ "$event_type" == "transcript_turn" && "$role" == "agent" ]]; then
-        print_colored_step "$BLUE_COLOR" "$message"
+        print_colored_block "$BLUE_COLOR" "Agent: " "$message"
+      elif [[ "$event_type" == "transcript_turn" && "$role" == "user_transcript" ]]; then
+        print_colored_block "$YELLOW_COLOR" "User: " "$message"
       else
-        print_colored_step "$GRAY_COLOR" "$message"
+        print_colored_block "$GRAY_COLOR" "" "$message"
       fi
     else
       print_colored_step "$GRAY_COLOR" "$event_type"
