@@ -208,7 +208,7 @@ PY
 emit_new_events() {
   local events_json="$1"
   local events_file
-  local line index stage iteration event_type message_json transcript_json
+  local line index stage iteration event_type role message_json transcript_json details_json
   local field_sep
 
   field_sep=$'\x1f'
@@ -289,15 +289,49 @@ for idx, event in enumerate(events[start:], start=start + 1):
     stage = stage_for(event_type)
     iteration = event.get("iteration")
     iteration_text = "" if iteration is None else str(iteration)
-    payload = event.get("payload") or {}
-    event_payload = payload.get("event_payload") or {}
-    role = str(event.get("role") or payload.get("role") or event_payload.get("role") or "")
+    event_payload = event.get("event_payload") or {}
+    role = str(event.get("role") or event_payload.get("role") or "")
     message_json = json.dumps(str(event.get("message") or ""))
-    transcript_json = json.dumps(payload.get("transcript") or event_payload.get("transcript") or [])
-    print(f"{idx}\x1f{stage}\x1f{iteration_text}\x1f{event_type}\x1f{role}\x1f{message_json}\x1f{transcript_json}")
+    transcript_json = json.dumps(event.get("transcript") or event_payload.get("transcript") or [])
+    details = {}
+    for key in (
+        "task",
+        "category",
+        "summary",
+        "verification_command",
+        "edit_count",
+        "path",
+        "selector_type",
+        "selector_value",
+        "changed_paths",
+        "branch_name",
+        "commit_sha",
+        "deployed_commit_sha",
+        "planned_changed_paths",
+        "requires_agent_sync",
+        "requires_remote_deploy",
+        "error",
+        "stderr",
+        "stdout",
+        "reset_mode",
+        "reset_applied",
+        "overall_score",
+        "goal_achieved",
+        "score",
+        "criterion",
+        "title",
+        "detail",
+        "stage",
+        "blocked_paths",
+    ):
+        value = event.get(key)
+        if value not in (None, "", [], {}):
+            details[key] = value
+    details_json = json.dumps(details)
+    print(f"{idx}\x1f{stage}\x1f{iteration_text}\x1f{event_type}\x1f{role}\x1f{message_json}\x1f{transcript_json}\x1f{details_json}")
 PY
 
-  while IFS="$field_sep" read -r index stage iteration event_type role message_json transcript_json; do
+  while IFS="$field_sep" read -r index stage iteration event_type role message_json transcript_json details_json; do
     [[ -z "$index" ]] && continue
     LAST_EVENT_INDEX="$index"
     if [[ "$event_type" == "approval_required" && -n "$message_json" ]]; then
@@ -448,6 +482,54 @@ PY
       fi
     else
       print_colored_step "$GRAY_COLOR" "$event_type"
+    fi
+
+    if [[ -n "$details_json" && "$details_json" != "{}" ]]; then
+      DETAILS_JSON="$details_json" python3 - <<'PY' | while IFS= read -r detail_line; do
+import json
+import os
+
+details = json.loads(os.environ["DETAILS_JSON"])
+label_map = {
+    "task": "task",
+    "category": "category",
+    "summary": "summary",
+    "verification_command": "verification",
+    "edit_count": "edit count",
+    "path": "path",
+    "selector_type": "selector type",
+    "selector_value": "selector",
+    "changed_paths": "changed paths",
+    "branch_name": "branch",
+    "commit_sha": "commit",
+    "deployed_commit_sha": "deployed commit",
+    "planned_changed_paths": "planned changed paths",
+    "requires_agent_sync": "requires agent sync",
+    "requires_remote_deploy": "requires deploy",
+    "error": "error",
+    "stderr": "stderr",
+    "stdout": "stdout",
+    "reset_mode": "reset mode",
+    "reset_applied": "reset applied",
+    "overall_score": "overall score",
+    "goal_achieved": "goal achieved",
+    "score": "score",
+    "criterion": "criterion",
+    "title": "title",
+    "detail": "detail",
+    "stage": "stage",
+    "blocked_paths": "blocked paths",
+}
+for key, value in details.items():
+    label = label_map.get(key, key.replace("_", " "))
+    if isinstance(value, list):
+        rendered = ", ".join(str(item) for item in value)
+    else:
+        rendered = str(value).strip().replace("\n", " | ")
+    print(f"  {label}: {rendered}")
+PY
+        [[ -n "$detail_line" ]] && printf "%b%s%b\n" "$GRAY_COLOR" "$detail_line" "$RESET_COLOR"
+      done
     fi
   done <"$events_file"
 

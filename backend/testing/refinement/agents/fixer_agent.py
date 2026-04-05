@@ -48,6 +48,8 @@ Strict rules:
 - Each edit must use one selector_type: python_symbol, markdown_heading, or text_between.
 - For python_symbol, selector_value must be an existing top-level function, class, or Class.method.
 - For markdown_heading, selector_value must be the heading text only, without leading # characters, and it must match an existing markdown heading.
+- Do not use markdown_heading for plain prose labels or list-item labels such as "If a tool fails:" unless that text is an actual markdown heading in the file.
+- If the target text is a prose label inside a markdown document rather than a real heading, use text_between with exact anchors instead.
 - For text_between, selector_value must be START|END using exact unique anchor text from the file.
 - For python_symbol, replacement must contain the full replacement symbol block, including the def/class line.
 - For markdown_heading, replacement must contain the full replacement section, including the heading line.
