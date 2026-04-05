@@ -58,6 +58,17 @@ ELEVENLABS_REQUIRES_AUTH=true
 sqlite:///${RAILWAY_VOLUME_MOUNT_PATH}/techmellon_airline.db
 ```
 
+Important:
+
+- If you previously set `DATABASE_URL=sqlite:///./techmellon_airline.db` in Railway, remove it. That points SQLite at the container filesystem, not the mounted volume.
+- If the volume is mounted at `/app/data`, the persistent SQLite path should be:
+
+```text
+sqlite:////app/data/techmellon_airline.db
+```
+
+- The startup script now logs the effective `DATABASE_URL`, `RAILWAY_VOLUME_MOUNT_PATH`, and bootstrap marker path so you can verify persistence in Railway logs.
+
 ### Verification
 
 After deploy, verify:

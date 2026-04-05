@@ -7,9 +7,25 @@ set -euo pipefail
 : "${RESET_DATA_ON_STARTUP:=false}"
 : "${RUN_SEEDS_ON_STARTUP:=true}"
 
+LOCAL_SQLITE_DEFAULTS=(
+  "sqlite:///./techmellon_airline.db"
+  "sqlite:////app/techmellon_airline.db"
+)
+
 if [[ -n "${RAILWAY_VOLUME_MOUNT_PATH:-}" ]]; then
   mkdir -p "${RAILWAY_VOLUME_MOUNT_PATH}"
-  export DATABASE_URL="${DATABASE_URL:-sqlite:///${RAILWAY_VOLUME_MOUNT_PATH}/techmellon_airline.db}"
+  VOLUME_DATABASE_URL="sqlite:///${RAILWAY_VOLUME_MOUNT_PATH}/techmellon_airline.db"
+  if [[ -z "${DATABASE_URL:-}" ]]; then
+    export DATABASE_URL="${VOLUME_DATABASE_URL}"
+  else
+    for local_default in "${LOCAL_SQLITE_DEFAULTS[@]}"; do
+      if [[ "${DATABASE_URL}" == "${local_default}" ]]; then
+        echo "Detected local SQLite DATABASE_URL on Railway; switching to mounted volume database."
+        export DATABASE_URL="${VOLUME_DATABASE_URL}"
+        break
+      fi
+    done
+  fi
   DATA_BOOTSTRAP_MARKER="${RAILWAY_VOLUME_MOUNT_PATH}/.data_bootstrapped"
 else
   DATA_BOOTSTRAP_MARKER=".data_bootstrapped"
@@ -19,6 +35,9 @@ echo "Starting backend with:"
 echo "  RUN_MIGRATIONS_ON_STARTUP=${RUN_MIGRATIONS_ON_STARTUP}"
 echo "  RESET_DATA_ON_STARTUP=${RESET_DATA_ON_STARTUP}"
 echo "  RUN_SEEDS_ON_STARTUP=${RUN_SEEDS_ON_STARTUP}"
+echo "  DATABASE_URL=${DATABASE_URL:-<unset>}"
+echo "  RAILWAY_VOLUME_MOUNT_PATH=${RAILWAY_VOLUME_MOUNT_PATH:-<unset>}"
+echo "  DATA_BOOTSTRAP_MARKER=${DATA_BOOTSTRAP_MARKER}"
 
 if [[ "${RUN_MIGRATIONS_ON_STARTUP}" == "true" ]]; then
   alembic upgrade head

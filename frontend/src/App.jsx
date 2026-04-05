@@ -332,21 +332,21 @@ function safeJson(value) {
 
 const SEAT_LAYOUTS = {
   economy: {
-    rows: Array.from({ length: 20 }, (_, index) => index + 1),
+    rows: Array.from({ length: 20 }, (_, index) => index + 10),
     columns: ["A", "B", "C", "D", "E", "F"],
     windowColumns: new Set(["A", "F"]),
     aisleColumns: new Set(["C", "D"]),
     extraLegroomRows: new Set([18, 19, 20]),
   },
   premium_economy: {
-    rows: Array.from({ length: 5 }, (_, index) => index + 21),
+    rows: Array.from({ length: 5 }, (_, index) => index + 5),
     columns: ["A", "B", "C", "D", "E", "F"],
     windowColumns: new Set(["A", "F"]),
     aisleColumns: new Set(["C", "D"]),
     extraLegroomRows: new Set(),
   },
   business: {
-    rows: Array.from({ length: 4 }, (_, index) => index + 25),
+    rows: Array.from({ length: 4 }, (_, index) => index + 1),
     columns: ["A", "B", "C", "D"],
     windowColumns: new Set(["A", "D"]),
     aisleColumns: new Set(["B", "C"]),
@@ -385,35 +385,16 @@ function buildSeatNumber(flightClass, row, column) {
 
 function getSeatAvailabilityForPlane(row, column, seatClass) {
   const className = normalizeSeatClass(seatClass);
-  if (row >= 1 && row <= 4) {
-    return {
-      exists: ["A", "B", "C", "D"].includes(column),
-      active: className === "business",
-      extraLegroom: false,
-    };
-  }
-  if (row >= 5 && row <= 9) {
-    return {
-      exists: FULL_PLANE_COLUMNS.includes(column),
-      active: className === "premium_economy",
-      extraLegroom: false,
-    };
-  }
-  if (row >= 10 && row <= 26) {
-    return {
-      exists: FULL_PLANE_COLUMNS.includes(column),
-      active: className === "economy",
-      extraLegroom: false,
-    };
-  }
-  if (row >= 27 && row <= 29) {
-    return {
-      exists: FULL_PLANE_COLUMNS.includes(column),
-      active: className === "economy",
-      extraLegroom: true,
-    };
-  }
-  return { exists: false, active: false, extraLegroom: false };
+  const cabin = getCabinForRow(row);
+  if (!cabin) return { exists: false, active: false, extraLegroom: false };
+
+  const layout = SEAT_LAYOUTS[cabin];
+  const exists = layout.columns.includes(column);
+  return {
+    exists,
+    active: exists && className === cabin,
+    extraLegroom: exists && cabin === "economy" && layout.extraLegroomRows.has(row),
+  };
 }
 
 function getDefaultSeatForFlight(flight, preference = "") {
@@ -449,9 +430,9 @@ function getSeatTypeLabel(seatClass, seatNumber) {
 }
 
 function getCabinForRow(row) {
-  if (row >= 1 && row <= 4) return "business";
-  if (row >= 5 && row <= 9) return "premium_economy";
-  if (row >= 10 && row <= 29) return "economy";
+  for (const [cabin, layout] of Object.entries(SEAT_LAYOUTS)) {
+    if (layout.rows.includes(row)) return cabin;
+  }
   return null;
 }
 
@@ -1984,8 +1965,8 @@ function App() {
                                 >
                                   {columns.map((column) => {
                                     const planeSeat = getSeatAvailabilityForPlane(row, column, selectedFlight.seat_class);
-                                    const seatNumber = planeSeat.exists ? buildSeatNumber(selectedFlight.seat_class, row, column) || `${row}${column}` : "";
-                                    const meta = seatMetadata(selectedFlight.seat_class, seatNumber);
+                                    const seatNumber = planeSeat.exists ? buildSeatNumber(cabin, row, column) || `${row}${column}` : "";
+                                    const meta = seatMetadata(cabin, seatNumber);
                                     const selected = bookingDraft.seat_number === seatNumber;
                                     return (
                                       <button
