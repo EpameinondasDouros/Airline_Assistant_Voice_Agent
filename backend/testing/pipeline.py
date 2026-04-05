@@ -150,6 +150,7 @@ def _task_runtime_event_message(event: dict[str, Any]) -> str | None:
         title = str(event.get("call_summary_title") or "").strip()
         summary = str(event.get("transcript_summary") or "").strip()
         call_successful = event.get("call_successful")
+        transcript = event.get("transcript") or []
         parts = ["ElevenLabs analysis"]
         if title:
             parts.append(title)
@@ -157,6 +158,9 @@ def _task_runtime_event_message(event: dict[str, Any]) -> str | None:
             parts.append("call successful" if call_successful else "call not marked successful")
         if summary:
             parts.append(summary)
+        transcript_excerpt = _compact_transcript_excerpt(transcript)
+        if transcript_excerpt:
+            parts.append(transcript_excerpt)
         return " | ".join(parts)
     if event_type == "evaluation_criterion":
         criterion = str(event.get("criterion") or "").strip().replace("_", " ")
@@ -188,6 +192,45 @@ def _task_runtime_event_message(event: dict[str, Any]) -> str | None:
     if event_type == "error":
         return str(event.get("message") or "Task runner error.")
     return None
+
+
+def _compact_transcript_excerpt(transcript: Any, max_turns: int = 4, max_chars: int = 120) -> str | None:
+    if not isinstance(transcript, list) or not transcript:
+        return None
+
+    def _clean_text(value: Any) -> str:
+        return " ".join(str(value or "").split())
+
+    def _label_for_role(role: Any) -> str:
+        role_text = str(role or "turn").strip().lower()
+        if role_text == "agent":
+            return "Agent"
+        if role_text == "user":
+            return "User"
+        if role_text == "user_transcript":
+            return "User transcript"
+        return role_text.replace("_", " ").title() or "Turn"
+
+    excerpt_parts: list[str] = []
+    for item in transcript[:max_turns]:
+        if not isinstance(item, dict):
+            continue
+        role = _label_for_role(item.get("role"))
+        text = _clean_text(item.get("message") or item.get("text"))
+        if not text:
+            continue
+        if len(text) > max_chars:
+            text = f"{text[: max_chars - 1].rstrip()}…"
+        excerpt_parts.append(f"{role}: {text}")
+
+    if not excerpt_parts:
+        return None
+
+    remaining = len(transcript) - len(excerpt_parts)
+    if remaining > 0:
+        excerpt_parts.append(f"+{remaining} more turn(s)")
+
+    return "Transcript: " + " | ".join(excerpt_parts)
 
 
 def _pipeline_task_event_sink(pipeline_id: str, iteration_number: int, task_slug: str) -> Callable[[dict[str, Any]], None]:

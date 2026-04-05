@@ -1276,6 +1276,7 @@ def run_task(
             call_successful=elevenlabs_analysis.get("call_successful"),
             call_summary_title=elevenlabs_analysis.get("call_summary_title"),
             transcript_summary=elevenlabs_analysis.get("transcript_summary"),
+            transcript=elevenlabs_analysis.get("transcript"),
             termination_reason=elevenlabs_analysis.get("termination_reason"),
             conversation_status=elevenlabs_analysis.get("conversation_status"),
         )
