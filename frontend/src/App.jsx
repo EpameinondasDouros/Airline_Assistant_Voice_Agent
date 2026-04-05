@@ -96,6 +96,7 @@ function formatPipelineEventBody(event) {
   const parts = [];
   if (event.message) parts.push(String(event.message));
   const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+  const runtime = payload.event_payload && typeof payload.event_payload === "object" ? payload.event_payload : {};
   const extraLines = [];
 
   if (payload.task && !parts.some((line) => line.includes(String(payload.task)))) {
@@ -125,11 +126,173 @@ function formatPipelineEventBody(event) {
   if (typeof payload.approved !== "undefined") {
     extraLines.push(`Approved: ${payload.approved ? "yes" : "no"}`);
   }
+  if (runtime.text && !parts.some((line) => line.includes(String(runtime.text)))) {
+    extraLines.push(String(runtime.text));
+  }
+  if (runtime.message && !parts.some((line) => line.includes(String(runtime.message)))) {
+    extraLines.push(String(runtime.message));
+  }
 
   if (extraLines.length) {
     parts.push(extraLines.join("\n"));
   }
   return parts.join("\n");
+}
+
+const PIPELINE_PHASE_ORDER = [
+  "start",
+  "testing",
+  "evaluation",
+  "refinement",
+  "fix_plan",
+  "approval",
+  "code_deploy",
+  "final",
+];
+
+const PIPELINE_PHASE_LABELS = {
+  start: "Start Pipeline",
+  testing: "Testing",
+  evaluation: "Evaluation",
+  refinement: "Refinement Analysis",
+  fix_plan: "Fix Planning",
+  approval: "Approval",
+  code_deploy: "Code Change / Deploy",
+  final: "Final Summary",
+};
+
+const ACTIVE_PIPELINE_STATUSES = new Set(["running", "waiting_approval", "approving", "applying", "deploy_wait"]);
+
+function getPipelineEventPayload(event) {
+  return event?.payload && typeof event.payload === "object" ? event.payload : {};
+}
+
+function getPipelineRuntimePayload(event) {
+  const payload = getPipelineEventPayload(event);
+  return payload.event_payload && typeof payload.event_payload === "object" ? payload.event_payload : {};
+}
+
+function getPipelineEventIterationNumber(event) {
+  const payload = getPipelineEventPayload(event);
+  return event?.iteration ?? payload.iteration ?? null;
+}
+
+function getPipelineEventTaskSlug(event) {
+  const payload = getPipelineEventPayload(event);
+  const runtime = getPipelineRuntimePayload(event);
+  return payload.task || payload.task_slug || runtime.task || null;
+}
+
+function getPipelinePhase(type) {
+  const eventType = String(type || "").toLowerCase();
+  if (eventType === "pipeline_started") return "start";
+  if ([
+    "iteration_started",
+    "testing_started",
+    "fixture_reset_skipped",
+    "task_started",
+    "user_turn",
+    "customer_reply",
+    "transcript_turn",
+    "conversation_finalizing",
+    "task_finished",
+    "testing_complete",
+    "run_started",
+    "run_finished",
+  ].includes(eventType)) {
+    return "testing";
+  }
+  if ([
+    "evaluation_started",
+    "evaluation_complete",
+    "elevenlabs_analysis",
+    "evaluation_criterion",
+    "evaluation_finding",
+    "refinement_gate",
+    "evaluation_error",
+  ].includes(eventType)) {
+    return "evaluation";
+  }
+  if (["refinement_started", "root_cause_complete", "refinement_error"].includes(eventType)) {
+    return "refinement";
+  }
+  if (["fix_plan_ready", "fixer_summary", "fixer_expected_improvement", "fixer_edit"].includes(eventType)) {
+    return "fix_plan";
+  }
+  if (eventType === "approval_required") return "approval";
+  if ([
+    "code_apply_started",
+    "code_apply_finished",
+    "agent_sync_started",
+    "agent_sync_finished",
+    "agent_sync_failed",
+    "git_commit_finished",
+    "git_push_finished",
+    "git_push_skipped",
+    "deploy_wait_started",
+    "deploy_verified",
+    "deploy_skipped",
+  ].includes(eventType)) {
+    return "code_deploy";
+  }
+  if ([
+    "iteration_complete",
+    "pipeline_complete",
+    "pipeline_failed",
+    "pipeline_blocked",
+  ].includes(eventType)) {
+    return "final";
+  }
+  return "testing";
+}
+
+function getIterationTaskSlug(iterationRecord, fallbackTaskSlugs = []) {
+  if (!iterationRecord) return fallbackTaskSlugs[0] || "";
+  if (iterationRecord.selected_task_slug) return iterationRecord.selected_task_slug;
+  if (Array.isArray(iterationRecord.task_results) && iterationRecord.task_results.length) {
+    return iterationRecord.task_results[iterationRecord.task_results.length - 1]?.task_slug || fallbackTaskSlugs[0] || "";
+  }
+  return fallbackTaskSlugs[0] || "";
+}
+
+function buildPipelineTranscriptTurns(events) {
+  const turns = [];
+  for (const event of events) {
+    const type = String(event?.type || "");
+    const runtime = getPipelineRuntimePayload(event);
+    let role = null;
+    let text = "";
+    let timestamp = event?.timestamp || null;
+
+    if (type === "transcript_turn") {
+      role = runtime.role || "turn";
+      if (role === "user_transcript") role = "user";
+      text = String(runtime.text || runtime.message || "").trim();
+      timestamp = runtime.timestamp || timestamp;
+    } else if (type === "user_turn") {
+      role = "user";
+      text = String(runtime.message || getPipelineEventPayload(event).message || "").trim();
+    } else if (type === "customer_reply") {
+      role = "user";
+      text = String(runtime.message || getPipelineEventPayload(event).message || "").trim();
+    }
+
+    if (!text) continue;
+    const last = turns[turns.length - 1];
+    if (last && last.role === role && last.text === text) continue;
+    turns.push({
+      role,
+      text,
+      timestamp,
+    });
+  }
+  return turns;
+}
+
+function formatPipelineSelectorOption(pipeline) {
+  if (!pipeline) return "";
+  const score = typeof pipeline.latest_evaluator_score === "number" ? ` · ${pipeline.latest_evaluator_score}/10` : "";
+  return `${pipeline.pipeline_id} · ${pipeline.status}${score}`;
 }
 
 function getTestingConversationTurns(run) {
@@ -353,7 +516,10 @@ function App() {
     review_model: "openai:gpt-5.4-mini",
     fixer_model: "openai:gpt-5.4-mini",
     require_manual_approval: true,
+    skip_fixture_reset: false,
   });
+  const [selectedPipelineIterationNumber, setSelectedPipelineIterationNumber] = useState(null);
+  const [selectedPipelineTaskSlug, setSelectedPipelineTaskSlug] = useState("");
   const [testingConversation, setTestingConversation] = useState([]);
   const [testingLiveEvents, setTestingLiveEvents] = useState([]);
   const [testingLogLines, setTestingLogLines] = useState([]);
@@ -396,6 +562,190 @@ function App() {
 
     return { evaluation, refinementAnalysis, fixPlan, fixerEdits, completion };
   }, [testingRefinementEvents]);
+  const selectedPipelineSummary = useMemo(
+    () => testingPipelines.find((pipeline) => pipeline.pipeline_id === selectedPipelineId) || null,
+    [testingPipelines, selectedPipelineId]
+  );
+  const effectivePipelineSummary = useMemo(
+    () => ({
+      pipeline_id: selectedPipeline?.pipeline_id || selectedPipelineSummary?.pipeline_id || "",
+      status: selectedPipeline?.status || selectedPipelineSummary?.status || "idle",
+      stage: selectedPipeline?.stage || selectedPipelineSummary?.stage || "idle",
+      target_score: selectedPipeline?.target_score ?? selectedPipelineSummary?.target_score ?? pipelineForm.target_score,
+      max_iterations: selectedPipeline?.max_iterations ?? selectedPipelineSummary?.max_iterations ?? pipelineForm.max_iterations,
+      current_iteration: selectedPipeline?.current_iteration ?? selectedPipelineSummary?.current_iteration ?? 0,
+      branch_name: selectedPipeline?.branch_name || selectedPipelineSummary?.branch_name || "—",
+      latest_evaluator_score: selectedPipelineSummary?.latest_evaluator_score ?? null,
+      latest_task_slug: selectedPipelineSummary?.latest_task_slug || selectedPipeline?.latest_task_slug || "",
+      stop_reason: selectedPipeline?.stop_reason || selectedPipelineSummary?.stop_reason || "",
+      require_manual_approval:
+        typeof selectedPipeline?.require_manual_approval === "boolean"
+          ? selectedPipeline.require_manual_approval
+          : Boolean(selectedPipelineSummary?.require_manual_approval ?? pipelineForm.require_manual_approval),
+    }),
+    [selectedPipeline, selectedPipelineSummary, pipelineForm]
+  );
+  const pipelineIterations = useMemo(() => {
+    const manifestIterations = Array.isArray(selectedPipeline?.iterations) ? selectedPipeline.iterations : [];
+    return [...manifestIterations].sort((left, right) => Number(left.iteration || 0) - Number(right.iteration || 0));
+  }, [selectedPipeline]);
+  const pipelineIterationNumbers = useMemo(() => {
+    const values = new Set();
+    for (const iteration of pipelineIterations) {
+      if (iteration?.iteration) values.add(Number(iteration.iteration));
+    }
+    for (const event of selectedPipelineEvents) {
+      const iteration = getPipelineEventIterationNumber(event);
+      if (iteration) values.add(Number(iteration));
+    }
+    return [...values].sort((left, right) => left - right);
+  }, [pipelineIterations, selectedPipelineEvents]);
+  const pipelineEventsByIteration = useMemo(() => {
+    const groups = new Map();
+    for (const event of selectedPipelineEvents) {
+      const iteration = getPipelineEventIterationNumber(event) || 0;
+      if (!groups.has(iteration)) groups.set(iteration, []);
+      groups.get(iteration).push(event);
+    }
+    return groups;
+  }, [selectedPipelineEvents]);
+  const pipelineTimeline = useMemo(() => {
+    const globalStartEvents = [];
+    const globalFinalEvents = [];
+    const iterationGroups = [];
+
+    for (const event of selectedPipelineEvents) {
+      const iteration = getPipelineEventIterationNumber(event);
+      const phase = getPipelinePhase(event.type);
+      if (!iteration && phase === "start") {
+        globalStartEvents.push(event);
+      }
+      if (!iteration && phase === "final") {
+        globalFinalEvents.push(event);
+      }
+    }
+
+    for (const iterationNumber of pipelineIterationNumbers) {
+      const events = pipelineEventsByIteration.get(iterationNumber) || [];
+      const phases = PIPELINE_PHASE_ORDER.map((phaseKey) => ({
+        key: phaseKey,
+        label: PIPELINE_PHASE_LABELS[phaseKey],
+        events: events.filter((event) => getPipelinePhase(event.type) === phaseKey),
+      })).filter((phase) => phase.events.length);
+      const record = pipelineIterations.find((item) => Number(item.iteration) === Number(iterationNumber)) || null;
+      iterationGroups.push({
+        iterationNumber,
+        record,
+        phases,
+      });
+    }
+
+    return { globalStartEvents, globalFinalEvents, iterationGroups };
+  }, [selectedPipelineEvents, pipelineIterationNumbers, pipelineEventsByIteration, pipelineIterations]);
+  const selectedIterationRecord = useMemo(
+    () =>
+      pipelineIterations.find((iteration) => Number(iteration.iteration) === Number(selectedPipelineIterationNumber)) ||
+      pipelineIterations[pipelineIterations.length - 1] ||
+      null,
+    [pipelineIterations, selectedPipelineIterationNumber]
+  );
+  const selectedIterationTaskOptions = useMemo(() => {
+    const values = new Set();
+    if (Array.isArray(selectedIterationRecord?.task_results)) {
+      for (const result of selectedIterationRecord.task_results) {
+        if (result?.task_slug) values.add(result.task_slug);
+      }
+    }
+    for (const event of selectedPipelineEvents) {
+      const eventIteration = getPipelineEventIterationNumber(event);
+      if (selectedIterationRecord && Number(eventIteration) !== Number(selectedIterationRecord.iteration)) continue;
+      const taskSlug = getPipelineEventTaskSlug(event);
+      if (taskSlug) values.add(taskSlug);
+    }
+    return [...values];
+  }, [selectedIterationRecord, selectedPipelineEvents]);
+  const selectedTaskResult = useMemo(() => {
+    if (!selectedPipelineTaskSlug || !Array.isArray(selectedIterationRecord?.task_results)) return null;
+    return selectedIterationRecord.task_results.find((result) => result.task_slug === selectedPipelineTaskSlug) || null;
+  }, [selectedIterationRecord, selectedPipelineTaskSlug]);
+  const selectedPipelineContextEvents = useMemo(() => {
+    return selectedPipelineEvents.filter((event) => {
+      const iteration = getPipelineEventIterationNumber(event);
+      if (selectedIterationRecord && Number(iteration || 0) !== Number(selectedIterationRecord.iteration)) {
+        return false;
+      }
+      const eventTask = getPipelineEventTaskSlug(event);
+      if (!selectedPipelineTaskSlug) return true;
+      if (!eventTask) return true;
+      return eventTask === selectedPipelineTaskSlug;
+    });
+  }, [selectedPipelineEvents, selectedIterationRecord, selectedPipelineTaskSlug]);
+  const pipelineConversationTurns = useMemo(
+    () => buildPipelineTranscriptTurns(selectedPipelineContextEvents),
+    [selectedPipelineContextEvents]
+  );
+  const pipelineTestingStepEvents = useMemo(() => {
+    return selectedPipelineContextEvents.filter((event) => {
+      const phase = getPipelinePhase(event.type);
+      return phase === "testing" && !["transcript_turn", "user_turn", "customer_reply"].includes(String(event.type || ""));
+    });
+  }, [selectedPipelineContextEvents]);
+  const pipelineDetailSections = useMemo(() => {
+    const sections = {
+      evaluation: [],
+      rootCause: [],
+      fixPlan: [],
+      fixerEdits: [],
+      codeDeploy: [],
+      completion: [],
+    };
+
+    for (const event of selectedPipelineContextEvents) {
+      const payload = getPipelineEventPayload(event);
+      const item = {
+        id: `${event.timestamp}-${event.type}-${getPipelineEventTaskSlug(event) || "pipeline"}`,
+        type: event.type,
+        title: formatPipelineEventTitle(event.type),
+        timestamp: event.timestamp,
+        body: formatPipelineEventBody(event),
+        payload,
+      };
+
+      if (["evaluation_started", "evaluation_complete", "elevenlabs_analysis", "evaluation_criterion", "evaluation_finding", "refinement_gate", "evaluation_error"].includes(event.type)) {
+        sections.evaluation.push(item);
+        continue;
+      }
+      if (["refinement_started", "root_cause_complete", "refinement_error"].includes(event.type)) {
+        sections.rootCause.push(item);
+        continue;
+      }
+      if (["fix_plan_ready", "fixer_summary", "fixer_expected_improvement"].includes(event.type)) {
+        sections.fixPlan.push(item);
+        continue;
+      }
+      if (event.type === "fixer_edit") {
+        sections.fixerEdits.push(item);
+        continue;
+      }
+      if (["approval_required", "code_apply_started", "code_apply_finished", "agent_sync_started", "agent_sync_finished", "agent_sync_failed", "git_commit_finished", "git_push_finished", "git_push_skipped", "deploy_wait_started", "deploy_verified", "deploy_skipped"].includes(event.type)) {
+        sections.codeDeploy.push(item);
+        continue;
+      }
+      if (["task_finished", "iteration_complete", "pipeline_complete", "pipeline_failed", "pipeline_blocked"].includes(event.type)) {
+        sections.completion.push(item);
+      }
+    }
+
+    return sections;
+  }, [selectedPipelineContextEvents]);
+  const latestApprovalEvent = useMemo(() => {
+    for (let index = selectedPipelineEvents.length - 1; index >= 0; index -= 1) {
+      const event = selectedPipelineEvents[index];
+      if (event?.type === "approval_required") return event;
+    }
+    return null;
+  }, [selectedPipelineEvents]);
+  const pipelineCurrentTaskSlug = pipelineForm.task_slugs[0] || "";
   const bookedTripSummary = useMemo(() => {
     const passengerCount = bookedTrips.reduce((total, trip) => total + (trip.passengers?.length || 0), 0);
     const nextDeparture = bookedTrips
@@ -506,6 +856,31 @@ function App() {
   }, [selectedPipelineId]);
 
   useEffect(() => {
+    if (!pipelineIterationNumbers.length) {
+      setSelectedPipelineIterationNumber(null);
+      return;
+    }
+    const latestIteration =
+      Number(selectedPipeline?.current_iteration) ||
+      pipelineIterationNumbers[pipelineIterationNumbers.length - 1] ||
+      null;
+    setSelectedPipelineIterationNumber((current) =>
+      current && pipelineIterationNumbers.includes(Number(current)) ? current : latestIteration
+    );
+  }, [selectedPipeline?.current_iteration, pipelineIterationNumbers]);
+
+  useEffect(() => {
+    const fallbackTask =
+      getIterationTaskSlug(selectedIterationRecord, selectedPipeline?.task_slugs || []) ||
+      selectedIterationTaskOptions[0] ||
+      "";
+    setSelectedPipelineTaskSlug((current) => {
+      if (current && selectedIterationTaskOptions.includes(current)) return current;
+      return fallbackTask;
+    });
+  }, [selectedIterationRecord, selectedIterationTaskOptions, selectedPipeline?.task_slugs]);
+
+  useEffect(() => {
     if (screen !== "testing" || !selectedPipelineId) {
       return undefined;
     }
@@ -517,7 +892,7 @@ function App() {
       refreshTestingPipelines(selectedPipelineId).catch((error) => {
         setPipelineStatus(error.message);
       });
-    }, 4000);
+    }, 2000);
     return () => window.clearInterval(interval);
   }, [screen, selectedPipelineId, selectedPipeline?.status]);
 
@@ -1448,60 +1823,371 @@ function App() {
         ) : (
           <>
             <header className="page-header">
-              <h1>Testing Observatory</h1>
-              <p>Run AI-driven capability tasks against the ElevenLabs agent, then inspect evaluator verdicts, root-cause classifications, tool traces, and backend effects per test id.</p>
+              <h1>Pipeline Observatory</h1>
+              <p>Run the self-improvement pipeline from the UI, inspect each iteration as it unfolds, and review testing, evaluation, refinement, approval, code apply, deploy, and final outcome in one place.</p>
             </header>
 
-            <section className="testing-toolbar">
-              <button type="button" className="button button--primary" onClick={() => executeTestingRun()} disabled={testingBusy}>
-                <span className="material-symbols-outlined">play_arrow</span>
-                Run all tasks
-              </button>
-              <select
-                value={selectedTaskSlug}
-                onChange={(event) => setSelectedTaskSlug(event.target.value)}
-                className="testing-select testing-select--toolbar"
-                disabled={testingBusy || !testingTasks.length}
-              >
-                {testingTasks.map((task) => (
-                  <option key={task.slug} value={task.slug}>
-                    {task.slug}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="button button--secondary"
-                onClick={() => executeTestingRun(selectedTaskSlug ? { task: selectedTaskSlug } : {})}
-                disabled={testingBusy || !selectedTaskSlug}
-              >
-                <span className="material-symbols-outlined">terminal</span>
-                Run selected task
-              </button>
-              <button type="button" className="button button--secondary" onClick={() => refreshTestingRuns(selectedTestingRunId)} disabled={testingBusy}>
-                <span className="material-symbols-outlined">refresh</span>
-                Refresh runs
-              </button>
-            </section>
+            <section className="pipeline-page">
+              <section className="pipeline-control-bar">
+                <div className="pipeline-control-grid">
+                  <label className="pipeline-field">
+                    <span>Recent pipeline</span>
+                    <select
+                      value={selectedPipelineId || ""}
+                      onChange={(event) => setSelectedPipelineId(event.target.value || null)}
+                      className="testing-select testing-select--full"
+                      disabled={pipelineBusy || !testingPipelines.length}
+                    >
+                      <option value="">Select pipeline</option>
+                      {testingPipelines.map((pipeline) => (
+                        <option key={pipeline.pipeline_id} value={pipeline.pipeline_id}>
+                          {formatPipelineSelectorOption(pipeline)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="pipeline-field">
+                    <span>Task</span>
+                    <select
+                      value={pipelineCurrentTaskSlug}
+                      onChange={(event) => setPipelineTask(event.target.value)}
+                      className="testing-select testing-select--full"
+                      disabled={pipelineBusy || !testingTasks.length}
+                    >
+                      {testingTasks.map((task) => (
+                        <option key={task.slug} value={task.slug}>
+                          {task.slug}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="pipeline-field">
+                    <span>Target score</span>
+                    <input
+                      className="pipeline-input"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={pipelineForm.target_score}
+                      onChange={(event) =>
+                        setPipelineForm((current) => ({ ...current, target_score: event.target.value }))
+                      }
+                      disabled={pipelineBusy}
+                    />
+                  </label>
+                  <label className="pipeline-field">
+                    <span>Max iterations</span>
+                    <input
+                      className="pipeline-input"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={pipelineForm.max_iterations}
+                      onChange={(event) =>
+                        setPipelineForm((current) => ({ ...current, max_iterations: event.target.value }))
+                      }
+                      disabled={pipelineBusy}
+                    />
+                  </label>
+                </div>
 
-            <section className="testing-workspace">
-              <div className="testing-workspace__left">
-                <section className="testing-live">
-                  <div className="testing-live__header">
-                    <div>
-                      <span className="eyebrow">Live output</span>
-                      <strong>Chat outputs</strong>
-                    </div>
-                    <span className="status-pill status-pill--center">{testingBusy ? "Running..." : testingLiveActive ? "Streaming..." : "Idle"}</span>
+                <div className="pipeline-actions">
+                  <button type="button" className="button button--primary" onClick={startPipelineRun} disabled={pipelineBusy || !pipelineCurrentTaskSlug}>
+                    <span className="material-symbols-outlined">rocket_launch</span>
+                    Start pipeline
+                  </button>
+                  {effectivePipelineSummary.status === "waiting_approval" ? (
+                    <button type="button" className="button button--secondary" onClick={approveSelectedPipeline} disabled={pipelineBusy || !selectedPipelineId}>
+                      <span className="material-symbols-outlined">task_alt</span>
+                      Approve
+                    </button>
+                  ) : null}
+                  {selectedPipelineId && ACTIVE_PIPELINE_STATUSES.has(String(effectivePipelineSummary.status || "")) ? (
+                    <button type="button" className="button button--secondary" onClick={cancelSelectedPipeline} disabled={pipelineBusy}>
+                      <span className="material-symbols-outlined">cancel</span>
+                      Cancel
+                    </button>
+                  ) : null}
+                </div>
+
+                <details className="pipeline-advanced">
+                  <summary>Advanced settings</summary>
+                  <div className="pipeline-advanced__grid">
+                    <label className="pipeline-field">
+                      <span>Review model</span>
+                      <input
+                        className="pipeline-input"
+                        value={pipelineForm.review_model}
+                        onChange={(event) =>
+                          setPipelineForm((current) => ({ ...current, review_model: event.target.value }))
+                        }
+                        disabled={pipelineBusy}
+                      />
+                    </label>
+                    <label className="pipeline-field">
+                      <span>Fixer model</span>
+                      <input
+                        className="pipeline-input"
+                        value={pipelineForm.fixer_model}
+                        onChange={(event) =>
+                          setPipelineForm((current) => ({ ...current, fixer_model: event.target.value }))
+                        }
+                        disabled={pipelineBusy}
+                      />
+                    </label>
+                    <label className="pipeline-toggle">
+                      <input
+                        type="checkbox"
+                        checked={pipelineForm.require_manual_approval}
+                        onChange={(event) =>
+                          setPipelineForm((current) => ({
+                            ...current,
+                            require_manual_approval: event.target.checked,
+                          }))
+                        }
+                        disabled={pipelineBusy}
+                      />
+                      <span>Require manual approval before apply</span>
+                    </label>
+                    <label className="pipeline-toggle">
+                      <input
+                        type="checkbox"
+                        checked={pipelineForm.skip_fixture_reset}
+                        onChange={(event) =>
+                          setPipelineForm((current) => ({
+                            ...current,
+                            skip_fixture_reset: event.target.checked,
+                          }))
+                        }
+                        disabled={pipelineBusy}
+                      />
+                      <span>Skip fixture reset</span>
+                    </label>
                   </div>
-                  <div className="testing-live__panels">
-                    <div className="testing-live__panel">
-                      <div className="testing-live__panel-head">
-                        <span className="eyebrow">Conversation</span>
-                        <strong>Readable chat</strong>
+                </details>
+              </section>
+
+              <section className="pipeline-summary-card">
+                <div className="pipeline-summary-card__head">
+                  <div>
+                    <span className="eyebrow">Pipeline summary</span>
+                    <strong>{effectivePipelineSummary.pipeline_id || "No pipeline selected"}</strong>
+                    <p>{effectivePipelineSummary.pipeline_id ? `Tracking persisted pipeline events from the backend manifest.` : "Start a pipeline or select an existing one to inspect its iterations."}</p>
+                  </div>
+                  <span className="status-pill status-pill--center pipeline-summary-card__status">
+                    {effectivePipelineSummary.status || "idle"}
+                  </span>
+                </div>
+                <div className="pipeline-summary-card__grid">
+                  <article>
+                    <span>Stage</span>
+                    <strong>{effectivePipelineSummary.stage || "—"}</strong>
+                  </article>
+                  <article>
+                    <span>Current iteration</span>
+                    <strong>{effectivePipelineSummary.current_iteration || 0}</strong>
+                  </article>
+                  <article>
+                    <span>Latest score</span>
+                    <strong>{typeof effectivePipelineSummary.latest_evaluator_score === "number" ? `${effectivePipelineSummary.latest_evaluator_score}/10` : "—"}</strong>
+                  </article>
+                  <article>
+                    <span>Latest task</span>
+                    <strong>{effectivePipelineSummary.latest_task_slug || "—"}</strong>
+                  </article>
+                  <article>
+                    <span>Branch</span>
+                    <strong>{effectivePipelineSummary.branch_name || "—"}</strong>
+                  </article>
+                  <article>
+                    <span>Approval mode</span>
+                    <strong>{effectivePipelineSummary.require_manual_approval ? "Manual" : "Automatic"}</strong>
+                  </article>
+                  {effectivePipelineSummary.stop_reason ? (
+                    <article className="pipeline-summary-card__wide">
+                      <span>Stop reason</span>
+                      <strong>{effectivePipelineSummary.stop_reason}</strong>
+                    </article>
+                  ) : null}
+                </div>
+              </section>
+
+              {effectivePipelineSummary.status === "waiting_approval" && latestApprovalEvent ? (
+                <section className="pipeline-approval-banner">
+                  <div>
+                    <span className="eyebrow">Approval required</span>
+                    <strong>{latestApprovalEvent.message || "The current iteration is waiting for approval."}</strong>
+                  </div>
+                  <div className="pipeline-actions">
+                    <button type="button" className="button button--primary" onClick={approveSelectedPipeline} disabled={pipelineBusy || !selectedPipelineId}>
+                      <span className="material-symbols-outlined">task_alt</span>
+                      Approve iteration
+                    </button>
+                    <button type="button" className="button button--secondary" onClick={cancelSelectedPipeline} disabled={pipelineBusy}>
+                      <span className="material-symbols-outlined">cancel</span>
+                      Cancel pipeline
+                    </button>
+                  </div>
+                </section>
+              ) : null}
+
+              <section className="pipeline-timeline-card">
+                <div className="pipeline-timeline-card__head">
+                  <div>
+                    <span className="eyebrow">Pipeline timeline</span>
+                    <strong>Staged workflow</strong>
+                  </div>
+                  <span className="testing-muted">
+                    {selectedPipelineEvents.length ? `${selectedPipelineEvents.length} event${selectedPipelineEvents.length === 1 ? "" : "s"}` : "No events yet"}
+                  </span>
+                </div>
+
+                <div className="pipeline-timeline" ref={pipelineConsoleRef}>
+                  {pipelineTimeline.globalStartEvents.length ? (
+                    <section className="pipeline-phase-group">
+                      <div className="pipeline-phase-group__header">
+                        <span className="eyebrow">Pipeline</span>
+                        <strong>Start Pipeline</strong>
                       </div>
-                      <div className="testing-transcript" ref={transcriptConsoleRef}>
-                        {testingConversation.length ? testingConversation.map((item, index) => (
+                      <div className="pipeline-event-list">
+                        {pipelineTimeline.globalStartEvents.map((event, index) => (
+                          <button
+                            type="button"
+                            className="pipeline-event-card"
+                            key={`${event.timestamp}-${event.type}-${index}`}
+                            onClick={() => {
+                              if (pipelineIterationNumbers.length) {
+                                setSelectedPipelineIterationNumber(pipelineIterationNumbers[0]);
+                              }
+                            }}
+                          >
+                            <div className="pipeline-event-card__meta">
+                              <span>{formatPipelineEventTitle(event.type)}</span>
+                              <time>{formatTimestamp(event.timestamp)}</time>
+                            </div>
+                            <p>{formatPipelineEventBody(event)}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {pipelineTimeline.iterationGroups.length ? (
+                    pipelineTimeline.iterationGroups.map((group) => (
+                      <section className="pipeline-iteration-card" key={`iteration-${group.iterationNumber}`}>
+                        <div className="pipeline-iteration-card__header">
+                          <div>
+                            <span className="eyebrow">Iteration {group.iterationNumber}</span>
+                            <strong>{group.record?.status || "running"}</strong>
+                          </div>
+                          <button
+                            type="button"
+                            className={Number(selectedIterationRecord?.iteration) === Number(group.iterationNumber) ? "pipeline-select-link active" : "pipeline-select-link"}
+                            onClick={() => {
+                              setSelectedPipelineIterationNumber(group.iterationNumber);
+                              setSelectedPipelineTaskSlug(getIterationTaskSlug(group.record, effectivePipelineSummary.latest_task_slug ? [effectivePipelineSummary.latest_task_slug] : selectedPipeline?.task_slugs || []));
+                            }}
+                          >
+                            View details
+                          </button>
+                        </div>
+
+                        <div className="pipeline-phase-stack">
+                          {group.phases.map((phase) => (
+                            <section className="pipeline-phase-group" key={`${group.iterationNumber}-${phase.key}`}>
+                              <div className="pipeline-phase-group__header">
+                                <span className="eyebrow">Phase</span>
+                                <strong>{phase.label}</strong>
+                              </div>
+                              <div className="pipeline-event-list">
+                                {phase.events.map((event, index) => {
+                                  const eventTaskSlug = getPipelineEventTaskSlug(event);
+                                  const active =
+                                    Number(selectedIterationRecord?.iteration) === Number(group.iterationNumber) &&
+                                    (!eventTaskSlug || eventTaskSlug === selectedPipelineTaskSlug);
+                                  return (
+                                    <button
+                                      type="button"
+                                      className={active ? "pipeline-event-card pipeline-event-card--active" : "pipeline-event-card"}
+                                      key={`${event.timestamp}-${event.type}-${index}`}
+                                      onClick={() => {
+                                        setSelectedPipelineIterationNumber(group.iterationNumber);
+                                        if (eventTaskSlug) {
+                                          setSelectedPipelineTaskSlug(eventTaskSlug);
+                                        }
+                                      }}
+                                    >
+                                      <div className="pipeline-event-card__meta">
+                                        <span>{formatPipelineEventTitle(event.type)}</span>
+                                        <time>{formatTimestamp(event.timestamp)}</time>
+                                      </div>
+                                      <p>{formatPipelineEventBody(event)}</p>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </section>
+                          ))}
+                        </div>
+                      </section>
+                    ))
+                  ) : (
+                    <p className="testing-muted">No pipeline iterations yet.</p>
+                  )}
+
+                  {pipelineTimeline.globalFinalEvents.length ? (
+                    <section className="pipeline-phase-group">
+                      <div className="pipeline-phase-group__header">
+                        <span className="eyebrow">Pipeline</span>
+                        <strong>Final Summary</strong>
+                      </div>
+                      <div className="pipeline-event-list">
+                        {pipelineTimeline.globalFinalEvents.map((event, index) => (
+                          <article className="pipeline-event-card" key={`${event.timestamp}-${event.type}-${index}`}>
+                            <div className="pipeline-event-card__meta">
+                              <span>{formatPipelineEventTitle(event.type)}</span>
+                              <time>{formatTimestamp(event.timestamp)}</time>
+                            </div>
+                            <p>{formatPipelineEventBody(event)}</p>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
+                </div>
+              </section>
+
+              <section className="pipeline-detail-workspace">
+                <div className="pipeline-detail-column">
+                  <section className="pipeline-detail-panel">
+                    <div className="pipeline-detail-panel__head">
+                      <div>
+                        <span className="eyebrow">Conversation transcript</span>
+                        <strong>{selectedPipelineTaskSlug || effectivePipelineSummary.latest_task_slug || "No task selected"}</strong>
+                      </div>
+                      {selectedIterationRecord ? <span className="testing-muted">Iteration {selectedIterationRecord.iteration}</span> : null}
+                    </div>
+
+                    {selectedIterationTaskOptions.length > 1 ? (
+                      <label className="pipeline-field">
+                        <span>Task in view</span>
+                        <select
+                          value={selectedPipelineTaskSlug}
+                          onChange={(event) => setSelectedPipelineTaskSlug(event.target.value)}
+                          className="testing-select testing-select--full"
+                        >
+                          {selectedIterationTaskOptions.map((taskSlug) => (
+                            <option key={taskSlug} value={taskSlug}>
+                              {taskSlug}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+
+                    <div className="pipeline-transcript">
+                      {pipelineConversationTurns.length ? (
+                        pipelineConversationTurns.map((item, index) => (
                           <article className={item.role === "user" ? "transcript-turn transcript-turn--user" : "transcript-turn transcript-turn--agent"} key={`${item.role}-${item.timestamp || index}`}>
                             <div className="transcript-turn__meta">
                               <span>{item.role === "user" ? "User" : item.role === "agent" ? "Agent" : item.role}</span>
@@ -1509,187 +2195,287 @@ function App() {
                             </div>
                             <p>{item.text}</p>
                           </article>
-                        )) : <p className="testing-muted">Waiting for conversation turns...</p>}
-                      </div>
-                    </div>
-                    <div className="testing-live__panel">
-                      <div className="testing-live__panel-head">
-                        <span className="eyebrow">Steps</span>
-                        <strong>Execution flow</strong>
-                      </div>
-                      <div className="testing-steps" ref={liveConsoleRef} aria-live="polite">
-                        {testingLiveEvents.length ? testingLiveEvents.map((line, index) => (
-                          <div className={`testing-step ${line.tag === "error" ? "testing-step--error" : line.tag === "eval" ? "testing-step--eval" : line.tag === "status" ? "testing-step--status" : "testing-step--accent"}`} key={`${line.tag}-${index}`}>
-                            <span className="testing-step__time">{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
-                            <span className="testing-step__tag">{String(line.tag || "log").toUpperCase()}</span>
-                            <span className="testing-step__text">{line.text}</span>
-                          </div>
-                        )) : <p className="testing-muted">[waiting] No live step output yet.</p>}
-                      </div>
-                    </div>
-                    <div className="testing-live__panel">
-                      <div className="testing-live__panel-head">
-                        <span className="eyebrow">Logs</span>
-                        <strong>Raw runner logs</strong>
-                      </div>
-                      {testingLogLines.length ? (
-                        <pre className="testing-live__console testing-live__console--logs" ref={logConsoleRef}>
-                          {testingLogLines.join("\n")}
-                        </pre>
+                        ))
                       ) : (
-                        <p className="testing-muted">No raw log lines yet.</p>
+                        <p className="testing-muted">No conversation turns are available for this iteration yet.</p>
                       )}
                     </div>
-                  </div>
-                </section>
-                <section className="testing-refinement">
-                  <section className="testing-refinement__card">
-                    <div className="testing-refinement__head">
+                  </section>
+
+                  <section className="pipeline-detail-panel">
+                    <div className="pipeline-detail-panel__head">
                       <div>
-                        <span className="eyebrow">Refinement</span>
-                        <strong>Evaluation and fixer flow</strong>
+                        <span className="eyebrow">Testing phase</span>
+                        <strong>Execution steps</strong>
                       </div>
-                      <span className="status-pill status-pill--center">{testingBusy ? "Running..." : testingLiveActive ? "Streaming..." : "Idle"}</span>
                     </div>
-                    <div className="testing-refinement__timeline">
-                      {testingRefinementEvents.length ? (
-                        testingRefinementEvents.map((item, index) => (
-                          <article
-                            key={`${item.kind}-${item.timestamp || index}-${index}`}
-                            className={`refinement-event refinement-event--${item.kind || "note"}`}
-                          >
-                            <div className="refinement-event__meta">
-                              <span>{item.subtitle || "refinement"}</span>
-                              <time>{formatTimestamp(item.timestamp)}</time>
+                    <div className="pipeline-step-list">
+                      {pipelineTestingStepEvents.length ? (
+                        pipelineTestingStepEvents.map((event, index) => (
+                          <article className={`pipeline-step-card pipeline-step-card--${pipelineEventCategory(event.type)}`} key={`${event.timestamp}-${event.type}-${index}`}>
+                            <div className="pipeline-event-card__meta">
+                              <span>{formatPipelineEventTitle(event.type)}</span>
+                              <time>{formatTimestamp(event.timestamp)}</time>
                             </div>
-                            <div className="refinement-event__title-row">
-                              <strong>{item.title}</strong>
-                              {typeof item.score !== "undefined" ? <span className="refinement-event__score">Score {item.score}</span> : null}
-                            </div>
-                            {item.body ? <p>{item.body}</p> : null}
-                            {Array.isArray(item.details) && item.details.length ? (
-                              <details className="refinement-event__details">
-                                <summary>Details</summary>
-                                <div>
-                                  {item.details.map((detail, detailIndex) => (
-                                    <div key={`${item.title}-${detailIndex}`}>{typeof detail === "string" ? detail : safeJson(detail)}</div>
-                                  ))}
-                                </div>
-                              </details>
-                            ) : null}
+                            <p>{formatPipelineEventBody(event)}</p>
                           </article>
                         ))
                       ) : (
-                        <p className="testing-muted">Waiting for evaluation and fixer output...</p>
+                        <p className="testing-muted">No testing steps are available for this selection yet.</p>
                       )}
                     </div>
                   </section>
+                </div>
 
-                  <section className="testing-refinement__stack">
-                    <article className="testing-refinement__mini">
-                      <div className="testing-refinement__mini-head">
-                        <span className="eyebrow">Evaluation</span>
-                        <strong>{refinementSections.evaluation.length ? `${refinementSections.evaluation.length} event${refinementSections.evaluation.length === 1 ? "" : "s"}` : "Waiting"}</strong>
+                <div className="pipeline-detail-column">
+                  <section className="pipeline-detail-panel">
+                    <div className="pipeline-detail-panel__head">
+                      <div>
+                        <span className="eyebrow">Iteration detail</span>
+                        <strong>Evaluation, refinement, and apply flow</strong>
                       </div>
-                      {refinementSections.evaluation.length ? (
-                        refinementSections.evaluation.map((item, index) => (
-                          <div className="refinement-snippet" key={`evaluation-${index}`}>
-                            <div className="refinement-snippet__head">
-                              <strong>{item.title}</strong>
-                              <time>{formatTimestamp(item.timestamp)}</time>
-                            </div>
-                            {item.body ? <p>{item.body}</p> : null}
-                            {Array.isArray(item.details) && item.details.length ? <small>{item.details.length} detail item{item.details.length === 1 ? "" : "s"}</small> : null}
-                          </div>
-                        ))
-                      ) : (
-                        <p className="testing-muted">No evaluation events yet.</p>
-                      )}
-                    </article>
+                    </div>
 
-                    <article className="testing-refinement__mini">
-                      <div className="testing-refinement__mini-head">
-                        <span className="eyebrow">Refinement analysis</span>
-                        <strong>{refinementSections.refinementAnalysis.length ? "Ready" : "Waiting"}</strong>
+                    {selectedTaskResult ? (
+                      <div className="pipeline-task-summary">
+                        <article>
+                          <span>Overall score</span>
+                          <strong>{typeof selectedTaskResult.overall_score === "number" ? `${selectedTaskResult.overall_score}/10` : "—"}</strong>
+                        </article>
+                        <article>
+                          <span>Goal achieved</span>
+                          <strong>{typeof selectedTaskResult.goal_achieved === "boolean" ? (selectedTaskResult.goal_achieved ? "Yes" : "No") : "—"}</strong>
+                        </article>
+                        <article>
+                          <span>Needs refinement</span>
+                          <strong>{typeof selectedTaskResult.needs_refinement === "boolean" ? (selectedTaskResult.needs_refinement ? "Yes" : "No") : "—"}</strong>
+                        </article>
+                        <article>
+                          <span>Root cause</span>
+                          <strong>{selectedTaskResult.root_cause_category || "—"}</strong>
+                        </article>
                       </div>
-                      {refinementSections.refinementAnalysis.length ? (
-                        refinementSections.refinementAnalysis.map((item, index) => (
-                          <div className="refinement-snippet" key={`root-${index}`}>
-                            <div className="refinement-snippet__head">
-                              <strong>{item.title}</strong>
-                              <time>{formatTimestamp(item.timestamp)}</time>
-                            </div>
-                            {item.subtitle ? <small>{item.subtitle}</small> : null}
-                            {item.body ? <p>{item.body}</p> : null}
-                          </div>
-                        ))
-                      ) : (
-                        <p className="testing-muted">No refinement analysis yet.</p>
-                      )}
-                    </article>
+                    ) : null}
 
-                    <article className="testing-refinement__mini">
-                      <div className="testing-refinement__mini-head">
-                        <span className="eyebrow">Fix plan</span>
-                        <strong>{refinementSections.fixPlan.length ? "Ready" : "Waiting"}</strong>
-                      </div>
-                      {refinementSections.fixPlan.length ? (
-                        refinementSections.fixPlan.map((item, index) => (
-                          <div className="refinement-snippet" key={`fix-${index}`}>
-                            <div className="refinement-snippet__head">
-                              <strong>{item.title}</strong>
-                              <time>{formatTimestamp(item.timestamp)}</time>
-                            </div>
-                            {item.body ? <p>{item.body}</p> : null}
+                    <div className="pipeline-right-stack">
+                      <article className="pipeline-section-card">
+                        <div className="pipeline-section-card__head">
+                          <span className="eyebrow">Evaluation</span>
+                          <strong>{pipelineDetailSections.evaluation.length ? `${pipelineDetailSections.evaluation.length} event${pipelineDetailSections.evaluation.length === 1 ? "" : "s"}` : "No events"}</strong>
+                        </div>
+                        {pipelineDetailSections.evaluation.length ? (
+                          <div className="pipeline-section-card__list">
+                            {pipelineDetailSections.evaluation.map((item) => (
+                              <article className="pipeline-detail-event" key={item.id}>
+                                <div className="pipeline-event-card__meta">
+                                  <span>{item.title}</span>
+                                  <time>{formatTimestamp(item.timestamp)}</time>
+                                </div>
+                                {item.body ? <p>{item.body}</p> : null}
+                              </article>
+                            ))}
                           </div>
-                        ))
-                      ) : (
-                        <p className="testing-muted">No fix plan yet.</p>
-                      )}
-                    </article>
+                        ) : (
+                          <p className="testing-muted">No evaluation output yet.</p>
+                        )}
+                      </article>
 
-                    <article className="testing-refinement__mini">
-                      <div className="testing-refinement__mini-head">
-                        <span className="eyebrow">Fixer edits</span>
-                        <strong>{refinementSections.fixerEdits.length ? "Captured" : "Waiting"}</strong>
-                      </div>
-                      {refinementSections.fixerEdits.length ? (
-                        refinementSections.fixerEdits.map((item, index) => (
-                          <div className="refinement-snippet" key={`edit-${index}`}>
-                            <div className="refinement-snippet__head">
-                              <strong>{item.title}</strong>
-                              <time>{formatTimestamp(item.timestamp)}</time>
-                            </div>
-                            {item.body ? <p>{item.body}</p> : null}
+                      <article className="pipeline-section-card">
+                        <div className="pipeline-section-card__head">
+                          <span className="eyebrow">Root cause</span>
+                          <strong>{pipelineDetailSections.rootCause.length ? "Ready" : "Waiting"}</strong>
+                        </div>
+                        {pipelineDetailSections.rootCause.length ? (
+                          <div className="pipeline-section-card__list">
+                            {pipelineDetailSections.rootCause.map((item) => (
+                              <article className="pipeline-detail-event" key={item.id}>
+                                <div className="pipeline-event-card__meta">
+                                  <span>{item.title}</span>
+                                  <time>{formatTimestamp(item.timestamp)}</time>
+                                </div>
+                                {item.body ? <p>{item.body}</p> : null}
+                              </article>
+                            ))}
                           </div>
-                        ))
-                      ) : (
-                        <p className="testing-muted">No fixer edits yet.</p>
-                      )}
-                    </article>
+                        ) : selectedTaskResult && selectedTaskResult.needs_refinement === false ? (
+                          <p className="testing-muted">No root-cause analysis was needed because this task already met the target threshold.</p>
+                        ) : (
+                          <p className="testing-muted">No root-cause analysis yet.</p>
+                        )}
+                      </article>
 
-                    <article className="testing-refinement__mini">
-                      <div className="testing-refinement__mini-head">
-                        <span className="eyebrow">Completion</span>
-                        <strong>{refinementSections.completion.length ? "Done" : "Waiting"}</strong>
-                      </div>
-                      {refinementSections.completion.length ? (
-                        refinementSections.completion.map((item, index) => (
-                          <div className="refinement-snippet" key={`completion-${index}`}>
-                            <div className="refinement-snippet__head">
-                              <strong>{item.title}</strong>
-                              <time>{formatTimestamp(item.timestamp)}</time>
-                            </div>
-                            {item.body ? <p>{item.body}</p> : null}
+                      <article className="pipeline-section-card">
+                        <div className="pipeline-section-card__head">
+                          <span className="eyebrow">Fix plan</span>
+                          <strong>{pipelineDetailSections.fixPlan.length ? "Ready" : "Waiting"}</strong>
+                        </div>
+                        {pipelineDetailSections.fixPlan.length ? (
+                          <div className="pipeline-section-card__list">
+                            {pipelineDetailSections.fixPlan.map((item) => (
+                              <article className="pipeline-detail-event" key={item.id}>
+                                <div className="pipeline-event-card__meta">
+                                  <span>{item.title}</span>
+                                  <time>{formatTimestamp(item.timestamp)}</time>
+                                </div>
+                                {item.body ? <p>{item.body}</p> : null}
+                              </article>
+                            ))}
                           </div>
-                        ))
-                      ) : (
-                        <p className="testing-muted">No completion event yet.</p>
-                      )}
-                    </article>
+                        ) : selectedTaskResult && selectedTaskResult.needs_refinement === false ? (
+                          <p className="testing-muted">No fix plan was required for this iteration.</p>
+                        ) : (
+                          <p className="testing-muted">No fix plan yet.</p>
+                        )}
+                      </article>
+
+                      <article className="pipeline-section-card">
+                        <div className="pipeline-section-card__head">
+                          <span className="eyebrow">Fixer edits</span>
+                          <strong>{pipelineDetailSections.fixerEdits.length ? `${pipelineDetailSections.fixerEdits.length} edit${pipelineDetailSections.fixerEdits.length === 1 ? "" : "s"}` : "Waiting"}</strong>
+                        </div>
+                        {pipelineDetailSections.fixerEdits.length ? (
+                          <div className="pipeline-section-card__list">
+                            {pipelineDetailSections.fixerEdits.map((item) => (
+                              <article className="pipeline-detail-event" key={item.id}>
+                                <div className="pipeline-event-card__meta">
+                                  <span>{item.title}</span>
+                                  <time>{formatTimestamp(item.timestamp)}</time>
+                                </div>
+                                {item.body ? <p>{item.body}</p> : null}
+                              </article>
+                            ))}
+                          </div>
+                        ) : selectedTaskResult && selectedTaskResult.needs_refinement === false ? (
+                          <p className="testing-muted">No fixer edits were generated because the iteration passed evaluation.</p>
+                        ) : (
+                          <p className="testing-muted">No fixer edits yet.</p>
+                        )}
+                      </article>
+
+                      <article className="pipeline-section-card">
+                        <div className="pipeline-section-card__head">
+                          <span className="eyebrow">Code and deploy</span>
+                          <strong>{pipelineDetailSections.codeDeploy.length ? `${pipelineDetailSections.codeDeploy.length} event${pipelineDetailSections.codeDeploy.length === 1 ? "" : "s"}` : "Waiting"}</strong>
+                        </div>
+                        {pipelineDetailSections.codeDeploy.length ? (
+                          <div className="pipeline-section-card__list">
+                            {pipelineDetailSections.codeDeploy.map((item) => (
+                              <article className="pipeline-detail-event" key={item.id}>
+                                <div className="pipeline-event-card__meta">
+                                  <span>{item.title}</span>
+                                  <time>{formatTimestamp(item.timestamp)}</time>
+                                </div>
+                                {item.body ? <p>{item.body}</p> : null}
+                              </article>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="testing-muted">No code or deploy events are available for this selection.</p>
+                        )}
+                      </article>
+
+                      <article className="pipeline-section-card">
+                        <div className="pipeline-section-card__head">
+                          <span className="eyebrow">Outcome</span>
+                          <strong>{pipelineDetailSections.completion.length ? "Ready" : "Waiting"}</strong>
+                        </div>
+                        {pipelineDetailSections.completion.length ? (
+                          <div className="pipeline-section-card__list">
+                            {pipelineDetailSections.completion.map((item) => (
+                              <article className="pipeline-detail-event" key={item.id}>
+                                <div className="pipeline-event-card__meta">
+                                  <span>{item.title}</span>
+                                  <time>{formatTimestamp(item.timestamp)}</time>
+                                </div>
+                                {item.body ? <p>{item.body}</p> : null}
+                              </article>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="testing-muted">No completion output yet.</p>
+                        )}
+                      </article>
+                    </div>
                   </section>
-                </section>
-              </div>
+                </div>
+              </section>
+
+              <details className="testing-quickrun">
+                <summary>Quick run</summary>
+                <div className="testing-quickrun__content">
+                  <section className="testing-toolbar">
+                    <button type="button" className="button button--primary" onClick={() => executeTestingRun()} disabled={testingBusy}>
+                      <span className="material-symbols-outlined">play_arrow</span>
+                      Run all tasks
+                    </button>
+                    <select
+                      value={selectedTaskSlug}
+                      onChange={(event) => setSelectedTaskSlug(event.target.value)}
+                      className="testing-select testing-select--toolbar"
+                      disabled={testingBusy || !testingTasks.length}
+                    >
+                      {testingTasks.map((task) => (
+                        <option key={task.slug} value={task.slug}>
+                          {task.slug}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="button button--secondary"
+                      onClick={() => executeTestingRun(selectedTaskSlug ? { task: selectedTaskSlug } : {})}
+                      disabled={testingBusy || !selectedTaskSlug}
+                    >
+                      <span className="material-symbols-outlined">terminal</span>
+                      Run selected task
+                    </button>
+                  </section>
+
+                  <section className="testing-live">
+                    <div className="testing-live__header">
+                      <div>
+                        <span className="eyebrow">Live quick run</span>
+                        <strong>Single-run stream</strong>
+                      </div>
+                      <span className="status-pill status-pill--center">{testingBusy ? "Running..." : testingLiveActive ? "Streaming..." : "Idle"}</span>
+                    </div>
+                    <div className="testing-live__panels">
+                      <div className="testing-live__panel">
+                        <div className="testing-live__panel-head">
+                          <span className="eyebrow">Conversation</span>
+                          <strong>Readable chat</strong>
+                        </div>
+                        <div className="testing-transcript" ref={transcriptConsoleRef}>
+                          {testingConversation.length ? testingConversation.map((item, index) => (
+                            <article className={item.role === "user" ? "transcript-turn transcript-turn--user" : "transcript-turn transcript-turn--agent"} key={`${item.role}-${item.timestamp || index}`}>
+                              <div className="transcript-turn__meta">
+                                <span>{item.role === "user" ? "User" : item.role === "agent" ? "Agent" : item.role}</span>
+                                <time>{formatTimestamp(item.timestamp)}</time>
+                              </div>
+                              <p>{item.text}</p>
+                            </article>
+                          )) : <p className="testing-muted">Waiting for conversation turns...</p>}
+                        </div>
+                      </div>
+                      <div className="testing-live__panel">
+                        <div className="testing-live__panel-head">
+                          <span className="eyebrow">Steps</span>
+                          <strong>Execution flow</strong>
+                        </div>
+                        <div className="testing-steps" ref={liveConsoleRef} aria-live="polite">
+                          {testingLiveEvents.length ? testingLiveEvents.map((line, index) => (
+                            <div className={`testing-step ${line.tag === "error" ? "testing-step--error" : line.tag === "eval" ? "testing-step--eval" : line.tag === "status" ? "testing-step--status" : "testing-step--accent"}`} key={`${line.tag}-${index}`}>
+                              <span className="testing-step__time">{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                              <span className="testing-step__tag">{String(line.tag || "log").toUpperCase()}</span>
+                              <span className="testing-step__text">{line.text}</span>
+                            </div>
+                          )) : <p className="testing-muted">[waiting] No live step output yet.</p>}
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </details>
             </section>
           </>
         )}

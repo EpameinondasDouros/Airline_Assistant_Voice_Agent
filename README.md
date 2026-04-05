@@ -52,6 +52,22 @@ Expanded testing coverage currently includes:
 4. A critic scores the result across request understanding, tool usage, outcome confirmation, and conversation quality.
 5. A refinement module classifies failures as prompt or code issues and prepares bounded edits for the next iteration.
 
+## Refinement Loop Diagram
+
+Editable FigJam diagram:
+
+- [Refinement Loop Pipeline](https://www.figma.com/online-whiteboard/create-diagram/83e505bc-13ae-4a0e-a661-53a6156d7d61?utm_source=other&utm_content=edit_in_figjam&oai_id=&request_id=7c52cf39-da34-4cae-9a7a-698ac3678af7)
+
+The loop shown in the diagram is:
+
+1. Chatting
+2. Evaluating
+3. Root-cause classification
+4. Prompt rewrite or code patch generation
+5. Refinement plan and change application
+6. Agent/backend update
+7. Next iteration or stop when the target score is reached
+
 ## Local Setup
 
 ### Requirements
