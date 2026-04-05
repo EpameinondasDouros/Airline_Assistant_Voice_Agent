@@ -400,6 +400,9 @@ PY
     if [[ "$event_type" == "transcript_turn" && ( "$role" == "user" || "$role" == "user_transcript" ) ]]; then
       continue
     fi
+    if [[ "$event_type" == "deploy_wait_health_check" ]]; then
+      continue
+    fi
 
     local message=""
     if [[ -n "$message_json" ]]; then

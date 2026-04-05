@@ -1,222 +1,107 @@
 # TechMellon Airline Assistant Voice Agent
 
-This repository is my submission for the TechMellon Forward Deployment Engineer assessment.
+Airline customer-service assistant built for the TechMellon Forward Deployment Engineer assessment.
 
-The project simulates an airline customer-service agent powered by ElevenLabs, backed by a FastAPI control plane, a fictional flight and booking database, a knowledge base for airline policies, and a testing/refinement pipeline that evaluates conversations and proposes targeted prompt or code fixes.
+It includes:
 
-## What Is In The Repo
+- a FastAPI backend with flights, bookings, extras, and knowledge-base endpoints
+- an ElevenLabs-backed airline assistant
+- a React frontend for search, chat, bookings, and testing
+- a testing/refinement loop with evaluator and root-cause analysis
 
-- `backend/`
-  FastAPI application, database models, seed scripts, ElevenLabs tool definitions, testing pipeline, and refinement logic.
-- `frontend/`
-  React/Vite UI for browsing flights, viewing bookings, chatting with the agent, and observing testing runs.
-- `start_backend_local.sh`
-  Starts the FastAPI backend locally.
-- `start_frontend_local.sh`
-  Starts the React frontend locally.
-- `run_pipeline_local.sh`
-  Convenience script for launching and monitoring a testing pipeline run from the terminal.
+## Fastest Ways To Run
 
-## Current Scope
+### Normal Usage: Remote Backend
 
-Implemented:
-
-- Knowledge base topics for pets, baggage, booking changes, special assistance, extras, flight operations, and seat preferences
-- Fictional flight inventory for a single week
-- Persistent booking APIs with create, retrieve, cancel, reschedule, and extras flows
-- ElevenLabs webhook/tool definitions for flight search, booking changes, policy lookup, and flight details
-- Task-driven conversation testing harness with evaluator and root-cause classification
-- UI for flight search, booked trips, chat, and testing observability
-
-Expanded testing coverage currently includes:
-
-- next available flight search
-- cheapest flights in the next week
-- booking a flight
-- booking with seat preference
-- booking with special assistance
-- retrieving a booking by reference
-- rescheduling or cancelling a booking
-- cancelling for refund handling
-- adding baggage or special items
-- pet policy enquiries
-- baggage allowance enquiries
-- special assistance enquiries
-- flight status / gate / check-in enquiries
-
-## How Easy Is It To Run?
-
-There are now two clear ways to run the repo on macOS:
-
-- easiest UI-only path, using the remote product backend:
-  `./start_frontend_local.sh`
-- easiest full local path, using Docker Compose:
-  `make up`
-
-For another laptop, the best reproducible setup is now the Docker path because it avoids host-specific Python and Node drift.
-
-## Architecture
-
-1. The backend exposes airline data and booking endpoints through FastAPI.
-2. ElevenLabs uses webhook tools defined in `backend/agents/tools/definitions.py`.
-3. The testing runner simulates a customer conversation against the ElevenLabs agent in text mode.
-4. A critic scores the result across request understanding, tool usage, outcome confirmation, and conversation quality.
-5. A refinement module classifies failures as prompt or code issues and prepares bounded edits for the next iteration.
-
-## Refinement Loop Diagram
-
-Editable FigJam diagram:
-
-- [Refinement Loop Pipeline](https://www.figma.com/online-whiteboard/create-diagram/83e505bc-13ae-4a0e-a661-53a6156d7d61?utm_source=other&utm_content=edit_in_figjam&oai_id=&request_id=7c52cf39-da34-4cae-9a7a-698ac3678af7)
-
-The loop shown in the diagram is:
-
-1. Chatting
-2. Evaluating
-3. Root-cause classification
-4. Prompt rewrite or code patch generation
-5. Refinement plan and change application
-6. Agent/backend update
-7. Next iteration or stop when the target score is reached
-
-## Quick Start On macOS
-
-### Recommended: Use The Remote Backend
-
-This is the easiest way to run the project.
-
-Requirements:
-
-- Node.js 18+
-- `npm`
-
-Run:
+This is the simplest path.
 
 ```bash
 ./start_frontend_local.sh
 ```
 
-Then open:
+Open:
 
 - `http://127.0.0.1:5173`
 
-By default, this points to:
+This uses the deployed airline backend by default.
 
-- product API: `https://airlineassistantvoiceagent.up.railway.app`
-- pipeline API: `http://127.0.0.1:8000`
+### Full Local Setup + Run On macOS
 
-If you only want to explore the app UI, flight search, bookings view, and the remote-backed experience, this is the intended default.
-
-### Best Full Local Setup: One Command With Docker
-
-Requirements:
-
-- Docker Desktop for Mac
-- `make`
-
-Run:
+This is the one-file local path.
 
 ```bash
-make up
+./run_macos.sh
 ```
 
-Then open:
+That script:
 
-- `http://127.0.0.1:5173`
-
-This command:
-
-- copies `backend/.env.example` to `backend/.env` if needed
-- builds the backend container
-- builds the frontend container
-- starts the backend on `http://127.0.0.1:8000`
-- starts the frontend on `http://127.0.0.1:5173`
-- persists the SQLite database in a Docker volume
-
-Useful companion commands:
-
-```bash
-make down
-make logs
-make rebuild
-make ps
-```
-
-If you want a shell inside a running container:
-
-```bash
-make shell-backend
-make shell-frontend
-```
-
-## Alternative Full Local Setup
-
-### Requirements
-
-- Python 3.11+
-- Node.js 18+
-- `npm`
-- An ElevenLabs API key if you want live chat/testing against ElevenLabs
-- An ElevenLabs agent configured to use this backend's tools if you want live chat/testing
-
-### 1. One-Time Bootstrap
-
-From the repo root:
-
-```bash
-./setup_macos.sh
-```
-
-This script:
-
-- checks for `python3` and `npm`
-- creates the backend virtual environment
-- installs Python dependencies
-- copies `backend/.env.example` to `backend/.env` when needed
+- installs backend dependencies
+- creates `backend/.env` if needed
 - runs migrations
 - seeds flights, bookings, and knowledge data
 - installs frontend dependencies
+- starts backend and frontend
 
-### 2. Start The Full Local Stack
+Local URLs:
 
-```bash
-./start_local_stack.sh
-```
+- frontend: `http://127.0.0.1:5173`
+- backend: `http://127.0.0.1:8000`
 
-This starts:
+## Main Files
 
-- local backend on `http://127.0.0.1:8000`
-- local frontend on `http://127.0.0.1:5173`
+- `backend/` FastAPI app, database, agent tools, testing pipeline
+- `frontend/` React/Vite UI
+- `run_macos.sh` one-command local setup and startup for macOS
+- `start_frontend_local.sh` frontend-only startup against the remote backend
+- `run_pipeline_local.sh` local pipeline runner
 
-and keeps both running until you press `Ctrl-C`.
+## Main Backend Endpoints
 
-### 3. Optional ElevenLabs Configuration
+- `GET /health`
+- `GET /api/flights`
+- `GET /api/flights/search`
+- `POST /api/bookings`
+- `GET /api/bookings/{booking_reference}`
+- `POST /api/bookings/{booking_reference}/cancel`
+- `POST /api/bookings/{booking_reference}/reschedule`
+- `POST /api/bookings/{booking_reference}/extras`
+- `GET /api/knowledge/{topic}`
+- `POST /api/chat`
+- `GET /api/testing/tasks`
+- `GET /api/testing/runs`
+- `GET /api/testing/pipelines`
 
-If you want live chat or live testing against ElevenLabs, fill in `backend/.env` with:
+## Refinement Loop
+
+Flow:
+
+`Chatting -> Evaluating -> Root Cause -> Fixer -> Refinement -> Update -> Repeat/Stop`
+
+FigJam diagram:
+
+- [Refinement Loop Pipeline](https://www.figma.com/online-whiteboard/create-diagram/83e505bc-13ae-4a0e-a661-53a6156d7d61?utm_source=other&utm_content=edit_in_figjam&oai_id=&request_id=7c52cf39-da34-4cae-9a7a-698ac3678af7)
+
+## ElevenLabs Notes
+
+If you want live ElevenLabs chat or testing, fill in `backend/.env` with:
 
 ```text
 ELEVENLABS_API_KEY=...
 ELEVENLABS_AGENT_ID=...
 ELEVENLABS_REQUIRES_AUTH=false
+```
+
+If ElevenLabs needs to call your local backend, set:
+
+```text
 BACKEND_PUBLIC_URL=http://127.0.0.1:8000
-ELEVENLABS_BRANCH_ID=...
 ```
 
-If ElevenLabs needs to call your laptop from the public internet, replace the local `BACKEND_PUBLIC_URL` with a tunnel URL such as an `ngrok` HTTPS endpoint.
+or replace it with a public tunnel URL.
 
-### 4. Sync ElevenLabs Tools
+## Testing
 
-After the backend is reachable publicly or locally through your chosen setup, sync the tool definitions:
-
-```bash
-cd backend
-source .venv/bin/activate
-python -m agents.tools.sync
-```
-
-### 5. Run A Testing Task
-
-To run a single live conversation test through the backend API:
+Run a local testing task:
 
 ```bash
 cd backend
@@ -224,101 +109,14 @@ source .venv/bin/activate
 python -m testing.run_conversation_tests --task enquire_pet_policy
 ```
 
-To run the local pipeline monitor script:
+Run the pipeline helper:
 
 ```bash
 ./run_pipeline_local.sh --task book_flight
 ```
 
-## Main Endpoints
+## Notes
 
-Backend:
-
-- `GET /health`
-- `GET /api/flights`
-- `GET /api/flights/search`
-- `GET /api/flights/{flight_id}`
-- `GET /api/flights/{flight_id}/seats`
-- `POST /api/bookings`
-- `GET /api/bookings/{booking_reference}`
-- `POST /api/bookings/{booking_reference}/cancel`
-- `POST /api/bookings/{booking_reference}/reschedule`
-- `POST /api/bookings/{booking_reference}/extras`
-- `GET /api/knowledge/topics`
-- `GET /api/knowledge/{topic}`
-- `POST /api/chat`
-- `GET /api/testing/tasks`
-- `GET /api/testing/runs`
-- `GET /api/testing/pipelines`
-
-## UI Surfaces
-
-The frontend currently includes four main screens:
-
-- `Search Flights`
-  Browse and filter fictional inventory, then create a booking.
-- `All Trips Booked`
-  View persisted bookings and passenger/extras data.
-- `Concierge`
-  Send chat messages to the ElevenLabs-backed assistant.
-- `Testing`
-  Observe live transcript output, evaluator events, and testing runs.
-
-## Testing And Refinement
-
-The testing system lives under `backend/testing/`.
-
-Key pieces:
-
-- `tasks.py`
-  Capability-task catalog used by the evaluation harness
-- `run_conversation_tests.py`
-  Executes a customer simulation against the ElevenLabs agent
-- `refinement/agents/critic.py`
-  Scores the conversation
-- `refinement/agents/root_cause_evaluator.py`
-  Distinguishes prompt issues from code issues
-- `pipeline.py`
-  Multi-iteration orchestration for the refinement loop
-
-Artifacts are written under:
-
-- `backend/testing/outputs/`
-- `backend/testing/pipelines/`
-- `backend/testing/refinement/reports/`
-
-## Tools And APIs Used
-
-- FastAPI
-- SQLAlchemy
-- Alembic
-- SQLite
-- React
-- Vite
-- ElevenLabs Conversational AI
-- Pydantic AI
-- Pytest
-
-## Tradeoffs
-
-- SQLite keeps the project simple and portable for an assessment, but it is not the right production choice for concurrent transactional workloads.
-- The system uses realistic seeded airline data instead of integrating with an external reservation system, which keeps the flows reproducible.
-- The testing/refinement loop is designed around bounded file-level edits rather than arbitrary refactors.
-- The UI is focused on observability and demo clarity rather than polished operator workflows.
-- The current pipeline still supports manual approval as a safety mechanism; full autonomy is the next step to align completely with the brief.
-
-## What I Would Improve Next
-
-- remove the manual approval dependency and make the loop fully autonomous by default
-- add a first-class prompt diff and iteration-history view in the UI
-- capture a polished recorded example run and link the artifacts directly from the README
-- add stronger local-only defaults so the frontend does not fall back to a remote backend
-- expand verification around policy-only scenarios and mixed multi-step conversations
-- add deployment-ready secrets handling, auth, and stronger operational logging
-
-## Known Notes
-
-- Live conversation testing requires valid ElevenLabs credentials and an agent configured to use the synced tools.
-- The assessment asks for a recorded example run and structured pipeline logs; the repository already writes structured artifacts, but the final polished demo package should still be assembled explicitly.
-- The normal frontend startup path is intentionally remote-backed by default.
-- For a true local end-to-end run, use `./setup_macos.sh` and `./start_local_stack.sh`, which force the frontend to use the local backend.
+- The normal frontend path is remote-backed.
+- The full local path is `./run_macos.sh`.
+- The repo also contains Docker/Compose files, but they are optional.

@@ -21,7 +21,7 @@ import {
 function uniqueFlights(items) {
   const byKey = new Map();
   for (const item of items) {
-    const key = `${item.flight_number}:${item.departure_time}`;
+    const key = `${item.flight_number}:${item.departure_time}:${item.seat_class || ""}`;
     const existing = byKey.get(key);
     if (!existing || Number(item.price) < Number(existing.price)) {
       byKey.set(key, item);
@@ -60,6 +60,22 @@ function formatSeatClass(value) {
   return String(value)
     .replaceAll("_", " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatTaskLabel(value, fallback = "Task") {
+  const raw = value || fallback;
+  if (!raw) return "Task";
+  return String(raw)
+    .replace(/^task_/i, "")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function replaceTaskSlugInText(value, taskSlug) {
+  const text = String(value || "");
+  if (!text) return "";
+  if (!taskSlug) return text;
+  return text.split(String(taskSlug)).join(formatTaskLabel(taskSlug));
 }
 
 function formatJson(value) {
@@ -141,14 +157,16 @@ function formatElevenLabsTranscriptItems(transcript) {
 }
 
 function formatPipelineEventBody(event) {
-  const parts = [];
-  if (event.message) parts.push(String(event.message));
   const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
   const runtime = payload.event_payload && typeof payload.event_payload === "object" ? payload.event_payload : {};
+  const taskSlug = payload.task || payload.task_slug || runtime.task || null;
+  const taskLabel = taskSlug ? formatTaskLabel(taskSlug) : null;
+  const parts = [];
+  if (event.message) parts.push(replaceTaskSlugInText(event.message, taskSlug));
   const extraLines = [];
 
-  if (payload.task && !parts.some((line) => line.includes(String(payload.task)))) {
-    extraLines.push(`Task: ${payload.task}`);
+  if (taskLabel && !parts.some((line) => line.includes(taskLabel))) {
+    extraLines.push(`Task: ${taskLabel}`);
   }
   if (typeof payload.iteration !== "undefined") {
     extraLines.push(`Iteration: ${payload.iteration}`);
@@ -211,10 +229,10 @@ function formatPipelineEventBody(event) {
     extraLines.push(`Approved: ${payload.approved ? "yes" : "no"}`);
   }
   if (runtime.text && !parts.some((line) => line.includes(String(runtime.text)))) {
-    extraLines.push(String(runtime.text));
+    extraLines.push(replaceTaskSlugInText(runtime.text, taskSlug));
   }
   if (runtime.message && !parts.some((line) => line.includes(String(runtime.message)))) {
-    extraLines.push(String(runtime.message));
+    extraLines.push(replaceTaskSlugInText(runtime.message, taskSlug));
   }
   if (String(event.type || "") === "elevenlabs_analysis") {
     extraLines.push(...formatElevenLabsTranscriptItems(payload.transcript));
@@ -251,11 +269,16 @@ const PIPELINE_PHASE_LABELS = {
 const ACTIVE_PIPELINE_STATUSES = new Set(["running", "waiting_approval", "approving", "applying", "deploy_wait"]);
 
 function getPipelineEventPayload(event) {
-  return event?.payload && typeof event.payload === "object" ? event.payload : {};
+  const payload = event?.payload && typeof event.payload === "object" ? event.payload : {};
+  const runtime = payload.event_payload && typeof payload.event_payload === "object" ? payload.event_payload : {};
+  return {
+    ...runtime,
+    ...payload,
+  };
 }
 
 function getPipelineRuntimePayload(event) {
-  const payload = getPipelineEventPayload(event);
+  const payload = event?.payload && typeof event.payload === "object" ? event.payload : {};
   return payload.event_payload && typeof payload.event_payload === "object" ? payload.event_payload : {};
 }
 
@@ -388,6 +411,103 @@ function buildPipelineTranscriptTurns(events) {
     });
   }
   return turns;
+}
+
+function formatElapsedSecondsCompact(value) {
+  const elapsed = Number(value);
+  if (!Number.isFinite(elapsed)) return "—";
+  if (elapsed < 60) return `${elapsed.toFixed(1)}s`;
+  const minutes = Math.floor(elapsed / 60);
+  const seconds = elapsed - minutes * 60;
+  return `${minutes}m ${seconds.toFixed(seconds >= 10 ? 0 : 1)}s`;
+}
+
+function formatCommitShort(value) {
+  if (!value) return "—";
+  return String(value).slice(0, 12);
+}
+
+function getLastPipelineEvent(events, matchingTypes) {
+  const types = new Set(matchingTypes);
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (types.has(String(event?.type || ""))) {
+      return event;
+    }
+  }
+  return null;
+}
+
+function buildFallbackAppliedChanges(events) {
+  return events
+    .filter((event) => String(event?.type || "") === "code_apply_change")
+    .map((event) => ({
+      path: event.path || "Unknown path",
+      selector_type: event.selector_type || "unknown",
+      selector_value: event.selector_value || "",
+      applied: true,
+      blocked: false,
+      error: null,
+      before_content: event.before_content || "",
+      after_content: event.after_content || "",
+    }));
+}
+
+function getAgentSyncStatus(events) {
+  const lastEvent = getLastPipelineEvent(events, [
+    "agent_sync_started",
+    "agent_sync_progress",
+    "agent_sync_finished",
+    "agent_sync_failed",
+  ]);
+  if (!lastEvent) {
+    return { label: "Not needed", tone: "neutral" };
+  }
+  if (lastEvent.type === "agent_sync_finished") {
+    return { label: "Completed", tone: "success" };
+  }
+  if (lastEvent.type === "agent_sync_failed") {
+    return { label: "Failed", tone: "failure" };
+  }
+  return { label: "Running", tone: "waiting" };
+}
+
+function getRailwayWaitStatus(events) {
+  const lastEvent = getLastPipelineEvent(events, [
+    "deploy_wait_started",
+    "deploy_wait_health_check",
+    "deploy_wait_progress",
+    "deploy_verified",
+    "deploy_skipped",
+  ]);
+  if (!lastEvent) {
+    return { label: "Not needed", tone: "neutral" };
+  }
+  if (lastEvent.type === "deploy_skipped") {
+    return { label: "Skipped", tone: "neutral" };
+  }
+  if (lastEvent.type === "deploy_verified") {
+    return { label: "Ready", tone: "success" };
+  }
+  if (lastEvent.type === "deploy_wait_health_check" && lastEvent.health_ready === false) {
+    return { label: "Retrying", tone: "waiting" };
+  }
+  return { label: "Waiting", tone: "waiting" };
+}
+
+function formatCriterionLabel(value) {
+  if (!value) return "Criterion";
+  return String(value)
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getScoreTone(score) {
+  const numeric = Number(score);
+  if (!Number.isFinite(numeric)) return "neutral";
+  if (numeric >= 8) return "success";
+  if (numeric >= 5) return "waiting";
+  return "failure";
 }
 
 function formatPipelineSelectorOption(pipeline) {
@@ -561,6 +681,7 @@ function App() {
     contact_phone: "",
     first_name: "Julian",
     last_name: "Vane",
+    date_of_birth: "",
     passenger_type: "adult",
     seat_preference: "window",
     seat_number: "",
@@ -604,6 +725,7 @@ function App() {
   const [selectedPipelineIterationNumber, setSelectedPipelineIterationNumber] = useState(null);
   const [selectedPipelineTaskSlug, setSelectedPipelineTaskSlug] = useState("");
   const [expandedPipelineIterations, setExpandedPipelineIterations] = useState([]);
+  const [expandedPipelineSections, setExpandedPipelineSections] = useState({});
   const [pipelineApplyResults, setPipelineApplyResults] = useState({});
   const [testingConversation, setTestingConversation] = useState([]);
   const [testingLiveEvents, setTestingLiveEvents] = useState([]);
@@ -859,6 +981,27 @@ function App() {
       const evaluationEvents = events.filter((event) =>
         ["evaluation_started", "evaluation_complete", "elevenlabs_analysis", "evaluation_criterion", "evaluation_finding", "refinement_gate", "evaluation_error"].includes(String(event.type || ""))
       );
+      const evaluationCompleteEvent = getLastPipelineEvent(evaluationEvents, ["evaluation_complete"]);
+      const evaluationCompletePayload = evaluationCompleteEvent ? getPipelineEventPayload(evaluationCompleteEvent) : {};
+      const evaluationCriteria =
+        Array.isArray(evaluationCompletePayload.metrics) && evaluationCompletePayload.metrics.length
+          ? evaluationCompletePayload.metrics.map((metric) => ({
+              criterion: metric.criterion || "criterion",
+              label: metric.label || formatCriterionLabel(metric.criterion || "criterion"),
+              score: metric.score,
+              summary: metric.summary || "",
+            }))
+          : evaluationEvents
+              .filter((event) => String(event.type || "") === "evaluation_criterion")
+              .map((event) => {
+                const payload = getPipelineEventPayload(event);
+                return {
+                  criterion: payload.criterion || "criterion",
+                  label: formatCriterionLabel(payload.criterion || "criterion"),
+                  score: payload.score,
+                  summary: payload.summary || event.message || "",
+                };
+              });
       const analysisEvents = events.filter((event) =>
         ["refinement_started", "root_cause_complete", "refinement_error"].includes(String(event.type || ""))
       );
@@ -881,6 +1024,22 @@ function App() {
       const syncPostDeployEvents = events.filter((event) =>
         ["agent_sync_started", "agent_sync_progress", "agent_sync_finished", "agent_sync_failed", "deploy_wait_started", "deploy_wait_health_check", "deploy_wait_progress", "deploy_verified", "deploy_skipped"].includes(String(event.type || ""))
       );
+      const codeChangeEntries =
+        Array.isArray(pipelineApplyResults[Number(iterationNumber)]?.applied_changes) &&
+        pipelineApplyResults[Number(iterationNumber)]?.applied_changes.length
+          ? pipelineApplyResults[Number(iterationNumber)].applied_changes
+          : buildFallbackAppliedChanges(events);
+      const agentSyncEvents = events.filter((event) =>
+        ["agent_sync_started", "agent_sync_progress", "agent_sync_finished", "agent_sync_failed"].includes(String(event.type || ""))
+      );
+      const agentSyncLogEvent = getLastPipelineEvent(agentSyncEvents, ["agent_sync_finished", "agent_sync_failed"]);
+      const railwayWaitEvents = events.filter((event) =>
+        ["deploy_wait_started", "deploy_wait_health_check", "deploy_wait_progress", "deploy_verified", "deploy_skipped"].includes(String(event.type || ""))
+      );
+      const railwayHealthChecks = railwayWaitEvents.filter((event) => String(event.type || "") === "deploy_wait_health_check");
+      const railwayStatus = getRailwayWaitStatus(railwayWaitEvents);
+      const agentSyncStatus = getAgentSyncStatus(agentSyncEvents);
+      const latestRailwayEvent = railwayWaitEvents[railwayWaitEvents.length - 1] || null;
       const iterationResultEvents = events.filter((event) =>
         ["task_finished", "testing_complete", "iteration_complete"].includes(String(event.type || ""))
       );
@@ -898,6 +1057,17 @@ function App() {
         taskSlug,
         overallScore: latestTaskResult?.overall_score ?? null,
         applyResult: pipelineApplyResults[Number(iterationNumber)] || null,
+        evaluationCriteria,
+        evaluationCompleteEvent,
+        evaluationCompletePayload,
+        codeChangeEntries,
+        agentSyncEvents,
+        agentSyncLogEvent,
+        agentSyncStatus,
+        railwayWaitEvents,
+        railwayHealthChecks,
+        railwayStatus,
+        latestRailwayEvent,
         sections: [
           {
             key: "testing",
@@ -950,6 +1120,12 @@ function App() {
             label: "Sync Post-Deploy",
             events: syncPostDeployEvents,
             emptyText: "No sync or deploy events for this iteration.",
+          },
+          {
+            key: "artifacts",
+            label: "Changed Code / Agent Sync / Railway",
+            events: [],
+            emptyText: "No changed code, sync log, or Railway wait details yet.",
           },
           {
             key: "iteration_results",
@@ -1088,9 +1264,11 @@ function App() {
       setSelectedPipeline(null);
       setSelectedPipelineEvents([]);
       setPipelineApplyResults({});
+      setExpandedPipelineSections({});
       return;
     }
     setPipelineApplyResults({});
+    setExpandedPipelineSections({});
     refreshPipelineDetails(selectedPipelineId).catch((error) => {
       setPipelineStatus(error.message);
     });
@@ -1207,6 +1385,7 @@ function App() {
       destination: flightFilters.destination,
       departure_date_from: flightFilters.departure_date_from,
       departure_date_to: flightFilters.departure_date_to,
+      seat_class: flightFilters.seat_class,
       max_price: flightFilters.max_price,
       sort_by: flightFilters.sort_by,
       only_available: flightFilters.only_available,
@@ -1303,6 +1482,7 @@ function App() {
         {
           first_name: bookingDraft.first_name.trim(),
           last_name: bookingDraft.last_name.trim(),
+          date_of_birth: bookingDraft.date_of_birth,
           passenger_type: bookingDraft.passenger_type,
           seat_preference: bookingDraft.seat_preference || null,
           seat_number: bookingDraft.seat_number || null,
@@ -1531,9 +1711,11 @@ function App() {
     setTestingStatus("Running testing task...");
     runTestingTaskLive(payload, (event) => {
       if (!event || typeof event !== "object") return;
+      const eventTaskSlug = event.task || payload.task || currentTestingTaskRef.current || null;
       if (event.type === "status") {
-        setTestingStatus(event.message || "Running testing task...");
-        setTestingLiveEvents((current) => [...current, { tag: "status", text: event.message || "started" }]);
+        const statusMessage = replaceTaskSlugInText(event.message || "Running testing task...", eventTaskSlug);
+        setTestingStatus(statusMessage);
+        setTestingLiveEvents((current) => [...current, { tag: "status", text: statusMessage || "started" }]);
         return;
       }
       if (event.type === "run_started") {
@@ -1545,10 +1727,10 @@ function App() {
         updateTestingTaskStatus(event.task || currentTestingTaskRef.current, "running", {
           startedAt: event.timestamp || new Date().toISOString(),
         });
-        setTestingLiveEvents((current) => [...current, { tag: "task", text: `Task ${event.task} started.` }]);
+        setTestingLiveEvents((current) => [...current, { tag: "task", text: `${formatTaskLabel(event.task)} started.` }]);
         appendTestingTaskStep(event.task || currentTestingTaskRef.current, {
           tag: "task",
-          text: `Task ${event.task} started.`,
+          text: `${formatTaskLabel(event.task)} started.`,
           timestamp: event.timestamp || new Date().toISOString(),
         });
         return;
@@ -1598,10 +1780,10 @@ function App() {
         return;
       }
       if (event.type === "evaluation_started") {
-        setTestingLiveEvents((current) => [...current, { tag: "eval", text: `Evaluating ${event.task}.` }]);
+        setTestingLiveEvents((current) => [...current, { tag: "eval", text: `Evaluating ${formatTaskLabel(event.task)}.` }]);
         appendTestingTaskStep(event.task || currentTestingTaskRef.current, {
           tag: "eval",
-          text: `Evaluating ${event.task}.`,
+          text: `Evaluating ${formatTaskLabel(event.task)}.`,
           timestamp: new Date().toISOString(),
         });
         setTestingRefinementEvents((current) => [
@@ -1609,18 +1791,18 @@ function App() {
           {
             kind: "evaluation",
             title: "Evaluation started",
-            subtitle: event.task || "task",
+            subtitle: formatTaskLabel(event.task),
             timestamp: new Date().toISOString(),
-            body: `Evaluation started for ${event.task || "the selected task"}.`,
+            body: `Evaluation started for ${formatTaskLabel(event.task, "the selected task")}.`,
           },
         ]);
         return;
       }
       if (event.type === "evaluation_complete") {
-        setTestingLiveEvents((current) => [...current, { tag: "eval", text: `Evaluation complete for ${event.task}.` }]);
+        setTestingLiveEvents((current) => [...current, { tag: "eval", text: `Evaluation complete for ${formatTaskLabel(event.task)}.` }]);
         appendTestingTaskStep(event.task || currentTestingTaskRef.current, {
           tag: "eval",
-          text: `Evaluation complete for ${event.task}.`,
+          text: `Evaluation complete for ${formatTaskLabel(event.task)}.`,
           timestamp: new Date().toISOString(),
         });
         setTestingRefinementEvents((current) => [
@@ -1628,7 +1810,7 @@ function App() {
           {
             kind: "evaluation",
             title: "Evaluation complete",
-            subtitle: event.task || "task",
+            subtitle: formatTaskLabel(event.task),
             timestamp: new Date().toISOString(),
             body: [
               event.verdict ? `Verdict: ${event.verdict}` : null,
@@ -1649,7 +1831,7 @@ function App() {
           {
             kind: "evaluation",
             title: "ElevenLabs analysis",
-            subtitle: event.task || "task",
+            subtitle: formatTaskLabel(event.task),
             timestamp: new Date().toISOString(),
             body: [
               event.call_summary_title || null,
@@ -1671,8 +1853,8 @@ function App() {
           ...current,
           {
             kind: "criterion",
-            title: String(event.criterion || "Evaluation criterion"),
-            subtitle: event.task || "task",
+            title: formatCriterionLabel(event.criterion || "Evaluation criterion"),
+            subtitle: formatTaskLabel(event.task),
             timestamp: new Date().toISOString(),
             score: event.score,
             body: event.summary || "",
@@ -1687,7 +1869,7 @@ function App() {
           {
             kind: "evaluation",
             title: "Refinement gate",
-            subtitle: event.task || "task",
+            subtitle: formatTaskLabel(event.task),
             timestamp: new Date().toISOString(),
             body: event.message || "",
             details: Array.isArray(event.criteria_below_target) ? event.criteria_below_target : [],
@@ -1714,7 +1896,7 @@ function App() {
           {
             kind: "refinement",
             title: "Refinement analysis",
-            subtitle: event.root_cause_category || event.category || event.task || "analysis",
+            subtitle: formatTaskLabel(event.task, event.root_cause_category || event.category || "Analysis"),
             timestamp: new Date().toISOString(),
             body: [
               event.primary_root_cause || event.summary || event.message || null,
@@ -1738,7 +1920,7 @@ function App() {
           {
             kind: "refinement_error",
             title: "Refinement error",
-            subtitle: event.stage || event.task || "refinement",
+            subtitle: event.stage || formatTaskLabel(event.task, "Refinement"),
             timestamp: new Date().toISOString(),
             body: event.error || "Refinement analysis failed.",
           },
@@ -1772,10 +1954,10 @@ function App() {
                 ? "Fix plan ready"
                 : event.type === "fixer_summary"
                   ? "Fixer summary"
-                  : event.type === "fixer_expected_improvement"
+                : event.type === "fixer_expected_improvement"
                     ? "Expected improvement"
                     : "Fixer edit",
-            subtitle: event.task || event.section || "fixer",
+            subtitle: formatTaskLabel(event.task, event.section || "Fixer"),
             timestamp: new Date().toISOString(),
             body: event.message || event.summary || event.expected_improvement || event.detail || safeJson(event),
           },
@@ -1794,7 +1976,7 @@ function App() {
           {
             kind: "evaluation_error",
             title: "Evaluation error",
-            subtitle: event.task || "task",
+            subtitle: formatTaskLabel(event.task),
             timestamp: new Date().toISOString(),
             body: event.error || "Evaluation failed.",
           },
@@ -1802,13 +1984,13 @@ function App() {
         return;
       }
       if (event.type === "task_finished") {
-        setTestingLiveEvents((current) => [...current, { tag: "task", text: `Task ${event.task} finished.` }]);
+        setTestingLiveEvents((current) => [...current, { tag: "task", text: `${formatTaskLabel(event.task)} finished.` }]);
         updateTestingTaskStatus(event.task || currentTestingTaskRef.current, "completed", {
           finishedAt: event.timestamp || new Date().toISOString(),
         });
         appendTestingTaskStep(event.task || currentTestingTaskRef.current, {
           tag: "task",
-          text: `Task ${event.task} finished.`,
+          text: `${formatTaskLabel(event.task)} finished.`,
           timestamp: event.timestamp || new Date().toISOString(),
         });
         setTestingRefinementEvents((current) => [
@@ -1816,9 +1998,9 @@ function App() {
           {
             kind: "completion",
             title: "Task finished",
-            subtitle: event.task || "task",
+            subtitle: formatTaskLabel(event.task),
             timestamp: new Date().toISOString(),
-            body: `Task ${event.task || "task"} finished.`,
+            body: `${formatTaskLabel(event.task)} finished.`,
           },
         ]);
         return;
@@ -1830,22 +2012,23 @@ function App() {
           {
             kind: "completion",
             title: "Run finished",
-            subtitle: payload.task ? `task ${payload.task}` : "all tasks",
+            subtitle: payload.task ? formatTaskLabel(payload.task) : "All Tasks",
             timestamp: new Date().toISOString(),
             body: "Live test run completed.",
           },
         ]);
-        const scope = payload.task ? `task ${payload.task}` : "all tasks";
+        const scope = payload.task ? formatTaskLabel(payload.task) : "all tasks";
         setTestingStatus(`Completed ${scope}.`);
         refreshTestingRuns(selectedTestingRunId).catch(() => {});
         return;
       }
       if (event.type === "error") {
-        setTestingStatus(event.message || "Testing failed.");
-        setTestingLiveEvents((current) => [...current, { tag: "error", text: event.message || "Testing failed." }]);
+        const errorMessage = replaceTaskSlugInText(event.message || "Testing failed.", eventTaskSlug);
+        setTestingStatus(errorMessage);
+        setTestingLiveEvents((current) => [...current, { tag: "error", text: errorMessage || "Testing failed." }]);
         appendTestingTaskStep(currentTestingTaskRef.current || payload.task, {
           tag: "error",
-          text: event.message || "Testing failed.",
+          text: errorMessage || "Testing failed.",
           timestamp: new Date().toISOString(),
         });
         updateTestingTaskStatus(currentTestingTaskRef.current || payload.task, "failed");
@@ -1858,7 +2041,13 @@ function App() {
         }
         return;
       }
-      setTestingLiveEvents((current) => [...current, { tag: event.type || "log", text: event.message ? String(event.message) : safeJson(event) }]);
+      setTestingLiveEvents((current) => [
+        ...current,
+        {
+          tag: event.type || "log",
+          text: event.message ? replaceTaskSlugInText(String(event.message), eventTaskSlug) : safeJson(event),
+        },
+      ]);
     })
       .catch((error) => {
         setTestingStatus(error.message);
@@ -2057,6 +2246,10 @@ function App() {
                         <label className="booking-field">
                           <span>Last name</span>
                           <input value={bookingDraft.last_name} onChange={(event) => setBookingDraft((current) => ({ ...current, last_name: event.target.value }))} required />
+                        </label>
+                        <label className="booking-field">
+                          <span>Date of birth</span>
+                          <input type="date" value={bookingDraft.date_of_birth} onChange={(event) => setBookingDraft((current) => ({ ...current, date_of_birth: event.target.value }))} required />
                         </label>
                         <label className="booking-field">
                           <span>Passenger type</span>
@@ -2328,7 +2521,7 @@ function App() {
                     >
                       {testingTasks.map((task) => (
                         <option key={task.slug} value={task.slug}>
-                          {task.slug}
+                          {formatTaskLabel(task.slug, task.slug)}
                         </option>
                       ))}
                     </select>
@@ -2432,7 +2625,7 @@ function App() {
                 <section className="pipeline-approval-banner">
                   <div>
                     <span className="eyebrow">Approval required</span>
-                    <strong>{latestApprovalEvent.message || "The current iteration is waiting for approval."}</strong>
+                    <strong>{replaceTaskSlugInText(latestApprovalEvent.message || "The current iteration is waiting for approval.", getPipelineEventTaskSlug(latestApprovalEvent))}</strong>
                   </div>
                   <div className="pipeline-actions">
                     <button type="button" className="button button--primary" onClick={approveSelectedPipeline} disabled={pipelineBusy || !selectedPipelineId}>
@@ -2478,7 +2671,7 @@ function App() {
                           >
                             <div className="pipeline-accordion__summary">
                               <span className="eyebrow">Iteration {iteration.iterationNumber}</span>
-                              <strong>{iteration.taskSlug || effectivePipelineSummary.latest_task_slug || "Pipeline task"}</strong>
+                              <strong>{formatTaskLabel(iteration.taskSlug || effectivePipelineSummary.latest_task_slug, "Pipeline Task")}</strong>
                               <small>
                                 {formatSeatClass(iteration.record?.status || "running")}
                                 {typeof iteration.overallScore === "number" ? ` · ${iteration.overallScore}/10` : ""}
@@ -2498,13 +2691,50 @@ function App() {
                                     (codeChanges.error ||
                                       (Array.isArray(codeChanges.applied_changes) && codeChanges.applied_changes.length))
                                 );
+                                const sectionId = `${iteration.iterationNumber}:${section.key}`;
+                                const defaultSectionExpanded = ["testing", "evaluation", "artifacts"].includes(section.key);
+                                const sectionExpanded = expandedPipelineSections[sectionId] ?? defaultSectionExpanded;
+                                const artifactCodeChanges = iteration.codeChangeEntries || [];
+                                const codeChangeCount = artifactCodeChanges.filter((change) => change.applied).length;
+                                const agentSyncStatus = iteration.agentSyncStatus || { label: "Not needed", tone: "neutral" };
+                                const agentSyncLog = stripAnsi(
+                                  [iteration.agentSyncLogEvent?.stdout, iteration.agentSyncLogEvent?.stderr].filter(Boolean).join("\n")
+                                ).trim();
+                                const railwayStatus = iteration.railwayStatus || { label: "Not needed", tone: "neutral" };
+                                const latestRailwayEvent = iteration.latestRailwayEvent || null;
+                                const latestRailwayElapsed = latestRailwayEvent?.elapsed_seconds;
+                                const latestRailwayCommit =
+                                  latestRailwayEvent?.deployed_commit_sha || latestRailwayEvent?.commit_sha || null;
+                                const evaluationSummary = iteration.evaluationCompletePayload || {};
+                                const sectionEventCount =
+                                  section.key === "testing"
+                                    ? (section.transcriptTurns?.length || 0) + (section.events?.length || 0)
+                                    : section.key === "artifacts"
+                                      ? artifactCodeChanges.length + iteration.agentSyncEvents.length + iteration.railwayWaitEvents.length
+                                      : section.events.length;
                                 return (
                                 <section className={`pipeline-phase-section pipeline-phase-section--${section.key}`} key={`${iteration.iterationNumber}-${section.key}`}>
-                                  <div className="pipeline-phase-section__head">
-                                    <strong>{section.label}</strong>
-                                  </div>
+                                  <button
+                                    type="button"
+                                    className="pipeline-phase-section__toggle"
+                                    onClick={() =>
+                                      setExpandedPipelineSections((current) => ({
+                                        ...current,
+                                        [sectionId]: !sectionExpanded,
+                                      }))
+                                    }
+                                    aria-expanded={sectionExpanded}
+                                  >
+                                    <div className="pipeline-phase-section__head">
+                                      <strong>{section.label}</strong>
+                                      <small>{sectionEventCount} item{sectionEventCount === 1 ? "" : "s"}</small>
+                                    </div>
+                                    <span className={sectionExpanded ? "pipeline-phase-section__chevron pipeline-phase-section__chevron--open" : "pipeline-phase-section__chevron"}>
+                                      <span className="material-symbols-outlined">expand_more</span>
+                                    </span>
+                                  </button>
 
-                                  {section.key === "testing" ? (
+                                  {sectionExpanded ? (section.key === "testing" ? (
                                     section.transcriptTurns && section.transcriptTurns.length ? (
                                       <div className="pipeline-transcript pipeline-transcript--inline">
                                         {section.transcriptTurns.map((item, index) => (
@@ -2532,6 +2762,216 @@ function App() {
                                     ) : (
                                       <p className="testing-muted">{section.emptyText}</p>
                                     )
+                                  ) : section.key === "artifacts" ? (
+                                    <div className="pipeline-artifact-groups">
+                                      <details className="pipeline-artifact-card pipeline-artifact-card--code">
+                                        <summary className="pipeline-artifact-card__summary">
+                                          <div className="pipeline-artifact-card__summary-copy">
+                                            <span className="eyebrow">Changed code</span>
+                                            <strong>
+                                              {artifactCodeChanges.length
+                                                ? `${codeChangeCount} changed snippet${codeChangeCount === 1 ? "" : "s"}`
+                                                : "No changed snippets"}
+                                            </strong>
+                                            <small>
+                                              {artifactCodeChanges.length
+                                                ? `${artifactCodeChanges.map((change) => change.path).filter(Boolean).slice(0, 3).join(" · ")}${artifactCodeChanges.length > 3 ? " · ..." : ""}`
+                                                : "Only the changed section snippets appear here."}
+                                            </small>
+                                          </div>
+                                          <span className={`pipeline-artifact-badge pipeline-artifact-badge--${artifactCodeChanges.length ? "success" : "neutral"}`}>
+                                            {artifactCodeChanges.length ? `${codeChangeCount} applied` : "empty"}
+                                          </span>
+                                        </summary>
+                                        {artifactCodeChanges.length ? (
+                                          <div className="pipeline-code-changes">
+                                            <div className="pipeline-code-summary">
+                                              <span>{codeChangeCount} applied change{codeChangeCount === 1 ? "" : "s"}</span>
+                                              {iteration.record?.git_commit_sha ? <span>Commit {formatCommitShort(iteration.record.git_commit_sha)}</span> : null}
+                                              {typeof iteration.applyResult?.compile_result?.success === "boolean" ? (
+                                                <span>Validation {iteration.applyResult.compile_result.success ? "passed" : "failed"}</span>
+                                              ) : null}
+                                            </div>
+                                            {artifactCodeChanges.map((change, index) => (
+                                              <details className="pipeline-change-card" key={`${change.path}-${change.selector_value}-${index}`}>
+                                                <summary className="pipeline-change-card__summary">
+                                                  <div className="pipeline-change-card__summary-copy">
+                                                    <strong>{change.path}</strong>
+                                                    <span>{change.selector_type}:{change.selector_value}</span>
+                                                  </div>
+                                                  <span>{change.applied ? "Applied" : "Not applied"}</span>
+                                                </summary>
+                                                {change.error ? <p className="testing-muted">{change.error}</p> : null}
+                                                <div className="pipeline-change-diff">
+                                                  <div className="pipeline-change-pane">
+                                                    <span className="eyebrow">Before</span>
+                                                    <pre>{change.before_content || "—"}</pre>
+                                                  </div>
+                                                  <div className="pipeline-change-pane">
+                                                    <span className="eyebrow">After</span>
+                                                    <pre>{change.after_content || "—"}</pre>
+                                                  </div>
+                                                </div>
+                                              </details>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <p className="testing-muted">No changed code or prompt snippet was captured for this iteration.</p>
+                                        )}
+                                      </details>
+
+                                      <details className="pipeline-artifact-card pipeline-artifact-card--sync">
+                                        <summary className="pipeline-artifact-card__summary">
+                                          <div className="pipeline-artifact-card__summary-copy">
+                                            <span className="eyebrow">Agent sync</span>
+                                            <strong>`update_agent.sh`</strong>
+                                            <small>
+                                              {iteration.agentSyncEvents.length
+                                                ? `${iteration.agentSyncEvents.length} sync event${iteration.agentSyncEvents.length === 1 ? "" : "s"} captured`
+                                                : "No agent sync was needed for this iteration."}
+                                            </small>
+                                          </div>
+                                          <span className={`pipeline-artifact-badge pipeline-artifact-badge--${agentSyncStatus.tone}`}>{agentSyncStatus.label}</span>
+                                        </summary>
+                                        {iteration.agentSyncEvents.length ? (
+                                          <div className="pipeline-artifact-stack">
+                                            <div className="pipeline-artifact-meta">
+                                              {iteration.agentSyncEvents[0]?.changed_paths?.length ? (
+                                                <span>{iteration.agentSyncEvents[0].changed_paths.join(", ")}</span>
+                                              ) : null}
+                                              {iteration.agentSyncLogEvent?.elapsed_seconds ? (
+                                                <span>Elapsed {formatElapsedSecondsCompact(iteration.agentSyncLogEvent.elapsed_seconds)}</span>
+                                              ) : null}
+                                            </div>
+                                            <div className="pipeline-section-card__list">
+                                              {iteration.agentSyncEvents.map((event, index) => (
+                                                <article className="pipeline-detail-event" key={`${event.timestamp}-${event.type}-${index}`}>
+                                                  <div className="pipeline-event-card__meta">
+                                                    <span>{formatPipelineEventTitle(event.type)}</span>
+                                                    <time>{formatTimestamp(event.timestamp)}</time>
+                                                  </div>
+                                                  <p>{formatPipelineEventBody(event)}</p>
+                                                </article>
+                                              ))}
+                                            </div>
+                                            {agentSyncLog ? (
+                                              <details className="pipeline-log-card">
+                                                <summary className="pipeline-log-card__summary">
+                                                  <strong>update_agent.sh output</strong>
+                                                  <span>{agentSyncLog.split("\n").length} lines</span>
+                                                </summary>
+                                                <pre>{agentSyncLog}</pre>
+                                              </details>
+                                            ) : null}
+                                          </div>
+                                        ) : (
+                                          <p className="testing-muted">This iteration did not need an `update_agent.sh` run.</p>
+                                        )}
+                                      </details>
+
+                                      <details className="pipeline-artifact-card pipeline-artifact-card--railway">
+                                        <summary className="pipeline-artifact-card__summary">
+                                          <div className="pipeline-artifact-card__summary-copy">
+                                            <span className="eyebrow">Railway wait</span>
+                                            <strong>
+                                              {iteration.railwayWaitEvents.length ? "Deploy health and commit checks" : "No Railway wait needed"}
+                                            </strong>
+                                            <small>
+                                              {iteration.railwayWaitEvents.length
+                                                ? `${iteration.railwayHealthChecks.length} health check${iteration.railwayHealthChecks.length === 1 ? "" : "s"} · ${latestRailwayElapsed !== undefined ? formatElapsedSecondsCompact(latestRailwayElapsed) : "pending"}`
+                                                : "Prompt-only iterations skip Railway redeploy."}
+                                            </small>
+                                          </div>
+                                          <span className={`pipeline-artifact-badge pipeline-artifact-badge--${railwayStatus.tone}`}>{railwayStatus.label}</span>
+                                        </summary>
+                                        {iteration.railwayWaitEvents.length ? (
+                                          <div className="pipeline-artifact-stack">
+                                            <div className="pipeline-artifact-meta">
+                                              {latestRailwayEvent?.commit_sha ? <span>Target commit {formatCommitShort(latestRailwayEvent.commit_sha)}</span> : null}
+                                              {latestRailwayCommit ? <span>Observed commit {formatCommitShort(latestRailwayCommit)}</span> : null}
+                                              {iteration.railwayHealthChecks.length ? <span>{iteration.railwayHealthChecks.length} health polls</span> : null}
+                                            </div>
+                                            <div className="pipeline-section-card__list">
+                                              {iteration.railwayWaitEvents.map((event, index) => (
+                                                <article className="pipeline-detail-event" key={`${event.timestamp}-${event.type}-${index}`}>
+                                                  <div className="pipeline-event-card__meta">
+                                                    <span>{formatPipelineEventTitle(event.type)}</span>
+                                                    <time>{formatTimestamp(event.timestamp)}</time>
+                                                  </div>
+                                                  <p>{formatPipelineEventBody(event)}</p>
+                                                </article>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <p className="testing-muted">Railway wait data will appear here when a backend code change requires redeploy verification.</p>
+                                        )}
+                                      </details>
+                                    </div>
+                                  ) : section.key === "evaluation" ? (
+                                    <div className="pipeline-section-card__list">
+                                      {(typeof evaluationSummary.overall_score !== "undefined" || evaluationSummary.headline || evaluationSummary.primary_issue) ? (
+                                        <article className="pipeline-evaluation-summary">
+                                          <div className="pipeline-evaluation-summary__head">
+                                            <div>
+                                              <span className="eyebrow">Evaluation summary</span>
+                                              <strong>{evaluationSummary.goal_achieved ? "Goal achieved" : "Needs refinement"}</strong>
+                                            </div>
+                                            {typeof evaluationSummary.overall_score !== "undefined" ? (
+                                              <span className={`pipeline-artifact-badge pipeline-artifact-badge--${getScoreTone(evaluationSummary.overall_score)}`}>
+                                                {evaluationSummary.overall_score}/10
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                          {evaluationSummary.headline ? <p>{evaluationSummary.headline}</p> : null}
+                                          {evaluationSummary.primary_issue ? (
+                                            <div className="pipeline-artifact-meta">
+                                              <span>{evaluationSummary.primary_issue}</span>
+                                              {typeof evaluationSummary.min_criterion_score !== "undefined" && evaluationSummary.min_criterion_score !== null ? (
+                                                <span>Lowest metric {evaluationSummary.min_criterion_score}/10</span>
+                                              ) : null}
+                                            </div>
+                                          ) : null}
+                                        </article>
+                                      ) : null}
+                                      {iteration.evaluationCriteria.length ? (
+                                        <div className="pipeline-metric-grid">
+                                          {iteration.evaluationCriteria.map((metric) => (
+                                            <article className={`pipeline-metric-card pipeline-metric-card--${getScoreTone(metric.score)}`} key={`${iteration.iterationNumber}-${metric.criterion}`}>
+                                              <div className="pipeline-metric-card__head">
+                                                <strong>{metric.label}</strong>
+                                                <span>{metric.score}/10</span>
+                                              </div>
+                                              <p>{metric.summary}</p>
+                                            </article>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                      {iteration.evaluationCompleteEvent ? (
+                                        <article className="pipeline-detail-event">
+                                          <div className="pipeline-event-card__meta">
+                                            <span>Evaluation Summary</span>
+                                            <time>{formatTimestamp(iteration.evaluationCompleteEvent.timestamp)}</time>
+                                          </div>
+                                          <p>{formatPipelineEventBody(iteration.evaluationCompleteEvent)}</p>
+                                        </article>
+                                      ) : null}
+                                      {section.events.length ? (
+                                        section.events
+                                          .filter((event) => !["evaluation_complete", "evaluation_criterion"].includes(String(event.type || "")))
+                                          .map((event, index) => (
+                                            <article className="pipeline-detail-event" key={`${event.timestamp}-${event.type}-${index}`}>
+                                              <div className="pipeline-event-card__meta">
+                                                <span>{formatPipelineEventTitle(event.type)}</span>
+                                                <time>{formatTimestamp(event.timestamp)}</time>
+                                              </div>
+                                              <p>{formatPipelineEventBody(event)}</p>
+                                            </article>
+                                          ))
+                                      ) : (
+                                        <p className="testing-muted">{section.emptyText}</p>
+                                      )}
+                                    </div>
                                   ) : section.events.length || hasCodeChanges ? (
                                     <div className="pipeline-section-card__list">
                                       {section.events.map((event, index) => (
@@ -2540,55 +2980,13 @@ function App() {
                                             <span>{formatPipelineEventTitle(event.type)}</span>
                                             <time>{formatTimestamp(event.timestamp)}</time>
                                           </div>
-                                          <p>{formatPipelineEventBody(event)}</p>
-                                        </article>
+                                            <p>{formatPipelineEventBody(event)}</p>
+                                          </article>
                                       ))}
-                                      {section.key === "code_change" && hasCodeChanges ? (
-                                        <div className="pipeline-code-changes">
-                                          <div className="pipeline-code-summary">
-                                            {Array.isArray(codeChanges?.applied_changes) ? (
-                                              <span>
-                                                {codeChanges.applied_changes.filter((change) => change.applied).length} applied change
-                                                {codeChanges.applied_changes.filter((change) => change.applied).length === 1 ? "" : "s"}
-                                              </span>
-                                            ) : null}
-                                            {iteration.record?.git_commit_sha ? (
-                                              <span>Commit {String(iteration.record.git_commit_sha).slice(0, 12)}</span>
-                                            ) : null}
-                                            {typeof codeChanges?.compile_result?.success === "boolean" ? (
-                                              <span>Validation {codeChanges.compile_result.success ? "passed" : "failed"}</span>
-                                            ) : null}
-                                          </div>
-                                          {codeChanges?.error ? (
-                                            <article className="pipeline-detail-event pipeline-detail-event--error">
-                                              <p>{codeChanges.error}</p>
-                                            </article>
-                                          ) : null}
-                                          {Array.isArray(codeChanges?.applied_changes)
-                                            ? codeChanges.applied_changes.map((change, index) => (
-                                                <details className="pipeline-change-card" key={`${change.path}-${change.selector_value}-${index}`}>
-                                                  <summary className="pipeline-change-card__summary">
-                                                    <div className="pipeline-change-card__summary-copy">
-                                                      <strong>{change.path}</strong>
-                                                      <span>{change.selector_type}:{change.selector_value}</span>
-                                                    </div>
-                                                    <span>{change.applied ? "Applied" : "Not applied"}</span>
-                                                  </summary>
-                                                  {change.error ? <p className="testing-muted">{change.error}</p> : null}
-                                                  <div className="pipeline-change-diff">
-                                                    <div className="pipeline-change-pane">
-                                                      <span className="eyebrow">Before</span>
-                                                      <pre>{change.before_content || "—"}</pre>
-                                                    </div>
-                                                    <div className="pipeline-change-pane">
-                                                      <span className="eyebrow">After</span>
-                                                      <pre>{change.after_content || "—"}</pre>
-                                                    </div>
-                                                  </div>
-                                                </details>
-                                              ))
-                                            : null}
-                                        </div>
+                                      {section.key === "code_change" && codeChanges?.error ? (
+                                        <article className="pipeline-detail-event pipeline-detail-event--error">
+                                          <p>{codeChanges.error}</p>
+                                        </article>
                                       ) : null}
                                       {section.key === "approval" &&
                                       Number(selectedPipeline?.approval_pending_iteration || 0) === Number(iteration.iterationNumber) ? (
@@ -2641,7 +3039,7 @@ function App() {
                                         </div>
                                       ) : null}
                                     </>
-                                  )}
+                                  )) : null}
                                 </section>
                                 );
                               })}
@@ -2682,7 +3080,7 @@ function App() {
                     >
                       {testingTasks.map((task) => (
                         <option key={task.slug} value={task.slug}>
-                          {task.slug}
+                          {formatTaskLabel(task.slug, task.slug)}
                         </option>
                       ))}
                     </select>
@@ -2712,7 +3110,7 @@ function App() {
                             <div className="testing-task-block__header">
                               <div>
                                 <span className="eyebrow">Test</span>
-                                <strong>{block.task}</strong>
+                                <strong>{formatTaskLabel(block.task, block.task)}</strong>
                               </div>
                               <span className={`status-pill status-pill--center ${block.status === "failed" ? "status-pill--error" : ""}`}>
                                 {block.status === "completed" ? "Completed" : block.status === "failed" ? "Failed" : "Running"}

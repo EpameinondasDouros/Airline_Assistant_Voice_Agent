@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     cors_allow_origins: str = "*"
     testing_pipeline_branch_prefix: str = "codex/pipeline"
     testing_pipeline_deploy_timeout_seconds: int = 600
-    testing_pipeline_deploy_poll_interval_seconds: float = 5.0
+    testing_pipeline_deploy_poll_interval_seconds: float = 10.0
     testing_pipeline_git_timeout_seconds: int = 120
     testing_pipeline_git_progress_interval_seconds: float = 5.0
     testing_pipeline_agent_sync_timeout_seconds: int = 180

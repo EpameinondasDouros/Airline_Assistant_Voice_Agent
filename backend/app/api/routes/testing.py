@@ -68,6 +68,15 @@ def _load_json_payload(path: Path, *, label: str) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Failed to read {label} '{path.name}': {exc}") from exc
 
 
+def _flatten_pipeline_event_payload(event: dict[str, Any]) -> dict[str, Any]:
+    payload = {key: value for key, value in event.items() if key not in {"timestamp", "type", "message", "iteration"}}
+    nested = payload.get("event_payload")
+    if isinstance(nested, dict):
+        for key, value in nested.items():
+            payload.setdefault(key, value)
+    return payload
+
+
 def _build_summary(path: Path, payload: dict[str, Any]) -> TestingRunSummaryRead:
     task = _task_payload(payload)
     run = payload.get("run") or {}
@@ -299,7 +308,7 @@ def get_testing_pipeline_events(pipeline_id: str) -> list[TestingPipelineEventRe
             type=event.get("type") or "log",
             message=event.get("message"),
             iteration=event.get("iteration"),
-            payload={key: value for key, value in event.items() if key not in {"timestamp", "type", "message", "iteration"}},
+            payload=_flatten_pipeline_event_payload(event),
         )
         for event in events
     ]

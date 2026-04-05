@@ -823,6 +823,44 @@ def _min_criterion_score(criterion_scores: list[object]) -> int | None:
     return min(scores) if scores else None
 
 
+def _serialize_criterion_scores(criterion_scores: list[object]) -> list[dict[str, object]]:
+    metrics: list[dict[str, object]] = []
+    for criterion in criterion_scores:
+        criterion_name = getattr(criterion, "criterion", None) or getattr(criterion, "get", lambda _key, _default=None: None)("criterion")
+        score = getattr(criterion, "score", None) if hasattr(criterion, "score") else None
+        if score is None and hasattr(criterion, "get"):
+            score = criterion.get("score")
+        summary = getattr(criterion, "summary", None) if hasattr(criterion, "summary") else None
+        if summary is None and hasattr(criterion, "get"):
+            summary = criterion.get("summary")
+        evidence_quotes = getattr(criterion, "evidence_quotes", None) if hasattr(criterion, "evidence_quotes") else None
+        if evidence_quotes is None and hasattr(criterion, "get"):
+            evidence_quotes = criterion.get("evidence_quotes")
+        metrics.append(
+            {
+                "criterion": criterion_name,
+                "label": str(criterion_name or "criterion").replace("_", " ").title(),
+                "score": int(score) if score is not None else None,
+                "summary": summary,
+                "evidence_quotes": evidence_quotes or [],
+            }
+        )
+    return metrics
+
+
+def _serialize_findings(findings: list[object]) -> dict[str, list[dict[str, object]]]:
+    grouped: dict[str, list[dict[str, object]]] = {"high": [], "medium": [], "low": []}
+    for finding in findings:
+        severity = str(getattr(finding, "severity", "") or "").lower()
+        item = {
+            "title": getattr(finding, "title", None),
+            "detail": getattr(finding, "detail", None),
+        }
+        if severity in grouped:
+            grouped[severity].append(item)
+    return grouped
+
+
 BOOKING_PROFILES: list[dict[str, object]] = [
     {
         "profile_name": "ath_jfk_business",
@@ -1344,6 +1382,13 @@ def run_task(
             criteria_below_target = _criteria_below_target(criterion_scores, target_score)
             min_criterion_score = _min_criterion_score(criterion_scores)
             needs_refinement = (not critique.goal_achieved) or bool(criteria_below_target)
+            serialized_metrics = _serialize_criterion_scores(criterion_scores)
+            serialized_findings = _serialize_findings(critique.findings[:3])
+            primary_issue = (
+                criteria_below_target[0].get("summary")
+                if criteria_below_target
+                else (critique.findings[0].detail if critique.findings else critique.verdict)
+            )
 
             payload["evaluator_verdict"] = critique.model_dump(mode="json")
             payload["criteria_below_target"] = criteria_below_target
@@ -1360,6 +1405,13 @@ def run_task(
                 verdict=critique.verdict,
                 answer_quality=critique.answer_quality,
                 suggested_next_step=critique.suggested_next_step,
+                headline=critique.answer_quality,
+                primary_issue=primary_issue,
+                target_score=target_score,
+                min_criterion_score=min_criterion_score,
+                criteria_below_target=criteria_below_target,
+                metrics=serialized_metrics,
+                findings_by_severity=serialized_findings,
             )
             elevenlabs_analysis = payload.get("elevenlabs_analysis") or {}
             _emit_event(
