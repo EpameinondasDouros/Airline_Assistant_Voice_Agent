@@ -166,7 +166,9 @@ emit_new_events() {
   local events_json="$1"
   local events_file
   local line index stage iteration event_type message
+  local field_sep
 
+  field_sep=$'\x1f'
   events_file="$(mktemp)"
 
   EVENTS_JSON_PAYLOAD="$events_json" python3 - "$LAST_EVENT_INDEX" <<'PY' >"$events_file"
@@ -239,11 +241,11 @@ for idx, event in enumerate(events[start:], start=start + 1):
     stage = stage_for(event_type)
     iteration = event.get("iteration")
     iteration_text = "" if iteration is None else str(iteration)
-    message = str(event.get("message") or "").replace("\n", "\n  ")
-    print(f"{idx}\t{stage}\t{iteration_text}\t{event_type}\t{message}")
+    message = " ".join(str(event.get("message") or "").split())
+    print(f"{idx}\x1f{stage}\x1f{iteration_text}\x1f{event_type}\x1f{message}")
 PY
 
-  while IFS=$'\t' read -r index stage iteration event_type message; do
+  while IFS="$field_sep" read -r index stage iteration event_type message; do
     [[ -z "$index" ]] && continue
     LAST_EVENT_INDEX="$index"
     local stage_key="${iteration}|${stage}"
