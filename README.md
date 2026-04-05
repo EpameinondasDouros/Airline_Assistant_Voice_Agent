@@ -44,6 +44,30 @@ Expanded testing coverage currently includes:
 - special assistance enquiries
 - flight status / gate / check-in enquiries
 
+## How Easy Is It To Run?
+
+For the normal repo experience, it is very simple on macOS because the product API is already remote.
+
+If someone only wants to launch the app UI against the deployed backend, the shortest path is:
+
+```bash
+./start_frontend_local.sh
+```
+
+That script installs frontend dependencies if needed and starts the UI with the remote backend by default.
+
+If someone wants the full local stack instead, there is now a separate macOS helper flow:
+
+```bash
+./setup_macos.sh
+./start_local_stack.sh
+```
+
+So the repo now supports two paths:
+
+- quickest path: frontend only, backed by the remote API
+- full local path: backend + frontend on the same machine
+
 ## Architecture
 
 1. The backend exposes airline data and booking endpoints through FastAPI.
@@ -68,72 +92,87 @@ The loop shown in the diagram is:
 6. Agent/backend update
 7. Next iteration or stop when the target score is reached
 
-## Local Setup
+## Quick Start On macOS
+
+### Recommended: Use The Remote Backend
+
+This is the easiest way to run the project.
+
+Requirements:
+
+- Node.js 18+
+- `npm`
+
+Run:
+
+```bash
+./start_frontend_local.sh
+```
+
+Then open:
+
+- `http://127.0.0.1:5173`
+
+By default, this points to:
+
+- product API: `https://airlineassistantvoiceagent.up.railway.app`
+- pipeline API: `http://127.0.0.1:8000`
+
+If you only want to explore the app UI, flight search, bookings view, and the remote-backed experience, this is the intended default.
+
+## Full Local Setup
 
 ### Requirements
 
 - Python 3.11+
 - Node.js 18+
 - `npm`
-- An ElevenLabs API key
-- An ElevenLabs agent configured to use this backend's tools
+- `npm`
+- An ElevenLabs API key if you want live chat/testing against ElevenLabs
+- An ElevenLabs agent configured to use this backend's tools if you want live chat/testing
 
-### 1. Backend Setup
+### 1. One-Time Bootstrap
 
 From the repo root:
 
 ```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .[dev]
-cp .env.example .env
-alembic upgrade head
-python -m app.scripts.seed_flights
-python -m app.scripts.seed_bookings
-python -m app.scripts.seed_knowledge
+./setup_macos.sh
 ```
 
-Set the required values in `backend/.env`:
+This script:
+
+- checks for `python3` and `npm`
+- creates the backend virtual environment
+- installs Python dependencies
+- copies `backend/.env.example` to `backend/.env` when needed
+- runs migrations
+- seeds flights, bookings, and knowledge data
+- installs frontend dependencies
+
+### 2. Start The Full Local Stack
+
+```bash
+./start_local_stack.sh
+```
+
+This starts:
+
+- local backend on `http://127.0.0.1:8000`
+- local frontend on `http://127.0.0.1:5173`
+
+and keeps both running until you press `Ctrl-C`.
+
+### 3. Optional ElevenLabs Configuration
+
+If you want live chat or live testing against ElevenLabs, fill in `backend/.env` with:
 
 ```text
 ELEVENLABS_API_KEY=...
 ELEVENLABS_AGENT_ID=...
 ELEVENLABS_REQUIRES_AUTH=false
-```
-
-Optional but useful for pipeline runs:
-
-```text
 BACKEND_PUBLIC_URL=http://127.0.0.1:8000
 ELEVENLABS_BRANCH_ID=...
 ```
-
-Start the backend:
-
-```bash
-cd ..
-./start_backend_local.sh
-```
-
-The backend runs at `http://127.0.0.1:8000` by default.
-
-### 2. Frontend Setup
-
-In a second terminal:
-
-```bash
-cd frontend
-npm install
-cd ..
-VITE_API_BASE_URL=http://127.0.0.1:8000 \
-VITE_PIPELINE_API_BASE_URL=http://127.0.0.1:8000 \
-./start_frontend_local.sh
-```
-
-The frontend runs at `http://127.0.0.1:5173`.
-
-Note: `frontend/.env.example` currently points the product API to a deployed Railway backend. For a local end-to-end demo, override `VITE_API_BASE_URL` as shown above.
 
 ### 3. Sync ElevenLabs Tools
 
@@ -251,4 +290,5 @@ Artifacts are written under:
 
 - Live conversation testing requires valid ElevenLabs credentials and an agent configured to use the synced tools.
 - The assessment asks for a recorded example run and structured pipeline logs; the repository already writes structured artifacts, but the final polished demo package should still be assembled explicitly.
-- If the frontend appears to talk to Railway instead of your local backend, make sure `VITE_API_BASE_URL` is overridden before starting Vite.
+- The normal frontend startup path is intentionally remote-backed by default.
+- For a true local end-to-end run, use `./setup_macos.sh` and `./start_local_stack.sh`, which force the frontend to use the local backend.

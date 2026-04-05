@@ -520,6 +520,7 @@ function App() {
   });
   const [selectedPipelineIterationNumber, setSelectedPipelineIterationNumber] = useState(null);
   const [selectedPipelineTaskSlug, setSelectedPipelineTaskSlug] = useState("");
+  const [expandedPipelineIterations, setExpandedPipelineIterations] = useState([]);
   const [testingConversation, setTestingConversation] = useState([]);
   const [testingLiveEvents, setTestingLiveEvents] = useState([]);
   const [testingLogLines, setTestingLogLines] = useState([]);
@@ -738,6 +739,130 @@ function App() {
 
     return sections;
   }, [selectedPipelineContextEvents]);
+  const pipelineIterationAccordions = useMemo(() => {
+    const globalFinalEvents = selectedPipelineEvents.filter(
+      (event) => !getPipelineEventIterationNumber(event) && ["pipeline_complete", "pipeline_failed", "pipeline_blocked"].includes(String(event.type || ""))
+    );
+    const lastIterationNumber = pipelineIterationNumbers[pipelineIterationNumbers.length - 1] || null;
+
+    return pipelineIterationNumbers.map((iterationNumber) => {
+      const record =
+        pipelineIterations.find((iteration) => Number(iteration.iteration) === Number(iterationNumber)) || null;
+      const latestTaskResult =
+        Array.isArray(record?.task_results) && record.task_results.length
+          ? record.task_results[record.task_results.length - 1]
+          : null;
+      const events = (pipelineEventsByIteration.get(iterationNumber) || []).filter(Boolean);
+      const taskSlug =
+        getIterationTaskSlug(record, selectedPipeline?.task_slugs || []) ||
+        getPipelineEventTaskSlug(events.find((event) => getPipelineEventTaskSlug(event))) ||
+        "";
+
+      const transcriptTurns = buildPipelineTranscriptTurns(events);
+      const testingSetupEvents = events.filter((event) =>
+        ["iteration_started", "testing_started", "fixture_reset_skipped", "task_started", "conversation_finalizing"].includes(String(event.type || ""))
+      );
+      const evaluationEvents = events.filter((event) =>
+        ["evaluation_started", "evaluation_complete", "elevenlabs_analysis", "evaluation_criterion", "evaluation_finding", "refinement_gate", "evaluation_error"].includes(String(event.type || ""))
+      );
+      const analysisEvents = events.filter((event) =>
+        ["refinement_started", "root_cause_complete", "refinement_error"].includes(String(event.type || ""))
+      );
+      const fixPlanEvents = events.filter((event) =>
+        ["fix_plan_ready", "fixer_summary", "fixer_expected_improvement", "fixer_edit"].includes(String(event.type || ""))
+      );
+      const approvalEvents = events.filter((event) => String(event.type || "") === "approval_required");
+      const codeChangeEvents = events.filter((event) =>
+        ["code_apply_started", "code_apply_finished", "git_commit_finished", "git_push_finished", "git_push_skipped"].includes(String(event.type || ""))
+      );
+      const syncPostDeployEvents = events.filter((event) =>
+        ["agent_sync_started", "agent_sync_finished", "agent_sync_failed", "deploy_wait_started", "deploy_verified", "deploy_skipped"].includes(String(event.type || ""))
+      );
+      const iterationResultEvents = events.filter((event) =>
+        ["task_finished", "testing_complete", "iteration_complete"].includes(String(event.type || ""))
+      );
+      const completionEvents =
+        Number(iterationNumber) === Number(lastIterationNumber)
+          ? [
+              ...events.filter((event) => ["pipeline_complete", "pipeline_failed", "pipeline_blocked"].includes(String(event.type || ""))),
+              ...globalFinalEvents,
+            ]
+          : events.filter((event) => ["pipeline_complete", "pipeline_failed", "pipeline_blocked"].includes(String(event.type || "")));
+
+      return {
+        iterationNumber,
+        record,
+        taskSlug,
+        overallScore: latestTaskResult?.overall_score ?? null,
+        sections: [
+          {
+            key: "testing",
+            label: "Testing",
+            transcriptTurns,
+            events: testingSetupEvents,
+            emptyText: "No testing transcript is available for this iteration.",
+          },
+          {
+            key: "evaluation",
+            label: "Evaluation",
+            events: evaluationEvents,
+            emptyText: "No evaluation output yet.",
+          },
+          {
+            key: "analysis",
+            label: "Analysis",
+            events: analysisEvents,
+            emptyText:
+              latestTaskResult?.needs_refinement === false
+                ? "No analysis was needed because this iteration already met the target."
+                : "No analysis output yet.",
+          },
+          {
+            key: "fix_planning",
+            label: "Fix Planning",
+            events: fixPlanEvents,
+            emptyText:
+              latestTaskResult?.needs_refinement === false
+                ? "No fix plan was needed for this iteration."
+                : "No fix plan yet.",
+          },
+          {
+            key: "approval",
+            label: "Approval",
+            events: approvalEvents,
+            emptyText:
+              record?.status === "waiting_approval"
+                ? "Approval is expected but the event has not arrived yet."
+                : "No approval step was required.",
+          },
+          {
+            key: "code_change",
+            label: "Code Change",
+            events: codeChangeEvents,
+            emptyText: "No code-change events for this iteration.",
+          },
+          {
+            key: "sync_post_deploy",
+            label: "Sync Post-Deploy",
+            events: syncPostDeployEvents,
+            emptyText: "No sync or deploy events for this iteration.",
+          },
+          {
+            key: "iteration_results",
+            label: "Iteration Results",
+            events: iterationResultEvents,
+            emptyText: "No iteration result events yet.",
+          },
+          {
+            key: "complete",
+            label: "Complete",
+            events: completionEvents,
+            emptyText: "No terminal completion event yet.",
+          },
+        ],
+      };
+    });
+  }, [selectedPipelineEvents, pipelineIterationNumbers, pipelineIterations, pipelineEventsByIteration, selectedPipeline?.task_slugs]);
   const latestApprovalEvent = useMemo(() => {
     for (let index = selectedPipelineEvents.length - 1; index >= 0; index -= 1) {
       const event = selectedPipelineEvents[index];
@@ -858,6 +983,7 @@ function App() {
   useEffect(() => {
     if (!pipelineIterationNumbers.length) {
       setSelectedPipelineIterationNumber(null);
+      setExpandedPipelineIterations([]);
       return;
     }
     const latestIteration =
@@ -867,6 +993,11 @@ function App() {
     setSelectedPipelineIterationNumber((current) =>
       current && pipelineIterationNumbers.includes(Number(current)) ? current : latestIteration
     );
+    setExpandedPipelineIterations((current) => {
+      const filtered = current.filter((value) => pipelineIterationNumbers.includes(Number(value)));
+      if (filtered.length) return filtered;
+      return latestIteration ? [latestIteration] : [];
+    });
   }, [selectedPipeline?.current_iteration, pipelineIterationNumbers]);
 
   useEffect(() => {
