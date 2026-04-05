@@ -91,14 +91,6 @@ class BookingService:
         passenger_count = len(payload.passengers)
         self._ensure_unique_passengers_in_request(payload.passengers)
 
-        for passenger in payload.passengers:
-            passenger_identity = self._passenger_identity(passenger)
-            if self._has_existing_booking_for_identity(flight.id, passenger_identity):
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=self._duplicate_booking_message(passenger_identity),
-                )
-
         self._ensure_no_duplicate_or_refund_conflicts(flight, payload.passengers)
         self._ensure_flight_bookable(flight, passenger_count)
         self._ensure_preferences_available(flight, payload.passengers)
@@ -441,21 +433,6 @@ class BookingService:
                     detail=self._refund_block_message(identity),
                 )
 
-    def _has_existing_booking_for_identity(self, flight_id: int, identity: tuple[str, str, date]) -> bool:
-        first_name, last_name, date_of_birth = identity
-        statement = (
-            select(Booking.id)
-            .join(Booking.passengers)
-            .where(
-                Booking.flight_id == flight_id,
-                BookingPassenger.first_name == first_name,
-                BookingPassenger.last_name == last_name,
-                BookingPassenger.date_of_birth == date_of_birth,
-            )
-            .limit(1)
-        )
-        return self.session.scalar(statement) is not None
-
     def _passenger_identity(self, passenger: object) -> tuple[str, str, date]:
         first_name = self._normalize_name(getattr(passenger, "first_name", ""))
         last_name = self._normalize_name(getattr(passenger, "last_name", ""))
@@ -493,6 +470,7 @@ class BookingService:
         statement = select(BookingPassenger.id).join(Booking).where(
             Booking.flight_id == flight_id,
             BookingPassenger.seat_number == seat_number,
+            Booking.status == BookingStatus.CONFIRMED,
         )
         return self.session.scalar(statement) is not None
 

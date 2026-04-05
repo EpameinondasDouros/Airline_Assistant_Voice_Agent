@@ -527,6 +527,18 @@ def _reply_from_customer_context(message: str | None, customer_context: dict) ->
         if seat_preference:
             parts.append(f"I prefer a {seat_preference} seat if possible.")
 
+    if any(token in lowered for token in ("assistance", "wheelchair", "mobility", "special needs")):
+        assistance_request = _context_value(customer_context, "assistance_request")
+        assistance_type = _context_value(customer_context, "assistance_type")
+        assistance_notes = _context_value(customer_context, "assistance_notes")
+        if assistance_request:
+            parts.append(assistance_request)
+        elif assistance_type:
+            response = f"I need {assistance_type} assistance."
+            if assistance_notes:
+                response += f" {assistance_notes}"
+            parts.append(response)
+
     if any(token in lowered for token in ("confirm", "go ahead", "proceed")):
         confirmation = _context_value(customer_context, "confirmation")
         if confirmation:
@@ -603,18 +615,47 @@ def _task_goal_seems_satisfied(
     if task.slug == "search_available_flights":
         return any(token in combined for token in ("option 1", "i found", "available flight", "cheapest", "sorted by price"))
 
+    if task.slug == "search_cheapest_flights_next_week":
+        has_option_list = any(token in combined for token in ("option 1", "i found", "cheapest", "sorted by price"))
+        return has_option_list and "book" not in latest
+
     if task.slug == "book_flight":
         return bool(BOOKING_REFERENCE_PATTERN.search(combined)) or any(
             token in combined for token in ("booking confirmed", "booking reference", "here is your booking")
         )
 
+    if task.slug == "book_flight_with_seat_preference":
+        has_booking = bool(BOOKING_REFERENCE_PATTERN.search(combined)) or "booking confirmed" in combined
+        return has_booking and any(token in combined for token in ("seat preference", "aisle", "window", "extra legroom"))
+
+    if task.slug == "book_flight_with_special_assistance":
+        has_booking = bool(BOOKING_REFERENCE_PATTERN.search(combined)) or "booking confirmed" in combined
+        return has_booking and any(token in combined for token in ("assistance", "wheelchair", "mobility"))
+
     if task.slug == "cancel_or_reschedule_booking":
         return any(token in combined for token in ("rescheduled", "canceled", "cancelled", "refund requested", "new flight"))
+
+    if task.slug == "cancel_booking_for_refund":
+        return any(token in combined for token in ("canceled", "cancelled", "refund")) and str(
+            customer_context.get("booking_reference") or ""
+        ).lower() in combined
 
     if task.slug == "add_baggage_or_special_items":
         return any(token in combined for token in ("added", "updated")) and any(
             token in combined for token in ("bag", "baggage", "pram", "special item", "extras")
         )
+
+    if task.slug == "enquire_pet_policy":
+        return any(token in combined for token in ("pet", "carrier", "cabin", "hold", "assistance dog"))
+
+    if task.slug == "enquire_baggage_allowance":
+        return any(token in combined for token in ("baggage", "cabin bag", "checked bag", "hold", "kg", "fee"))
+
+    if task.slug == "enquire_special_assistance_policy":
+        return any(token in combined for token in ("assistance", "wheelchair", "priority boarding", "mobility"))
+
+    if task.slug == "enquire_flight_status_and_check_in":
+        return any(token in combined for token in ("status", "gate", "terminal", "check-in", "boarding"))
 
     return False
 
@@ -865,6 +906,21 @@ def _customer_context(task: CapabilityTask, *, booking_profile_index: int = 0) -
             **profile,
             "booking_profile_index": booking_profile_index,
         }
+    if task.slug == "book_flight_with_seat_preference":
+        return {
+            **BOOKING_PROFILES[1],
+            "booking_profile_index": booking_profile_index,
+            "confirmation": "Yes, that option works. Please book it with the aisle-seat preference.",
+        }
+    if task.slug == "book_flight_with_special_assistance":
+        return {
+            **BOOKING_PROFILES[0],
+            "booking_profile_index": booking_profile_index,
+            "assistance_type": "wheelchair",
+            "assistance_notes": "I need wheelchair support from check-in through boarding.",
+            "assistance_request": "I need wheelchair assistance from check-in through boarding.",
+            "confirmation": "Yes, please go ahead and book it with that assistance request.",
+        }
     if task.slug == "cancel_or_reschedule_booking":
         return {
             "booking_reference": "TMQ7L5N8",
@@ -877,6 +933,11 @@ def _customer_context(task: CapabilityTask, *, booking_profile_index: int = 0) -
             "extra_request": "one extra checked bag",
             "confirmation": "Yes, please add it to the booking.",
         }
+    if task.slug == "cancel_booking_for_refund":
+        return {
+            "booking_reference": "TMQ7L5N8",
+            "confirmation": "Yes, please cancel it and process whatever refund is allowed.",
+        }
     if task.slug == "retrieve_booking_by_reference":
         return {
             "booking_reference": "TMQ7L5N8",
@@ -887,6 +948,30 @@ def _customer_context(task: CapabilityTask, *, booking_profile_index: int = 0) -
             "destination": "ATH",
             "cabin": "premium economy",
             "booking_intent": "I am only comparing options right now, not booking.",
+        }
+    if task.slug == "search_cheapest_flights_next_week":
+        return {
+            "origin": "ATH",
+            "destination": "CDG",
+            "cabin": "economy",
+            "booking_intent": "I only want to compare fares right now, not make a booking.",
+        }
+    if task.slug == "enquire_pet_policy":
+        return {
+            "policy_topic": "pets",
+        }
+    if task.slug == "enquire_baggage_allowance":
+        return {
+            "policy_topic": "baggage",
+        }
+    if task.slug == "enquire_special_assistance_policy":
+        return {
+            "policy_topic": "special_assistance",
+        }
+    if task.slug == "enquire_flight_status_and_check_in":
+        return {
+            "booking_reference": "TMQ7L5N8",
+            "policy_topic": "flight_operations",
         }
     return {}
 
@@ -994,7 +1079,12 @@ def run_task(
 
     # Multi-step mutation flows need extra time because the agent may need to
     # retrieve the existing booking and related flight details before it can reply.
-    if task.slug in {"cancel_or_reschedule_booking", "add_baggage_or_special_items"}:
+    if task.slug in {
+        "cancel_or_reschedule_booking",
+        "add_baggage_or_special_items",
+        "cancel_booking_for_refund",
+        "enquire_flight_status_and_check_in",
+    }:
         response_timeout_seconds = max(response_timeout_seconds, 35.0)
         settle_timeout_seconds = max(settle_timeout_seconds, 8.0)
 
