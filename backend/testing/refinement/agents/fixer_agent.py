@@ -78,6 +78,13 @@ Important capability-expansion rule:
 - Prefer a capability expansion when the transcript or tool trace shows the agent lacked a clean way to retrieve, compute, confirm, or mutate the required information.
 - Do not propose a fake prompt-only fix when the real issue is that the current API or tool contract is insufficient.
 
+Server-error investigation rule:
+- If a tool call or backend request returned HTTP 5xx, a webhook error, or a generic server failure, do not assume the issue is purely external infrastructure.
+- First inspect the internal repository causes that could plausibly produce the observed failure, including backend route handlers, service logic, schemas, validators, request/response contracts, and backend/agents/tools definitions.
+- Treat tool-definition mismatches, malformed request payloads, route validation problems, missing fields, serialization issues, and brittle API assumptions as likely internal causes that deserve a bounded fix.
+- Only return zero edits for a server/tool failure if the artifact strongly shows that the repository code and tool contract are already correct and the problem is genuinely outside this codebase.
+- Before returning zero edits, explicitly rule out likely internal causes in the relevant backend/app and backend/agents/tools files.
+
 Markdown selector guidance:
 - For markdown files, prefer markdown_heading whenever you are changing a prompt or rules section.
 - Only use text_between for markdown when a heading-level replacement would be too broad.
@@ -198,6 +205,13 @@ def _artifact_prompt(
             "If the real issue is missing capability, missing response fields, or an awkward tool contract, "
             "prefer a bounded backend/app or backend/agents/tools edit that expands the capability cleanly "
             "instead of proposing a prompt-only workaround."
+        ),
+        "server_error_investigation_rule": (
+            "If the transcript or tool trace shows HTTP 5xx, webhook failure, or a generic server error, "
+            "do not immediately conclude that no code fix is possible. First check whether backend/app routes, "
+            "schemas, validation, serialization, service logic, or backend/agents/tools definitions could be "
+            "causing the failure from inside this repository. Only return zero edits if those likely internal "
+            "causes have been ruled out by the evidence."
         ),
     }
     return (
