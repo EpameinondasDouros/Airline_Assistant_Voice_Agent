@@ -527,7 +527,9 @@ function App() {
   const [testingLiveEvents, setTestingLiveEvents] = useState([]);
   const [testingLogLines, setTestingLogLines] = useState([]);
   const [testingRefinementEvents, setTestingRefinementEvents] = useState([]);
+  const [testingTaskBlocks, setTestingTaskBlocks] = useState([]);
   const [testingLiveActive, setTestingLiveActive] = useState(false);
+  const currentTestingTaskRef = useRef(null);
   const transcriptConsoleRef = useRef(null);
   const liveConsoleRef = useRef(null);
   const logConsoleRef = useRef(null);
@@ -1310,12 +1312,113 @@ function App() {
       });
   }
 
+  function appendTestingTaskStep(taskSlug, step) {
+    if (!taskSlug || !step) return;
+    setTestingTaskBlocks((current) => {
+      const next = [...current];
+      const index = next.findIndex((item) => item.task === taskSlug);
+      const block =
+        index >= 0
+          ? next[index]
+          : {
+              task: taskSlug,
+              status: "running",
+              startedAt: new Date().toISOString(),
+              finishedAt: null,
+              conversation: [],
+              steps: [],
+            };
+      const last = block.steps[block.steps.length - 1];
+      if (last && last.tag === step.tag && last.text === step.text) {
+        if (index === -1) next.push(block);
+        return next;
+      }
+      const updated = {
+        ...block,
+        steps: [...block.steps, step],
+      };
+      if (index >= 0) {
+        next[index] = updated;
+      } else {
+        next.push(updated);
+      }
+      return next;
+    });
+  }
+
+  function appendTestingTaskConversation(taskSlug, turn) {
+    if (!taskSlug || !turn?.text) return;
+    setTestingTaskBlocks((current) => {
+      const next = [...current];
+      const index = next.findIndex((item) => item.task === taskSlug);
+      const block =
+        index >= 0
+          ? next[index]
+          : {
+              task: taskSlug,
+              status: "running",
+              startedAt: new Date().toISOString(),
+              finishedAt: null,
+              conversation: [],
+              steps: [],
+            };
+      const last = block.conversation[block.conversation.length - 1];
+      if (last && last.role === turn.role && last.text === turn.text) {
+        if (index === -1) next.push(block);
+        return next;
+      }
+      const updated = {
+        ...block,
+        conversation: [...block.conversation, turn],
+      };
+      if (index >= 0) {
+        next[index] = updated;
+      } else {
+        next.push(updated);
+      }
+      return next;
+    });
+  }
+
+  function updateTestingTaskStatus(taskSlug, status, extra = {}) {
+    if (!taskSlug) return;
+    setTestingTaskBlocks((current) => {
+      const next = [...current];
+      const index = next.findIndex((item) => item.task === taskSlug);
+      const block =
+        index >= 0
+          ? next[index]
+          : {
+              task: taskSlug,
+              status: "running",
+              startedAt: new Date().toISOString(),
+              finishedAt: null,
+              conversation: [],
+              steps: [],
+            };
+      const updated = {
+        ...block,
+        status,
+        ...extra,
+      };
+      if (index >= 0) {
+        next[index] = updated;
+      } else {
+        next.push(updated);
+      }
+      return next;
+    });
+  }
+
   function executeTestingRun(payload = {}) {
     setTestingBusy(true);
     setTestingLiveActive(true);
+    currentTestingTaskRef.current = payload.task || null;
+    setTestingConversation([]);
     setTestingLiveEvents([{ tag: "status", text: "Connecting to live test runner..." }]);
     setTestingLogLines([]);
     setTestingRefinementEvents([]);
+    setTestingTaskBlocks([]);
     setTestingStatus("Running testing task...");
     runTestingTaskLive(payload, (event) => {
       if (!event || typeof event !== "object") return;
@@ -1329,7 +1432,16 @@ function App() {
         return;
       }
       if (event.type === "task_started") {
+        currentTestingTaskRef.current = event.task || currentTestingTaskRef.current;
+        updateTestingTaskStatus(event.task || currentTestingTaskRef.current, "running", {
+          startedAt: event.timestamp || new Date().toISOString(),
+        });
         setTestingLiveEvents((current) => [...current, { tag: "task", text: `Task ${event.task} started.` }]);
+        appendTestingTaskStep(event.task || currentTestingTaskRef.current, {
+          tag: "task",
+          text: `Task ${event.task} started.`,
+          timestamp: event.timestamp || new Date().toISOString(),
+        });
         return;
       }
       if (event.type === "user_turn") {
@@ -1341,6 +1453,7 @@ function App() {
       if (event.type === "transcript_turn") {
         const text = String(event.text || "").trim();
         if (text) {
+          const taskSlug = event.task || currentTestingTaskRef.current || payload.task || selectedTaskSlug || "task";
           setTestingConversation((current) => {
             const last = current[current.length - 1];
             if (last && last.role === event.role && last.text === text) {
@@ -1355,6 +1468,11 @@ function App() {
               },
             ];
           });
+          appendTestingTaskConversation(taskSlug, {
+            role: event.role || "turn",
+            text,
+            timestamp: event.timestamp || null,
+          });
           setTestingLiveEvents((current) => {
             const last = current[current.length - 1];
             if (last && last.tag === event.role && last.text === text) {
@@ -1362,11 +1480,21 @@ function App() {
             }
             return [...current, { tag: event.role || "turn", text }];
           });
+          appendTestingTaskStep(taskSlug, {
+            tag: event.role || "turn",
+            text,
+            timestamp: event.timestamp || new Date().toISOString(),
+          });
         }
         return;
       }
       if (event.type === "evaluation_started") {
         setTestingLiveEvents((current) => [...current, { tag: "eval", text: `Evaluating ${event.task}.` }]);
+        appendTestingTaskStep(event.task || currentTestingTaskRef.current, {
+          tag: "eval",
+          text: `Evaluating ${event.task}.`,
+          timestamp: new Date().toISOString(),
+        });
         setTestingRefinementEvents((current) => [
           ...current,
           {
@@ -1381,6 +1509,11 @@ function App() {
       }
       if (event.type === "evaluation_complete") {
         setTestingLiveEvents((current) => [...current, { tag: "eval", text: `Evaluation complete for ${event.task}.` }]);
+        appendTestingTaskStep(event.task || currentTestingTaskRef.current, {
+          tag: "eval",
+          text: `Evaluation complete for ${event.task}.`,
+          timestamp: new Date().toISOString(),
+        });
         setTestingRefinementEvents((current) => [
           ...current,
           {
@@ -1485,6 +1618,11 @@ function App() {
       }
       if (event.type === "refinement_error") {
         setTestingLiveEvents((current) => [...current, { tag: "error", text: event.error || "Refinement analysis failed." }]);
+        appendTestingTaskStep(event.task || currentTestingTaskRef.current, {
+          tag: "error",
+          text: event.error || "Refinement analysis failed.",
+          timestamp: new Date().toISOString(),
+        });
         setTestingRefinementEvents((current) => [
           ...current,
           {
@@ -1519,6 +1657,11 @@ function App() {
       }
       if (event.type === "evaluation_error") {
         setTestingLiveEvents((current) => [...current, { tag: "error", text: event.error || "Evaluation failed." }]);
+        appendTestingTaskStep(event.task || currentTestingTaskRef.current, {
+          tag: "error",
+          text: event.error || "Evaluation failed.",
+          timestamp: new Date().toISOString(),
+        });
         setTestingRefinementEvents((current) => [
           ...current,
           {
@@ -1533,6 +1676,14 @@ function App() {
       }
       if (event.type === "task_finished") {
         setTestingLiveEvents((current) => [...current, { tag: "task", text: `Task ${event.task} finished.` }]);
+        updateTestingTaskStatus(event.task || currentTestingTaskRef.current, "completed", {
+          finishedAt: event.timestamp || new Date().toISOString(),
+        });
+        appendTestingTaskStep(event.task || currentTestingTaskRef.current, {
+          tag: "task",
+          text: `Task ${event.task} finished.`,
+          timestamp: event.timestamp || new Date().toISOString(),
+        });
         setTestingRefinementEvents((current) => [
           ...current,
           {
@@ -1565,6 +1716,12 @@ function App() {
       if (event.type === "error") {
         setTestingStatus(event.message || "Testing failed.");
         setTestingLiveEvents((current) => [...current, { tag: "error", text: event.message || "Testing failed." }]);
+        appendTestingTaskStep(currentTestingTaskRef.current || payload.task, {
+          tag: "error",
+          text: event.message || "Testing failed.",
+          timestamp: new Date().toISOString(),
+        });
+        updateTestingTaskStatus(currentTestingTaskRef.current || payload.task, "failed");
         return;
       }
       if (event.type === "log") {
@@ -2351,44 +2508,63 @@ function App() {
                     <div className="testing-live__header">
                       <div>
                         <span className="eyebrow">Live quick run</span>
-                        <strong>Single-run stream</strong>
+                        <strong>Per-test stream</strong>
                       </div>
                       <span className="status-pill status-pill--center">{testingBusy ? "Running..." : testingLiveActive ? "Streaming..." : "Idle"}</span>
                     </div>
-                    <div className="testing-live__panels">
-                      <div className="testing-live__panel">
-                        <div className="testing-live__panel-head">
-                          <span className="eyebrow">Conversation</span>
-                          <strong>Readable chat</strong>
-                        </div>
-                        <div className="testing-transcript" ref={transcriptConsoleRef}>
-                          {testingConversation.length ? testingConversation.map((item, index) => (
-                            <article className={item.role === "user" ? "transcript-turn transcript-turn--user" : "transcript-turn transcript-turn--agent"} key={`${item.role}-${item.timestamp || index}`}>
-                              <div className="transcript-turn__meta">
-                                <span>{item.role === "user" ? "User" : item.role === "agent" ? "Agent" : item.role}</span>
-                                <time>{formatTimestamp(item.timestamp)}</time>
+                    {testingTaskBlocks.length ? (
+                      <div className="testing-task-blocks">
+                        {testingTaskBlocks.map((block) => (
+                          <article className="testing-task-block" key={block.task}>
+                            <div className="testing-task-block__header">
+                              <div>
+                                <span className="eyebrow">Test</span>
+                                <strong>{block.task}</strong>
                               </div>
-                              <p>{item.text}</p>
-                            </article>
-                          )) : <p className="testing-muted">Waiting for conversation turns...</p>}
-                        </div>
-                      </div>
-                      <div className="testing-live__panel">
-                        <div className="testing-live__panel-head">
-                          <span className="eyebrow">Steps</span>
-                          <strong>Execution flow</strong>
-                        </div>
-                        <div className="testing-steps" ref={liveConsoleRef} aria-live="polite">
-                          {testingLiveEvents.length ? testingLiveEvents.map((line, index) => (
-                            <div className={`testing-step ${line.tag === "error" ? "testing-step--error" : line.tag === "eval" ? "testing-step--eval" : line.tag === "status" ? "testing-step--status" : "testing-step--accent"}`} key={`${line.tag}-${index}`}>
-                              <span className="testing-step__time">{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
-                              <span className="testing-step__tag">{String(line.tag || "log").toUpperCase()}</span>
-                              <span className="testing-step__text">{line.text}</span>
+                              <span className={`status-pill status-pill--center ${block.status === "failed" ? "status-pill--error" : ""}`}>
+                                {block.status === "completed" ? "Completed" : block.status === "failed" ? "Failed" : "Running"}
+                              </span>
                             </div>
-                          )) : <p className="testing-muted">[waiting] No live step output yet.</p>}
-                        </div>
+                            <div className="testing-live__panels">
+                              <div className="testing-live__panel">
+                                <div className="testing-live__panel-head">
+                                  <span className="eyebrow">Conversation</span>
+                                  <strong>Readable chat</strong>
+                                </div>
+                                <div className="testing-transcript">
+                                  {block.conversation.length ? block.conversation.map((item, index) => (
+                                    <article className={item.role === "user" ? "transcript-turn transcript-turn--user" : "transcript-turn transcript-turn--agent"} key={`${block.task}-${item.role}-${item.timestamp || index}`}>
+                                      <div className="transcript-turn__meta">
+                                        <span>{item.role === "user" ? "User" : item.role === "agent" ? "Agent" : item.role}</span>
+                                        <time>{formatTimestamp(item.timestamp)}</time>
+                                      </div>
+                                      <p>{item.text}</p>
+                                    </article>
+                                  )) : <p className="testing-muted">Waiting for conversation turns...</p>}
+                                </div>
+                              </div>
+                              <div className="testing-live__panel">
+                                <div className="testing-live__panel-head">
+                                  <span className="eyebrow">Steps</span>
+                                  <strong>Execution flow</strong>
+                                </div>
+                                <div className="testing-steps" aria-live="polite">
+                                  {block.steps.length ? block.steps.map((line, index) => (
+                                    <div className={`testing-step ${line.tag === "error" ? "testing-step--error" : line.tag === "eval" ? "testing-step--eval" : line.tag === "status" ? "testing-step--status" : "testing-step--accent"}`} key={`${block.task}-${line.tag}-${index}`}>
+                                      <span className="testing-step__time">{formatTimestamp(line.timestamp)}</span>
+                                      <span className="testing-step__tag">{String(line.tag || "log").toUpperCase()}</span>
+                                      <span className="testing-step__text">{line.text}</span>
+                                    </div>
+                                  )) : <p className="testing-muted">[waiting] No step output yet.</p>}
+                                </div>
+                              </div>
+                            </div>
+                          </article>
+                        ))}
                       </div>
-                    </div>
+                    ) : (
+                      <p className="testing-muted">Start a run to create a live block for each test.</p>
+                    )}
                   </section>
                 </div>
               </section>
