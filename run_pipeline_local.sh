@@ -473,9 +473,9 @@ PY
     fi
 
     if [[ -n "$message" ]]; then
-      if [[ "$event_type" == "user_turn" || "$event_type" == "customer_reply" ]]; then
+      if [[ "$event_type" == "user_turn" || "$event_type" == "customer_reply" || "$message" == User:* || "$message" == Customer:* ]]; then
         print_colored_block "$YELLOW_COLOR" "" "$message"
-      elif [[ "$event_type" == "transcript_turn" && "$role" == "agent" ]]; then
+      elif [[ "$event_type" == "transcript_turn" && ( "$role" == "agent" || "$message" == Agent:* ) ]]; then
         print_colored_block "$BLUE_COLOR" "" "$message"
       else
         print_colored_block "$GRAY_COLOR" "" "$message"

@@ -1050,7 +1050,7 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
         if requires_agent_sync and requires_remote_deploy:
             approval_message = "Iteration is ready for approval before code apply, update_agent.sh, and git push to main."
         elif requires_agent_sync:
-            approval_message = "Iteration is ready for approval before code apply and update_agent.sh."
+            approval_message = "Iteration is ready for approval before code apply, update_agent.sh, and git push to main."
         elif requires_remote_deploy:
             approval_message = "Iteration is ready for approval before code apply and git push to main."
         else:
@@ -1235,44 +1235,6 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
     iteration["git_commit_sha"] = commit_sha
     manifest["latest_commit_sha"] = commit_sha
 
-    if not _requires_remote_deploy(changed_paths):
-        git_payload["push"] = {
-            "success": True,
-            "skipped": True,
-            "reason": "Only backend/agents changes were applied; remote deploy is not required.",
-        }
-        git_result_path.write_text(json.dumps(git_payload, indent=2), encoding="utf-8")
-        iteration["deploy_status"] = "skipped"
-        iteration["deploy_commit_sha"] = None
-        manifest["approval_pending_iteration"] = None
-        manifest["status"] = "running"
-        manifest["stage"] = "iteration_complete"
-        iteration["status"] = "completed"
-        iteration["finished_at"] = _now()
-        _save_manifest(manifest)
-        _append_event(
-            pipeline_id,
-            "git_push_skipped",
-            "Skipping git push because the approved fix only changed backend/agents.",
-            iteration=iteration_number,
-            branch_name=branch_name,
-            commit_sha=commit_sha,
-        )
-        _append_event(
-            pipeline_id,
-            "deploy_skipped",
-            "Agent update completed without Railway redeploy.",
-            iteration=iteration_number,
-            changed_paths=changed_paths,
-        )
-        _append_event(
-            pipeline_id,
-            "iteration_complete",
-            f"Iteration {iteration_number} completed after local agent sync. Starting the next testing cycle.",
-            iteration=iteration_number,
-        )
-        return True
-
     push_result = _git_push(branch_name, set_upstream=False)
     git_payload["push"] = push_result
     git_result_path.write_text(json.dumps(git_payload, indent=2), encoding="utf-8")
@@ -1294,6 +1256,32 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
         branch_name=branch_name,
         commit_sha=commit_sha,
     )
+
+    if not _requires_remote_deploy(changed_paths):
+        iteration["deploy_status"] = "skipped"
+        iteration["deploy_commit_sha"] = None
+        manifest["approval_pending_iteration"] = None
+        manifest["status"] = "running"
+        manifest["stage"] = "iteration_complete"
+        iteration["status"] = "completed"
+        iteration["finished_at"] = _now()
+        _save_manifest(manifest)
+        _append_event(
+            pipeline_id,
+            "deploy_skipped",
+            "Pushed prompt/tool changes to main. Railway redeploy is not required for backend/agents-only edits.",
+            iteration=iteration_number,
+            changed_paths=changed_paths,
+            branch_name=branch_name,
+            commit_sha=commit_sha,
+        )
+        _append_event(
+            pipeline_id,
+            "iteration_complete",
+            f"Iteration {iteration_number} completed after agent sync and push to main. Starting the next testing cycle.",
+            iteration=iteration_number,
+        )
+        return True
 
     manifest["status"] = "deploy_wait"
     manifest["stage"] = "deploy_wait"
