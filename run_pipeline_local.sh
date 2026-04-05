@@ -311,17 +311,27 @@ PY
       print_colored_block "$BLUE_COLOR" "" "$message"
       if [[ -n "$transcript_json" && "$transcript_json" != "[]" ]]; then
         print_colored_step "$BLUE_COLOR" "ElevenLabs transcript:"
-        while IFS="$field_sep" read -r transcript_role transcript_text; do
-          [[ -z "$transcript_role" ]] && continue
-          case "$transcript_role" in
-            agent)
-              print_colored_block "$BLUE_COLOR" "Agent: " "$transcript_text"
+        while IFS="$field_sep" read -r item_kind transcript_role transcript_text; do
+          [[ -z "$item_kind" ]] && continue
+          case "$item_kind" in
+            turn)
+              case "$transcript_role" in
+                agent)
+                  print_colored_block "$BLUE_COLOR" "Agent: " "$transcript_text"
+                  ;;
+                user|user_transcript)
+                  print_colored_block "$YELLOW_COLOR" "User: " "$transcript_text"
+                  ;;
+                *)
+                  print_colored_block "$GRAY_COLOR" "Transcript: " "$transcript_text"
+                  ;;
+              esac
               ;;
-            user|user_transcript)
-              print_colored_block "$YELLOW_COLOR" "User: " "$transcript_text"
+            tool_call)
+              print_colored_block "$BLUE_COLOR" "Tool call: " "$transcript_text"
               ;;
-            *)
-              print_colored_block "$GRAY_COLOR" "Transcript: " "$transcript_text"
+            tool_result)
+              print_colored_block "$BLUE_COLOR" "Tool result: " "$transcript_text"
               ;;
           esac
         done < <(
@@ -330,11 +340,55 @@ import json
 import os
 
 field_sep = "\x1f"
+
+
+def one_line(value):
+    if value is None:
+        return ""
+    return " ".join(str(value).split())
+
+
 for item in json.loads(os.environ["TRANSCRIPT_JSON"]):
     role = str(item.get("role") or "")
     text = str(item.get("message") or item.get("text") or "").strip()
     if text:
-        print(f"{role}{field_sep}{text}")
+        print(f"turn{field_sep}{role}{field_sep}{text}")
+
+    for tool_call in item.get("tool_calls") or []:
+        tool_name = one_line(tool_call.get("tool_name")) or "unknown_tool"
+        tool_type = one_line(tool_call.get("type"))
+        params = one_line(tool_call.get("params_as_json"))
+        tool_details = tool_call.get("tool_details") or {}
+        method = one_line(tool_details.get("method"))
+        url = one_line(tool_details.get("url"))
+        parts = [tool_name]
+        if method:
+            parts.append(method)
+        if url:
+            parts.append(url)
+        elif tool_type:
+            parts.append(tool_type)
+        if params:
+            parts.append(f"params={params}")
+        print(f"tool_call{field_sep}{role}{field_sep}{' | '.join(parts)}")
+
+    for tool_result in item.get("tool_results") or []:
+        tool_name = one_line(tool_result.get("tool_name")) or "unknown_tool"
+        status = "error" if tool_result.get("is_error") else "ok"
+        latency = tool_result.get("tool_latency_secs")
+        latency_text = ""
+        if latency is not None:
+            try:
+                latency_text = f"{float(latency):.3f}s"
+            except (TypeError, ValueError):
+                latency_text = one_line(latency)
+        result_value = one_line(tool_result.get("result_value"))
+        parts = [tool_name, status]
+        if latency_text:
+            parts.append(f"latency={latency_text}")
+        if result_value:
+            parts.append(result_value)
+        print(f"tool_result{field_sep}{role}{field_sep}{' | '.join(parts)}")
 PY
         )
       fi
