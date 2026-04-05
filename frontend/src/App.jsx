@@ -1012,7 +1012,7 @@ function App() {
   }, [selectedIterationRecord, selectedIterationTaskOptions, selectedPipeline?.task_slugs]);
 
   useEffect(() => {
-    if (screen !== "testing" || !selectedPipelineId) {
+    if (screen !== "refinement" || !selectedPipelineId) {
       return undefined;
     }
     const activeStatus = selectedPipeline?.status;
@@ -1550,6 +1550,7 @@ function App() {
           <button className={screen === "search" ? "tab active" : "tab"} onClick={() => setScreen("search")}>Search Flights</button>
           <button className={screen === "trips" ? "tab active" : "tab"} onClick={() => setScreen("trips")}>All Trips Booked</button>
           <button className={screen === "concierge" ? "tab active" : "tab"} onClick={() => setScreen("concierge")}>Concierge AI</button>
+          <button className={screen === "refinement" ? "tab active" : "tab"} onClick={() => setScreen("refinement")}>Refinement</button>
           <button className={screen === "testing" ? "tab active" : "tab"} onClick={() => setScreen("testing")}>Testing</button>
         </div>
       </nav>
@@ -1563,6 +1564,7 @@ function App() {
           <button className={screen === "search" ? "sidebar__item active" : "sidebar__item"} onClick={() => setScreen("search")}>Search Flights</button>
           <button className={screen === "trips" ? "sidebar__item active" : "sidebar__item"} onClick={() => setScreen("trips")}>All Trips Booked</button>
           <button className={screen === "concierge" ? "sidebar__item active" : "sidebar__item"} onClick={() => setScreen("concierge")}>Concierge</button>
+          <button className={screen === "refinement" ? "sidebar__item active" : "sidebar__item"} onClick={() => setScreen("refinement")}>Refinement</button>
           <button className={screen === "testing" ? "sidebar__item active" : "sidebar__item"} onClick={() => setScreen("testing")}>Testing</button>
           <a className="sidebar__item" href="#">Policy Hub</a>
         </nav>
@@ -1951,10 +1953,10 @@ function App() {
               <p className="status-pill status-pill--center">AeroMellon AI Concierge • {chatStatus}</p>
             </section>
           </>
-        ) : (
+        ) : screen === "refinement" ? (
           <>
             <header className="page-header">
-              <h1>Pipeline Observatory</h1>
+              <h1>Refinement</h1>
               <p>Run the self-improvement pipeline from the UI, inspect each iteration as it unfolds, and review testing, evaluation, refinement, approval, code apply, deploy, and final outcome in one place.</p>
             </header>
 
@@ -2151,7 +2153,7 @@ function App() {
                           {expanded ? (
                             <div className="pipeline-accordion__content">
                               {iteration.sections.map((section) => (
-                                <section className="pipeline-phase-section" key={`${iteration.iterationNumber}-${section.key}`}>
+                                <section className={`pipeline-phase-section pipeline-phase-section--${section.key}`} key={`${iteration.iterationNumber}-${section.key}`}>
                                   <div className="pipeline-phase-section__head">
                                     <strong>{section.label}</strong>
                                   </div>
@@ -2195,9 +2197,57 @@ function App() {
                                           <p>{formatPipelineEventBody(event)}</p>
                                         </article>
                                       ))}
+                                      {section.key === "approval" &&
+                                      Number(selectedPipeline?.approval_pending_iteration || 0) === Number(iteration.iterationNumber) ? (
+                                        <div className="pipeline-inline-actions">
+                                          <button
+                                            type="button"
+                                            className="button button--primary"
+                                            onClick={approveSelectedPipeline}
+                                            disabled={pipelineBusy || !selectedPipelineId}
+                                          >
+                                            <span className="material-symbols-outlined">task_alt</span>
+                                            Approve iteration
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="button button--secondary"
+                                            onClick={cancelSelectedPipeline}
+                                            disabled={pipelineBusy || !selectedPipelineId}
+                                          >
+                                            <span className="material-symbols-outlined">cancel</span>
+                                            Cancel pipeline
+                                          </button>
+                                        </div>
+                                      ) : null}
                                     </div>
                                   ) : (
-                                    <p className="testing-muted">{section.emptyText}</p>
+                                    <>
+                                      <p className="testing-muted">{section.emptyText}</p>
+                                      {section.key === "approval" &&
+                                      Number(selectedPipeline?.approval_pending_iteration || 0) === Number(iteration.iterationNumber) ? (
+                                        <div className="pipeline-inline-actions">
+                                          <button
+                                            type="button"
+                                            className="button button--primary"
+                                            onClick={approveSelectedPipeline}
+                                            disabled={pipelineBusy || !selectedPipelineId}
+                                          >
+                                            <span className="material-symbols-outlined">task_alt</span>
+                                            Approve iteration
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="button button--secondary"
+                                            onClick={cancelSelectedPipeline}
+                                            disabled={pipelineBusy || !selectedPipelineId}
+                                          >
+                                            <span className="material-symbols-outlined">cancel</span>
+                                            Cancel pipeline
+                                          </button>
+                                        </div>
+                                      ) : null}
+                                    </>
                                   )}
                                 </section>
                               ))}
@@ -2212,8 +2262,18 @@ function App() {
                 </div>
               </section>
 
-              <details className="testing-quickrun">
-                <summary>Quick run</summary>
+            </section>
+          </>
+        ) : (
+          <>
+            <header className="page-header">
+              <h1>Testing</h1>
+              <p>Run a single live task or the full task set and inspect the live chat and execution flow without entering the pipeline loop.</p>
+              <div className="status-pill">Workspace: {testingStatus}</div>
+            </header>
+
+            <section className="pipeline-page">
+              <section className="testing-quickrun testing-quickrun--standalone">
                 <div className="testing-quickrun__content">
                   <section className="testing-toolbar">
                     <button type="button" className="button button--primary" onClick={() => executeTestingRun()} disabled={testingBusy}>
@@ -2287,7 +2347,7 @@ function App() {
                     </div>
                   </section>
                 </div>
-              </details>
+              </section>
             </section>
           </>
         )}
@@ -2305,6 +2365,10 @@ function App() {
         <button type="button" className={screen === "concierge" ? "mobile-nav__item active" : "mobile-nav__item"} onClick={() => setScreen("concierge")}>
           <span className="material-symbols-outlined">concierge</span>
           <span>Concierge</span>
+        </button>
+        <button type="button" className={screen === "refinement" ? "mobile-nav__item active" : "mobile-nav__item"} onClick={() => setScreen("refinement")}>
+          <span className="material-symbols-outlined">auto_fix_high</span>
+          <span>Refinement</span>
         </button>
         <button type="button" className={screen === "testing" ? "mobile-nav__item active" : "mobile-nav__item"} onClick={() => setScreen("testing")}>
           <span className="material-symbols-outlined">analytics</span>
