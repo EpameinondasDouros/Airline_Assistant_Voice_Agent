@@ -1122,6 +1122,17 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
                 manifest=manifest,
             )
             return False
+        _append_event(
+            pipeline_id,
+            "code_apply_change",
+            f"Applied edit to {result.path} ({result.selector_type}:{result.selector_value}).",
+            iteration=iteration_number,
+            path=result.path,
+            selector_type=result.selector_type,
+            selector_value=result.selector_value,
+            before_content=result.before_content,
+            after_content=result.after_content,
+        )
 
     changed_paths = [change["path"] for change in applied_changes if change.get("applied")]
     compile_result = _python_compile(changed_paths)

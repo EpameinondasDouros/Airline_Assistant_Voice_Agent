@@ -264,7 +264,7 @@ def stage_for(event_type: str) -> str:
         return "Fix Planning"
     if event_type == "approval_required":
         return "Approval"
-    if event_type in {"code_apply_started", "code_apply_finished"}:
+    if event_type in {"code_apply_started", "code_apply_change", "code_apply_finished"}:
         return "Code Change"
     if event_type in {
         "agent_sync_started",
@@ -313,6 +313,8 @@ for idx, event in enumerate(events[start:], start=start + 1):
         "error",
         "stderr",
         "stdout",
+        "before_content",
+        "after_content",
         "reset_mode",
         "reset_applied",
         "overall_score",
@@ -484,6 +486,49 @@ PY
       print_colored_step "$GRAY_COLOR" "$event_type"
     fi
 
+    if [[ "$event_type" == "code_apply_change" && -n "$details_json" && "$details_json" != "{}" ]]; then
+      DETAILS_JSON="$details_json" python3 - <<'PY' | while IFS= read -r detail_line; do
+import json
+import os
+
+details = json.loads(os.environ["DETAILS_JSON"])
+
+def compact_block(text: str | None, limit: int = 12) -> str:
+    if not text:
+        return ""
+    lines = text.strip("\n").splitlines()
+    if len(lines) > limit:
+        hidden = len(lines) - limit
+        lines = lines[:limit] + [f"... ({hidden} more line{'s' if hidden != 1 else ''})"]
+    return "\n".join(lines)
+
+path = details.get("path", "")
+selector_type = details.get("selector_type", "")
+selector_value = details.get("selector_value", "")
+before_content = compact_block(details.get("before_content"))
+after_content = compact_block(details.get("after_content"))
+
+if path:
+    print("***********")
+    print(f"  file: {path}")
+if selector_type or selector_value:
+    print(f"  selector: {selector_type}:{selector_value}")
+if before_content:
+    print("  before:")
+    for line in before_content.splitlines():
+        print(f"    {line}")
+if after_content:
+    print("  after:")
+    for line in after_content.splitlines():
+        print(f"    {line}")
+if path or selector_type or selector_value or before_content or after_content:
+    print("***********")
+PY
+        [[ -n "$detail_line" ]] && printf "%b%s%b\n" "$GRAY_COLOR" "$detail_line" "$RESET_COLOR"
+      done
+      continue
+    fi
+
     if [[ -n "$details_json" && "$details_json" != "{}" ]]; then
       DETAILS_JSON="$details_json" python3 - <<'PY' | while IFS= read -r detail_line; do
 import json
@@ -509,6 +554,8 @@ label_map = {
     "error": "error",
     "stderr": "stderr",
     "stdout": "stdout",
+    "before_content": "before",
+    "after_content": "after",
     "reset_mode": "reset mode",
     "reset_applied": "reset applied",
     "overall_score": "overall score",
