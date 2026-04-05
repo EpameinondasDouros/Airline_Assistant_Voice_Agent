@@ -8,7 +8,7 @@ PRODUCT_API_DEFAULT="${VITE_API_BASE_URL:-https://airlineassistantvoiceagent.up.
 RESET_COLOR=$'\033[0m'
 GRAY_COLOR=$'\033[90m'
 YELLOW_COLOR=$'\033[93m'
-BLUE_COLOR=$'\033[1;94m'
+BLUE_COLOR=$'\033[1;38;5;39m'
 
 TASK_SLUG=""
 TARGET_SCORE=8
@@ -309,6 +309,7 @@ PY
     if [[ "$event_type" == "elevenlabs_analysis" ]]; then
       print_colored_step "$BLUE_COLOR" "$message"
       if [[ -n "$transcript_json" && "$transcript_json" != "[]" ]]; then
+        print_colored_step "$BLUE_COLOR" "ElevenLabs transcript:"
         while IFS="$field_sep" read -r transcript_role transcript_text; do
           [[ -z "$transcript_role" ]] && continue
           case "$transcript_role" in
