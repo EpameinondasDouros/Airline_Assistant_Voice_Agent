@@ -171,6 +171,15 @@ function formatPipelineEventBody(event) {
   if (typeof payload.edit_index !== "undefined") {
     extraLines.push(`Edit index: ${payload.edit_index}`);
   }
+  if (payload.health_url) {
+    extraLines.push(`Health URL: ${payload.health_url}`);
+  }
+  if (typeof payload.health_status !== "undefined") {
+    extraLines.push(`Health status: ${payload.health_status}`);
+  }
+  if (payload.phase) {
+    extraLines.push(`Phase: ${payload.phase}`);
+  }
   if (payload.path) {
     extraLines.push(`Path: ${payload.path}`);
   }
@@ -308,6 +317,8 @@ function getPipelinePhase(type) {
     "git_push_finished",
     "git_push_skipped",
     "deploy_wait_started",
+    "deploy_wait_health_check",
+    "deploy_wait_progress",
     "deploy_verified",
     "deploy_skipped",
   ].includes(eventType)) {
@@ -799,7 +810,7 @@ function App() {
         sections.fixerEdits.push(item);
         continue;
       }
-      if (["approval_required", "code_apply_started", "code_apply_finished", "agent_sync_started", "agent_sync_finished", "agent_sync_failed", "git_commit_finished", "git_push_finished", "git_push_skipped", "deploy_wait_started", "deploy_verified", "deploy_skipped"].includes(event.type)) {
+      if (["approval_required", "code_apply_started", "code_apply_finished", "agent_sync_started", "agent_sync_finished", "agent_sync_failed", "git_commit_finished", "git_push_finished", "git_push_skipped", "deploy_wait_started", "deploy_wait_health_check", "deploy_wait_progress", "deploy_verified", "deploy_skipped"].includes(event.type)) {
         sections.codeDeploy.push(item);
         continue;
       }
@@ -856,7 +867,7 @@ function App() {
         ["code_apply_started", "code_apply_finished", "git_commit_finished", "git_push_finished", "git_push_skipped"].includes(String(event.type || ""))
       );
       const syncPostDeployEvents = events.filter((event) =>
-        ["agent_sync_started", "agent_sync_finished", "agent_sync_failed", "deploy_wait_started", "deploy_verified", "deploy_skipped"].includes(String(event.type || ""))
+        ["agent_sync_started", "agent_sync_finished", "agent_sync_failed", "deploy_wait_started", "deploy_wait_health_check", "deploy_wait_progress", "deploy_verified", "deploy_skipped"].includes(String(event.type || ""))
       );
       const iterationResultEvents = events.filter((event) =>
         ["task_finished", "testing_complete", "iteration_complete"].includes(String(event.type || ""))

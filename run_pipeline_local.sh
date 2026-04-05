@@ -278,6 +278,7 @@ def stage_for(event_type: str) -> str:
         "git_push_finished",
         "git_push_skipped",
         "deploy_wait_started",
+        "deploy_wait_health_check",
         "deploy_wait_progress",
         "deploy_verified",
         "deploy_skipped",
@@ -318,6 +319,9 @@ for idx, event in enumerate(events[start:], start=start + 1):
         "attempt",
         "elapsed_seconds",
         "health_ready",
+        "health_status",
+        "health_url",
+        "phase",
         "planned_changed_paths",
         "requires_agent_sync",
         "requires_remote_deploy",
@@ -371,7 +375,19 @@ PY
 
     if [[ "$event_type" == "elevenlabs_analysis" ]]; then
       print_colored_block "$GREEN_COLOR" "" "$message"
-      if [[ -n "$transcript_json" && "$transcript_json" != "[]" ]]; then
+      local effective_transcript_json="$transcript_json"
+      if [[ -z "$effective_transcript_json" || "$effective_transcript_json" == "[]" ]] && [[ -n "$details_json" && "$details_json" != "{}" ]]; then
+        effective_transcript_json="$(DETAILS_JSON="$details_json" python3 - <<'PY'
+import json
+import os
+
+details = json.loads(os.environ["DETAILS_JSON"])
+transcript = details.get("transcript")
+print(json.dumps(transcript if isinstance(transcript, list) else []))
+PY
+)"
+      fi
+      if [[ -n "$effective_transcript_json" && "$effective_transcript_json" != "[]" ]]; then
         print_colored_step "$GREEN_COLOR" "ElevenLabs transcript:"
         while IFS="$field_sep" read -r item_kind transcript_role transcript_text_json; do
           [[ -z "$item_kind" ]] && continue
@@ -401,7 +417,7 @@ PY
               ;;
           esac
         done < <(
-          TRANSCRIPT_JSON="$transcript_json" python3 - <<'PY'
+          TRANSCRIPT_JSON="$effective_transcript_json" python3 - <<'PY'
 import json
 import os
 
@@ -490,7 +506,7 @@ PY
         print_colored_block "$YELLOW_COLOR" "" "$message"
       elif [[ "$event_type" == "transcript_turn" && ( "$role" == "agent" || "$message" == Agent:* ) ]]; then
         print_colored_block "$BLUE_COLOR" "" "$message"
-      elif [[ "$event_type" == "deploy_wait_started" || "$event_type" == "deploy_wait_progress" || "$event_type" == "deploy_verified" ]]; then
+      elif [[ "$event_type" == "deploy_wait_started" || "$event_type" == "deploy_wait_health_check" || "$event_type" == "deploy_wait_progress" || "$event_type" == "deploy_verified" ]]; then
         print_colored_block "$GREEN_COLOR" "" "$message"
       else
         print_colored_block "$GRAY_COLOR" "" "$message"
@@ -564,6 +580,9 @@ label_map = {
     "attempt": "attempt",
     "elapsed_seconds": "elapsed seconds",
     "health_ready": "health ready",
+    "health_status": "health status",
+    "health_url": "health url",
+    "phase": "phase",
     "planned_changed_paths": "planned changed paths",
     "requires_agent_sync": "requires agent sync",
     "requires_remote_deploy": "requires deploy",

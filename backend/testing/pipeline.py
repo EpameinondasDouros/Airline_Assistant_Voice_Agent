@@ -465,6 +465,11 @@ def _deploy_health() -> dict[str, Any]:
     return _call_json_endpoint(f"{base_url}/health")
 
 
+def _deploy_health_url() -> str:
+    base_url = _resolve_remote_base_url()
+    return f"{base_url}/health"
+
+
 def _deploy_progress_message(*, attempt: int, elapsed_seconds: float, health_ready: bool, deployed_sha: str | None, expected_sha: str) -> str:
     prefix = [
         "Railway is waking up",
@@ -502,6 +507,19 @@ def wait_for_remote_deploy(
     while time.time() < deadline:
         attempts += 1
         elapsed_seconds = round(time.time() - started_at, 1)
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "event_type": "deploy_wait_health_check",
+                    "phase": "started",
+                    "attempt": attempts,
+                    "elapsed_seconds": elapsed_seconds,
+                    "health_url": _deploy_health_url(),
+                    "message": (
+                        f"Calling /health on Railway (attempt {attempts}, {elapsed_seconds:.1f}s elapsed)."
+                    ),
+                }
+            )
         try:
             health_payload = _deploy_health()
             last_health = health_payload
@@ -510,6 +528,24 @@ def wait_for_remote_deploy(
             if progress_callback is not None:
                 progress_callback(
                     {
+                        "event_type": "deploy_wait_health_check",
+                        "phase": "failed",
+                        "attempt": attempts,
+                        "elapsed_seconds": elapsed_seconds,
+                        "health_ready": False,
+                        "health_url": _deploy_health_url(),
+                        "error": str(exc),
+                        "health_status": "unreachable",
+                        "deployed_commit_sha": (last_payload or {}).get("git_commit_hash") if last_payload else None,
+                        "message": (
+                            f"/health is not reachable yet on Railway "
+                            f"({elapsed_seconds:.1f}s elapsed, attempt {attempts})."
+                        ),
+                    }
+                )
+                progress_callback(
+                    {
+                        "event_type": "deploy_wait_progress",
                         "attempt": attempts,
                         "elapsed_seconds": elapsed_seconds,
                         "health_ready": False,
@@ -519,6 +555,22 @@ def wait_for_remote_deploy(
                 )
             time.sleep(settings.testing_pipeline_deploy_poll_interval_seconds)
             continue
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "event_type": "deploy_wait_health_check",
+                    "phase": "finished",
+                    "attempt": attempts,
+                    "elapsed_seconds": elapsed_seconds,
+                    "health_url": _deploy_health_url(),
+                    "health_ready": health_payload.get("status") == "ok",
+                    "health_status": health_payload.get("status"),
+                    "message": (
+                        f"/health responded with status={health_payload.get('status')!s} "
+                        f"(attempt {attempts}, {elapsed_seconds:.1f}s elapsed)."
+                    ),
+                }
+            )
 
         try:
             payload = _deploy_meta()
@@ -534,6 +586,7 @@ def wait_for_remote_deploy(
         if progress_callback is not None:
             progress_callback(
                 {
+                    "event_type": "deploy_wait_progress",
                     "attempt": attempts,
                     "elapsed_seconds": elapsed_seconds,
                     "health_ready": health_ready,
@@ -1366,13 +1419,17 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
         commit_sha or "",
         progress_callback=lambda payload: _append_event(
             pipeline_id,
-            "deploy_wait_progress",
+            str(payload.get("event_type") or "deploy_wait_progress"),
             str(payload.get("message") or "Still waiting for Railway redeploy."),
             iteration=iteration_number,
             commit_sha=commit_sha,
             attempt=payload.get("attempt"),
             elapsed_seconds=payload.get("elapsed_seconds"),
             health_ready=payload.get("health_ready"),
+            health_status=payload.get("health_status"),
+            health_url=payload.get("health_url"),
+            phase=payload.get("phase"),
+            error=payload.get("error"),
             deployed_commit_sha=payload.get("deployed_commit_sha"),
         ),
     )
