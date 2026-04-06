@@ -1353,7 +1353,8 @@ button, input { font: inherit; }
   background: rgba(245, 217, 147, 0.64);
   border-color: rgba(173, 122, 23, 0.4);
 }
-.pipeline-phase-section--analysis {
+.pipeline-phase-section--analysis,
+.pipeline-phase-section--analysis_planning {
   background: rgba(233, 194, 189, 0.66);
   border-color: rgba(167, 92, 85, 0.38);
 }
@@ -1369,11 +1370,13 @@ button, input { font: inherit; }
   background: rgba(188, 211, 225, 0.68);
   border-color: rgba(73, 114, 141, 0.38);
 }
-.pipeline-phase-section--sync_post_deploy {
+.pipeline-phase-section--sync_post_deploy,
+.pipeline-phase-section--implementation {
   background: rgba(190, 225, 221, 0.68);
   border-color: rgba(58, 128, 119, 0.38);
 }
-.pipeline-phase-section--artifacts {
+.pipeline-phase-section--artifacts,
+.pipeline-phase-section--changed_snippets {
   background: rgba(239, 236, 225, 0.74);
   border-color: rgba(132, 111, 64, 0.34);
 }
@@ -1577,6 +1580,89 @@ button, input { font: inherit; }
   margin: 0;
   line-height: 1.55;
 }
+.pipeline-evaluation-details {
+  display: grid;
+  gap: 0.7rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(173, 122, 23, 0.2);
+  background: rgba(255, 255, 255, 0.92);
+}
+.pipeline-evaluation-details__summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.95rem 1rem;
+}
+.pipeline-evaluation-details__summary::-webkit-details-marker {
+  display: none;
+}
+.pipeline-evaluation-details[open] .pipeline-evaluation-summary {
+  margin: 0 1rem 1rem;
+}
+.pipeline-composite-stack {
+  display: grid;
+  gap: 0.8rem;
+}
+.pipeline-composite-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+.pipeline-composite-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(124, 138, 137, 0.14);
+  background: rgba(255, 255, 255, 0.9);
+}
+.pipeline-composite-card--files {
+  background: rgba(255, 255, 255, 0.94);
+}
+.pipeline-composite-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.9rem;
+}
+.pipeline-composite-card__head strong {
+  display: block;
+  margin-top: 0.18rem;
+  font-size: 0.96rem;
+}
+.pipeline-composite-card__head small {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.28rem 0.62rem;
+  border-radius: 999px;
+  background: rgba(93, 107, 118, 0.1);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.pipeline-file-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+.pipeline-file-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.42rem 0.72rem;
+  border-radius: 999px;
+  background: rgba(0, 101, 101, 0.08);
+  border: 1px solid rgba(0, 101, 101, 0.14);
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
 .pipeline-code-changes {
   display: grid;
   gap: 0.75rem;
@@ -1595,6 +1681,9 @@ button, input { font: inherit; }
 }
 .pipeline-artifact-card[open] {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+.pipeline-artifact-card--static {
+  box-shadow: none;
 }
 .pipeline-artifact-card--code {
   background: rgba(222, 236, 245, 0.82);
@@ -2187,10 +2276,13 @@ button, input { font: inherit; }
   .pipeline-accordion__trigger,
   .pipeline-phase-section__toggle,
   .pipeline-artifact-card__summary,
-  .pipeline-log-card__summary {
+  .pipeline-log-card__summary,
+  .pipeline-evaluation-details__summary,
+  .pipeline-composite-card__head {
     flex-direction: column;
     align-items: flex-start;
   }
+  .pipeline-composite-grid,
   .testing-workspace,
   .testing-live__panels,
   .testing-summary__grid {
