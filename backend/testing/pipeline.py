@@ -527,7 +527,7 @@ def _requires_agent_sync(changed_paths: list[str]) -> bool:
 
 
 def _requires_remote_deploy(changed_paths: list[str]) -> bool:
-    return any(path.startswith(APP_EDIT_ROOT) for path in changed_paths)
+    return any(path.startswith(APP_EDIT_ROOT) or path.startswith(AGENT_EDIT_ROOT) for path in changed_paths)
 
 
 def _run_sync_commands(
@@ -1877,7 +1877,7 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
         _append_event(
             pipeline_id,
             "deploy_skipped",
-            "Pushed prompt/tool changes to main. Railway redeploy is not required for backend/agents-only edits.",
+            "Pushed changes to main. Railway redeploy is not required because no backend/app or backend/agents files changed.",
             iteration=iteration_number,
             changed_paths=changed_paths,
             branch_name=branch_name,
