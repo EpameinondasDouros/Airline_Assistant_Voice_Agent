@@ -33,7 +33,14 @@ def main() -> None:
         print(f"Artifact: {artifact_path}")
         print(f"Report: {report_path}")
         print(f"Task: {report.fix_plan.task_slug}")
-        print(f"Root cause: {report.root_cause.root_cause_category} | {report.root_cause.primary_root_cause}")
+        root_cause_line = (
+            f"Root cause: {report.root_cause.root_cause_category} | {report.root_cause.primary_root_cause}"
+        )
+        if report.root_cause.supporting_root_cause_categories:
+            root_cause_line += (
+                f" | supporting: {', '.join(report.root_cause.supporting_root_cause_categories)}"
+            )
+        print(root_cause_line)
         print(f"Edits proposed: {len(report.fix_plan.section_edits)}")
         for edit in report.fix_plan.section_edits:
             print(f"- {edit.path} :: {edit.selector_type}:{edit.selector_value}")

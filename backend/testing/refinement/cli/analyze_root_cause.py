@@ -36,6 +36,8 @@ def main() -> None:
         print(f"Task: {verdict.task_slug}")
         print(f"Failure detected: {'yes' if verdict.failure_detected else 'no'}")
         print(f"Category: {verdict.root_cause_category}")
+        if verdict.supporting_root_cause_categories:
+            print(f"Supporting categories: {', '.join(verdict.supporting_root_cause_categories)}")
         print(f"Root cause: {verdict.primary_root_cause}")
         print(f"Next step: {verdict.suggested_next_step}")
         return

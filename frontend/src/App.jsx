@@ -160,14 +160,9 @@ function formatPipelineEventBody(event) {
   const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
   const runtime = payload.event_payload && typeof payload.event_payload === "object" ? payload.event_payload : {};
   const taskSlug = payload.task || payload.task_slug || runtime.task || null;
-  const taskLabel = taskSlug ? formatTaskLabel(taskSlug) : null;
   const parts = [];
   if (event.message) parts.push(replaceTaskSlugInText(event.message, taskSlug));
   const extraLines = [];
-
-  if (taskLabel && !parts.some((line) => line.includes(taskLabel))) {
-    extraLines.push(`Task: ${taskLabel}`);
-  }
   if (typeof payload.iteration !== "undefined") {
     extraLines.push(`Iteration: ${payload.iteration}`);
   }
@@ -1127,18 +1122,39 @@ function App() {
           "fixer_edit",
         ].includes(String(event.type || ""))
       );
-      const approvalEvents = events.filter((event) => String(event.type || "") === "approval_required");
-      const codeChangeEvents = events.filter((event) =>
-        ["code_apply_started", "code_apply_finished", "code_apply_noop", "git_commit_finished", "git_push_started", "git_push_progress", "git_push_finished", "git_push_skipped"].includes(String(event.type || ""))
-      );
-      const syncPostDeployEvents = events.filter((event) =>
-        ["agent_sync_started", "agent_sync_progress", "agent_sync_finished", "agent_sync_failed", "deploy_wait_started", "deploy_wait_health_check", "deploy_wait_progress", "deploy_verified", "deploy_skipped"].includes(String(event.type || ""))
+      const implementationEvents = events.filter((event) =>
+        [
+          "code_apply_started",
+          "code_apply_finished",
+          "code_apply_noop",
+          "agent_sync_started",
+          "agent_sync_progress",
+          "agent_sync_finished",
+          "agent_sync_failed",
+          "git_commit_finished",
+          "git_push_started",
+          "git_push_progress",
+          "git_push_finished",
+          "git_push_skipped",
+          "deploy_wait_started",
+          "deploy_wait_health_check",
+          "deploy_wait_progress",
+          "deploy_verified",
+          "deploy_skipped",
+        ].includes(String(event.type || ""))
       );
       const codeChangeEntries =
         Array.isArray(pipelineApplyResults[Number(iterationNumber)]?.applied_changes) &&
         pipelineApplyResults[Number(iterationNumber)]?.applied_changes.length
           ? pipelineApplyResults[Number(iterationNumber)].applied_changes
           : buildFallbackAppliedChanges(events);
+      const plannedChangedPaths = [
+        ...new Set(
+          fixPlanEvents
+            .map((event) => getPipelineEventPayload(event).path)
+            .filter(Boolean)
+        ),
+      ];
       const agentSyncEvents = events.filter((event) =>
         ["agent_sync_started", "agent_sync_progress", "agent_sync_finished", "agent_sync_failed"].includes(String(event.type || ""))
       );
@@ -1171,6 +1187,7 @@ function App() {
         evaluationCompleteEvent,
         evaluationCompletePayload,
         codeChangeEntries,
+        plannedChangedPaths,
         agentSyncEvents,
         agentSyncLogEvent,
         agentSyncStatus,
@@ -1193,49 +1210,28 @@ function App() {
             emptyText: "No evaluation output yet.",
           },
           {
-            key: "analysis",
-            label: "Analysis",
-            events: analysisEvents,
+            key: "analysis_planning",
+            label: "Analysis & Planning",
+            events: [...analysisEvents, ...fixPlanEvents],
+            analysisEvents,
+            planningEvents: fixPlanEvents,
+            plannedChangedPaths,
             emptyText:
               latestTaskResult?.needs_refinement === false
-                ? "No analysis was needed because this iteration already met the target."
-                : "No analysis output yet.",
+                ? "No analysis or planning was needed because this iteration already met the target."
+                : "No analysis or planning output yet.",
           },
           {
-            key: "fix_planning",
-            label: "Fix Planning",
-            events: fixPlanEvents,
-            emptyText:
-              latestTaskResult?.needs_refinement === false
-                ? "No fix plan was needed for this iteration."
-                : "No fix plan yet.",
+            key: "implementation",
+            label: "Implementation",
+            events: implementationEvents,
+            emptyText: "No implementation events for this iteration.",
           },
           {
-            key: "approval",
-            label: "Approval",
-            events: approvalEvents,
-            emptyText:
-              record?.status === "waiting_approval"
-                ? "Approval is expected but the event has not arrived yet."
-                : "No approval step was required.",
-          },
-          {
-            key: "code_change",
-            label: "Code Change",
-            events: codeChangeEvents,
-            emptyText: "No code-change events for this iteration.",
-          },
-          {
-            key: "sync_post_deploy",
-            label: "Sync Post-Deploy",
-            events: syncPostDeployEvents,
-            emptyText: "No sync or deploy events for this iteration.",
-          },
-          {
-            key: "artifacts",
-            label: "Changed Code / Agent Sync / Railway",
+            key: "changed_snippets",
+            label: "Changed Snippets",
             events: [],
-            emptyText: "No changed code, sync log, or Railway wait details yet.",
+            emptyText: "No changed snippet details yet.",
           },
           {
             key: "iteration_results",
@@ -1669,6 +1665,7 @@ function App() {
       task_slugs: pipelineForm.task_slugs,
       target_score: Number(pipelineForm.target_score),
       max_iterations: Number(pipelineForm.max_iterations),
+      require_manual_approval: false,
     })
       .then((response) => {
         const nextPipeline = response.payload;
@@ -2671,12 +2668,6 @@ function App() {
                     <span className="material-symbols-outlined">rocket_launch</span>
                     Start pipeline
                   </button>
-                  {effectivePipelineSummary.status === "waiting_approval" ? (
-                    <button type="button" className="button button--secondary" onClick={approveSelectedPipeline} disabled={pipelineBusy || !selectedPipelineId}>
-                      <span className="material-symbols-outlined">task_alt</span>
-                      Approve
-                    </button>
-                  ) : null}
                   {selectedPipelineId && ACTIVE_PIPELINE_STATUSES.has(String(effectivePipelineSummary.status || "")) ? (
                     <button type="button" className="button button--secondary" onClick={cancelSelectedPipeline} disabled={pipelineBusy}>
                       <span className="material-symbols-outlined">cancel</span>
@@ -2710,45 +2701,12 @@ function App() {
                         disabled={pipelineBusy}
                       />
                     </label>
-                    <label className="pipeline-toggle">
-                      <input
-                        type="checkbox"
-                        checked={pipelineForm.require_manual_approval}
-                        onChange={(event) =>
-                          setPipelineForm((current) => ({
-                            ...current,
-                            require_manual_approval: event.target.checked,
-                          }))
-                        }
-                        disabled={pipelineBusy}
-                      />
-                      <span>Require manual approval before apply</span>
-                    </label>
                     <div className="pipeline-toggle pipeline-toggle--static">
-                      <span>Database reset is disabled. Pipeline runs always preserve existing data.</span>
+                      <span>Approval is automatic and database reset is disabled. Pipeline runs preserve existing data.</span>
                     </div>
                   </div>
                 </details>
               </section>
-
-              {effectivePipelineSummary.status === "waiting_approval" && latestApprovalEvent ? (
-                <section className="pipeline-approval-banner">
-                  <div>
-                    <span className="eyebrow">Approval required</span>
-                    <strong>{replaceTaskSlugInText(latestApprovalEvent.message || "The current iteration is waiting for approval.", getPipelineEventTaskSlug(latestApprovalEvent))}</strong>
-                  </div>
-                  <div className="pipeline-actions">
-                    <button type="button" className="button button--primary" onClick={approveSelectedPipeline} disabled={pipelineBusy || !selectedPipelineId}>
-                      <span className="material-symbols-outlined">task_alt</span>
-                      Approve iteration
-                    </button>
-                    <button type="button" className="button button--secondary" onClick={cancelSelectedPipeline} disabled={pipelineBusy}>
-                      <span className="material-symbols-outlined">cancel</span>
-                      Cancel pipeline
-                    </button>
-                  </div>
-                </section>
-              ) : null}
 
               <section className="pipeline-timeline-card">
                 <div className="pipeline-timeline-card__head">
