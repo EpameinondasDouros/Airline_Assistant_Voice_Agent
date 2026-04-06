@@ -832,7 +832,7 @@ function App() {
     max_iterations: 5,
     review_model: "openai:gpt-5.4-mini",
     fixer_model: "openai:gpt-5.4-mini",
-    require_manual_approval: true,
+    require_manual_approval: false,
     skip_fixture_reset: true,
   });
   const [selectedPipelineIterationNumber, setSelectedPipelineIterationNumber] = useState(null);
@@ -900,10 +900,7 @@ function App() {
       latest_evaluator_score: selectedPipelineSummary?.latest_evaluator_score ?? null,
       latest_task_slug: selectedPipelineSummary?.latest_task_slug || selectedPipeline?.latest_task_slug || "",
       stop_reason: selectedPipeline?.stop_reason || selectedPipelineSummary?.stop_reason || "",
-      require_manual_approval:
-        typeof selectedPipeline?.require_manual_approval === "boolean"
-          ? selectedPipeline.require_manual_approval
-          : Boolean(selectedPipelineSummary?.require_manual_approval ?? pipelineForm.require_manual_approval),
+      require_manual_approval: false,
     }),
     [selectedPipeline, selectedPipelineSummary, pipelineForm]
   );
