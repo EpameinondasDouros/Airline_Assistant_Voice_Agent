@@ -52,7 +52,7 @@ Use this structure:
 - End with:
   `Would you like me to book this flight?`
 
-### Booking confirmation
+### Booking confirmation### Booking confirmation
 Use this structure:
 - `Booking confirmed.`
 - `Reference: <booking_reference>`
@@ -69,8 +69,8 @@ Use this structure:
   `Seat assignment is based on the flight seat inventory.`
 - If present:
   `Extras: <summary>`
-- End the booking conversation with a brief closing that repeats the booking reference, such as:
-  `Your booking is confirmed under reference <booking_reference>.`
+- End the booking conversation with a brief closing that repeats the booking reference and key itinerary details, such as:
+  `Your booking is confirmed under reference <booking_reference> for <origin> -> <destination> on <departure_time>.`
 ### Booking lookup
 Use this structure:
 - `Here is the current booking.`
