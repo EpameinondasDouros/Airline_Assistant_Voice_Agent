@@ -1180,6 +1180,42 @@ def _blocked_edit_paths(report_path: Path) -> list[str]:
     return blocked
 
 
+def _continue_after_nonfatal_iteration_issue(
+    pipeline_id: str,
+    *,
+    manifest: dict[str, Any],
+    iteration: dict[str, Any],
+    iteration_number: int,
+    event_type: str,
+    event_message: str,
+    iteration_message: str,
+    extra_payload: dict[str, Any] | None = None,
+) -> bool:
+    payload = dict(extra_payload or {})
+    iteration["status"] = "completed"
+    iteration["finished_at"] = _now()
+    iteration["stop_reason"] = event_message
+    manifest["approval_pending_iteration"] = None
+    manifest["status"] = "running"
+    manifest["stage"] = "iteration_complete"
+    _save_manifest(manifest)
+    _write_pipeline_deliverables(pipeline_id, manifest)
+    _append_event(
+        pipeline_id,
+        event_type,
+        event_message,
+        iteration=iteration_number,
+        **payload,
+    )
+    _append_event(
+        pipeline_id,
+        "iteration_complete",
+        iteration_message,
+        iteration=iteration_number,
+    )
+    return True
+
+
 def _build_pipeline_manifest(
     *,
     pipeline_id: str,
@@ -1606,21 +1642,19 @@ def _run_iteration(pipeline_id: str, iteration_number: int, cancel_event: thread
 
     blocked_paths = _blocked_edit_paths(saved_report_path)
     if blocked_paths:
-        iteration["status"] = "blocked_manual_fix"
-        iteration["finished_at"] = _now()
-        iteration["stop_reason"] = "Fix plan targeted blocked paths."
-        manifest["stop_reason"] = f"Fix plan targeted blocked paths: {', '.join(blocked_paths)}"
-        _append_event(
+        return _continue_after_nonfatal_iteration_issue(
             pipeline_id,
-            "pipeline_blocked",
-            "Fix plan targeted a path outside backend/app or backend/agents.",
-            iteration=iteration_number,
-            blocked_paths=blocked_paths,
+            manifest=manifest,
+            iteration=iteration,
+            iteration_number=iteration_number,
+            event_type="fix_plan_blocked",
+            event_message="Fix plan targeted a path outside backend/app or backend/agents. Skipping apply for this iteration.",
+            iteration_message=(
+                f"Iteration {iteration_number} produced only blocked edits. "
+                "Starting the next testing cycle."
+            ),
+            extra_payload={"blocked_paths": blocked_paths},
         )
-        manifest["status"] = "blocked_manual_fix"
-        manifest["stage"] = "blocked_manual_fix"
-        _save_manifest(manifest)
-        return False
 
     manifest["approval_pending_iteration"] = iteration_number
     iteration["status"] = "waiting_approval"
@@ -1815,17 +1849,23 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
         _append_event(
             pipeline_id,
             "code_apply_noop",
-            "The approved fix plan produced no effective file changes. Stopping before git add/commit.",
+            "The approved fix plan produced no effective file changes. Skipping commit and continuing to the next iteration.",
             iteration=iteration_number,
             changed_paths=changed_paths,
         )
-        _mark_failed(
+        return _continue_after_nonfatal_iteration_issue(
             pipeline_id,
-            "The approved fix plan produced no effective file changes.",
-            stage="applying",
             manifest=manifest,
+            iteration=iteration,
+            iteration_number=iteration_number,
+            event_type="fix_plan_noop",
+            event_message="The approved fix plan produced no effective file changes.",
+            iteration_message=(
+                f"Iteration {iteration_number} produced no effective file changes. "
+                "Starting the next testing cycle."
+            ),
+            extra_payload={"changed_paths": changed_paths},
         )
-        return False
 
     add_result = _git_add(changed_paths)
     if not add_result["success"]:

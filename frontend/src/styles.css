@@ -204,7 +204,12 @@ button, input { font: inherit; }
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.75);
 }
-.flight-detail h3 { margin: 0; }
+.flight-detail h3 {
+  margin: 0;
+  font-size: 1.28rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
 .flight-detail__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -256,7 +261,8 @@ button, input { font: inherit; }
 }
 .modal-card__header h3 {
   margin: 0.25rem 0 0;
-  font-size: 1.75rem;
+  font-size: 1.95rem;
+  font-weight: 900;
   letter-spacing: -0.05em;
 }
 .modal-card__subtitle {
@@ -751,7 +757,8 @@ button, input { font: inherit; }
 .testing-refinement__head strong {
   display: block;
   margin-top: 0.15rem;
-  font-size: 1.05rem;
+  font-size: 1.2rem;
+  font-weight: 900;
 }
 .testing-refinement__timeline {
   display: grid;
@@ -781,7 +788,8 @@ button, input { font: inherit; }
   align-items: baseline;
 }
 .testing-refinement__mini-head strong {
-  font-size: 0.95rem;
+  font-size: 1.08rem;
+  font-weight: 900;
 }
 .refinement-snippet {
   display: grid;
@@ -803,7 +811,8 @@ button, input { font: inherit; }
   letter-spacing: 0.06em;
 }
 .refinement-snippet__head strong {
-  font-size: 0.92rem;
+  font-size: 1.04rem;
+  font-weight: 900;
   color: var(--ink);
   text-transform: none;
   letter-spacing: 0;
@@ -855,11 +864,11 @@ button, input { font: inherit; }
   display: flex;
   justify-content: space-between;
   gap: 0.75rem;
-  color: var(--muted);
-  font-size: 0.74rem;
-  font-weight: 800;
+  color: #627071;
+  font-size: 0.92rem;
+  font-weight: 900;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
 }
 .refinement-event__title-row {
   display: flex;
@@ -869,7 +878,8 @@ button, input { font: inherit; }
 }
 .refinement-event__title-row strong {
   color: var(--ink);
-  font-size: 0.98rem;
+  font-size: 1.12rem;
+  font-weight: 900;
 }
 .refinement-event__score {
   color: var(--primary);
@@ -1234,7 +1244,8 @@ button, input { font: inherit; }
 .pipeline-detail-panel__head strong {
   display: block;
   margin-top: 0.2rem;
-  font-size: 1.1rem;
+  font-size: 1.28rem;
+  font-weight: 900;
 }
 .pipeline-summary-card__head p {
   margin: 0.4rem 0 0;
@@ -1265,7 +1276,8 @@ button, input { font: inherit; }
 .pipeline-summary-card__grid article strong,
 .pipeline-task-summary article strong {
   color: var(--ink);
-  font-size: 0.98rem;
+  font-size: 1.08rem;
+  font-weight: 900;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -1326,7 +1338,8 @@ button, input { font: inherit; }
   gap: 0.18rem;
 }
 .pipeline-reports-menu__intro strong {
-  font-size: 0.94rem;
+  font-size: 1.05rem;
+  font-weight: 900;
 }
 .pipeline-reports-menu__intro small {
   color: var(--muted);
@@ -1384,7 +1397,8 @@ button, input { font: inherit; }
   gap: 0.18rem;
 }
 .pipeline-accordion__summary strong {
-  font-size: 1rem;
+  font-size: 1.12rem;
+  font-weight: 900;
 }
 .pipeline-accordion__summary small {
   color: var(--muted);
@@ -1477,7 +1491,7 @@ button, input { font: inherit; }
 }
 .pipeline-phase-section__head strong {
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.14rem;
   font-weight: 900;
   line-height: 1.2;
 }
@@ -1529,7 +1543,8 @@ button, input { font: inherit; }
 .pipeline-section-card__head strong {
   display: block;
   margin-top: 0.18rem;
-  font-size: 1rem;
+  font-size: 1.12rem;
+  font-weight: 900;
 }
 .pipeline-phase-stack,
 .pipeline-event-list,
@@ -1566,11 +1581,11 @@ button, input { font: inherit; }
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.75rem;
-  color: var(--muted);
-  font-size: 0.74rem;
-  font-weight: 800;
+  color: #627071;
+  font-size: 0.94rem;
+  font-weight: 900;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   min-width: 0;
 }
 .pipeline-event-card__meta span,
@@ -1608,7 +1623,8 @@ button, input { font: inherit; }
   min-width: 0;
 }
 .pipeline-metric-card__head strong {
-  font-size: 0.92rem;
+  font-size: 1.04rem;
+  font-weight: 900;
   overflow-wrap: anywhere;
 }
 .pipeline-metric-card__head span {
@@ -1676,7 +1692,8 @@ button, input { font: inherit; }
 .pipeline-evaluation-summary__head strong {
   display: block;
   margin-top: 0.18rem;
-  font-size: 1rem;
+  font-size: 1.12rem;
+  font-weight: 900;
 }
 .pipeline-evaluation-summary p {
   margin: 0;
@@ -1735,7 +1752,8 @@ button, input { font: inherit; }
 .pipeline-composite-card__head strong {
   display: block;
   margin-top: 0.18rem;
-  font-size: 0.96rem;
+  font-size: 1.08rem;
+  font-weight: 900;
 }
 .pipeline-composite-card__head small {
   display: inline-flex;
@@ -1818,7 +1836,8 @@ button, input { font: inherit; }
   min-width: 0;
 }
 .pipeline-artifact-card__summary-copy strong {
-  font-size: 0.98rem;
+  font-size: 1.08rem;
+  font-weight: 900;
   line-height: 1.35;
 }
 .pipeline-artifact-card__summary-copy small {
@@ -1922,7 +1941,8 @@ button, input { font: inherit; }
   min-width: 0;
 }
 .pipeline-change-card__summary-copy strong {
-  font-size: 0.94rem;
+  font-size: 1.04rem;
+  font-weight: 900;
   overflow-wrap: anywhere;
 }
 .pipeline-change-card__summary-copy span {
@@ -2114,7 +2134,8 @@ button, input { font: inherit; }
   display: none;
 }
 .pipeline-log-card__summary strong {
-  font-size: 0.92rem;
+  font-size: 1.04rem;
+  font-weight: 900;
 }
 .pipeline-log-card__summary span {
   color: var(--muted);
@@ -2227,7 +2248,8 @@ button, input { font: inherit; }
 }
 .pipeline-shell__header h2 {
   margin: 0.2rem 0 0.35rem;
-  font-size: 1.2rem;
+  font-size: 1.35rem;
+  font-weight: 900;
 }
 .pipeline-shell__header p {
   margin: 0;
@@ -2278,7 +2300,8 @@ button, input { font: inherit; }
 .pipeline-task-option strong,
 .pipeline-history__item strong,
 .pipeline-task-result strong {
-  font-size: 0.95rem;
+  font-size: 1.06rem;
+  font-weight: 900;
 }
 .pipeline-task-option small,
 .pipeline-history__item small {
