@@ -49,6 +49,10 @@ class RootCauseVerdict(BaseModel):
         description="Short root cause summary explaining why the task underperformed."
     )
     root_cause_category: str = Field(description="One of: prompt_based or script_based.")
+    supporting_root_cause_categories: list[str] = Field(
+        default_factory=list,
+        description="Optional additional categories that also materially contributed to the failure.",
+    )
     confidence: float = Field(ge=0.0, le=1.0)
     findings: list[RootCauseFinding] = Field(default_factory=list)
     likely_fix_targets: list[str] = Field(

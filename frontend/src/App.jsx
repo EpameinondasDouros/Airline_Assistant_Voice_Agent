@@ -427,6 +427,119 @@ function formatCommitShort(value) {
   return String(value).slice(0, 12);
 }
 
+function splitCodeLines(value) {
+  const text = String(value || "").replace(/\r\n/g, "\n");
+  if (!text) return [];
+  return text.split("\n");
+}
+
+function buildSnippetDiffRows(beforeContent, afterContent) {
+  const beforeLines = splitCodeLines(beforeContent);
+  const afterLines = splitCodeLines(afterContent);
+  if (!beforeLines.length && !afterLines.length) return [];
+
+  let prefix = 0;
+  while (
+    prefix < beforeLines.length &&
+    prefix < afterLines.length &&
+    beforeLines[prefix] === afterLines[prefix]
+  ) {
+    prefix += 1;
+  }
+
+  let beforeSuffix = beforeLines.length - 1;
+  let afterSuffix = afterLines.length - 1;
+  while (
+    beforeSuffix >= prefix &&
+    afterSuffix >= prefix &&
+    beforeLines[beforeSuffix] === afterLines[afterSuffix]
+  ) {
+    beforeSuffix -= 1;
+    afterSuffix -= 1;
+  }
+
+  if (prefix === beforeLines.length && prefix === afterLines.length) {
+    return beforeLines.slice(0, 12).map((line, index) => ({
+      type: "context",
+      oldNumber: index + 1,
+      newNumber: index + 1,
+      text: line,
+    }));
+  }
+
+  const rows = [];
+  const contextWindow = 2;
+  const leadingContextStart = Math.max(0, prefix - contextWindow);
+  if (leadingContextStart > 0) {
+    rows.push({
+      type: "skipped",
+      text: `${leadingContextStart} unchanged line${leadingContextStart === 1 ? "" : "s"}`,
+    });
+  }
+
+  for (let index = leadingContextStart; index < prefix; index += 1) {
+    rows.push({
+      type: "context",
+      oldNumber: index + 1,
+      newNumber: index + 1,
+      text: beforeLines[index],
+    });
+  }
+
+  for (let index = prefix; index <= beforeSuffix; index += 1) {
+    rows.push({
+      type: "remove",
+      oldNumber: index + 1,
+      newNumber: null,
+      text: beforeLines[index],
+    });
+  }
+
+  for (let index = prefix; index <= afterSuffix; index += 1) {
+    rows.push({
+      type: "add",
+      oldNumber: null,
+      newNumber: index + 1,
+      text: afterLines[index],
+    });
+  }
+
+  const commonSuffixCount = beforeLines.length - (beforeSuffix + 1);
+  const shownSuffixCount = Math.min(contextWindow, commonSuffixCount);
+  const suffixStartBefore = beforeSuffix + 1;
+  const suffixStartAfter = afterSuffix + 1;
+
+  for (let offset = 0; offset < shownSuffixCount; offset += 1) {
+    rows.push({
+      type: "context",
+      oldNumber: suffixStartBefore + offset + 1,
+      newNumber: suffixStartAfter + offset + 1,
+      text: beforeLines[suffixStartBefore + offset],
+    });
+  }
+
+  const omittedSuffixCount = commonSuffixCount - shownSuffixCount;
+  if (omittedSuffixCount > 0) {
+    rows.push({
+      type: "skipped",
+      text: `${omittedSuffixCount} unchanged line${omittedSuffixCount === 1 ? "" : "s"}`,
+    });
+  }
+
+  return rows;
+}
+
+function summarizeSnippetDiff(rows) {
+  return rows.reduce(
+    (summary, row) => {
+      if (row.type === "add") summary.added += 1;
+      if (row.type === "remove") summary.removed += 1;
+      return summary;
+    },
+    { added: 0, removed: 0 }
+  );
+}
+
 function getLastPipelineEvent(events, matchingTypes) {
   const types = new Set(matchingTypes);
   for (let index = events.length - 1; index >= 0; index -= 1) {
@@ -2793,7 +2906,7 @@ function App() {
                                               ) : null}
                                             </div>
                                             {artifactCodeChanges.map((change, index) => (
-                                              <details className="pipeline-change-card" key={`${change.path}-${change.selector_value}-${index}`}>
+                                              <details className="pipeline-change-card" key={`${change.path}-${change.selector_value}-${index}`} open={artifactCodeChanges.length === 1 || index === 0}>
                                                 <summary className="pipeline-change-card__summary">
                                                   <div className="pipeline-change-card__summary-copy">
                                                     <strong>{change.path}</strong>
@@ -2801,17 +2914,53 @@ function App() {
                                                   </div>
                                                   <span>{change.applied ? "Applied" : "Not applied"}</span>
                                                 </summary>
-                                                {change.error ? <p className="testing-muted">{change.error}</p> : null}
-                                                <div className="pipeline-change-diff">
-                                                  <div className="pipeline-change-pane">
-                                                    <span className="eyebrow">Before</span>
-                                                    <pre>{change.before_content || "—"}</pre>
-                                                  </div>
-                                                  <div className="pipeline-change-pane">
-                                                    <span className="eyebrow">After</span>
-                                                    <pre>{change.after_content || "—"}</pre>
-                                                  </div>
-                                                </div>
+                                                {(() => {
+                                                  const diffRows = buildSnippetDiffRows(change.before_content, change.after_content);
+                                                  const diffSummary = summarizeSnippetDiff(diffRows);
+                                                  return (
+                                                    <>
+                                                      <div className="pipeline-change-meta">
+                                                        <span className={`pipeline-change-pill pipeline-change-pill--${change.applied ? "success" : "neutral"}`}>
+                                                          {change.applied ? "Applied" : "Preview only"}
+                                                        </span>
+                                                        {diffSummary.added ? (
+                                                          <span className="pipeline-change-pill pipeline-change-pill--add">+{diffSummary.added} added</span>
+                                                        ) : null}
+                                                        {diffSummary.removed ? (
+                                                          <span className="pipeline-change-pill pipeline-change-pill--remove">-{diffSummary.removed} removed</span>
+                                                        ) : null}
+                                                      </div>
+                                                      {change.error ? <p className="testing-muted">{change.error}</p> : null}
+                                                      <div className="pipeline-change-diff pipeline-change-diff--unified">
+                                                        <div className="pipeline-change-diff__header">
+                                                          <span>Changed lines</span>
+                                                          <small>Showing the edited snippet only</small>
+                                                        </div>
+                                                        <div className="pipeline-diff-view">
+                                                          {diffRows.length ? diffRows.map((row, rowIndex) => (
+                                                            row.type === "skipped" ? (
+                                                              <div className="pipeline-diff-row pipeline-diff-row--skipped" key={`${change.path}-skipped-${rowIndex}`}>
+                                                                <span>{row.text}</span>
+                                                              </div>
+                                                            ) : (
+                                                              <div className={`pipeline-diff-row pipeline-diff-row--${row.type}`} key={`${change.path}-${row.type}-${rowIndex}`}>
+                                                                <span className="pipeline-diff-row__line">{row.oldNumber ?? " "}</span>
+                                                                <span className="pipeline-diff-row__line">{row.newNumber ?? " "}</span>
+                                                                <pre className="pipeline-diff-row__code">{row.text || " "}</pre>
+                                                              </div>
+                                                            )
+                                                          )) : (
+                                                            <div className="pipeline-diff-row pipeline-diff-row--context">
+                                                              <span className="pipeline-diff-row__line"> </span>
+                                                              <span className="pipeline-diff-row__line"> </span>
+                                                              <pre className="pipeline-diff-row__code">{change.after_content || change.before_content || "—"}</pre>
+                                                            </div>
+                                                          )}
+                                                        </div>
+                                                      </div>
+                                                    </>
+                                                  );
+                                                })()}
                                               </details>
                                             ))}
                                           </div>

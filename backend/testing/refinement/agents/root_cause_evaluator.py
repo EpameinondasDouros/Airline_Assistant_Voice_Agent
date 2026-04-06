@@ -42,6 +42,7 @@ Interpretation:
 Be conservative and pick the narrowest cause supported by evidence.
 If the agent failed because it answered the right task in the wrong way, omitted a required conversational behavior, or needs a prompt/rubric change to improve, classify that as prompt_based unless the evidence clearly points to a backend, seed, tool, or harness defect.
 Only use script_based when the observed failure is primarily caused by data, tooling, backend state, harness behavior, or the task definition itself.
+If both the prompt and the script/harness materially contributed, choose the dominant primary category and include the other one in supporting_root_cause_categories.
 If no meaningful failure is present, set failure_detected to false and explain why.
 """
 

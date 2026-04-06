@@ -42,6 +42,7 @@ BLOCKED_EDIT_ROOTS = (
 AGENT_EDIT_ROOT = "backend/agents/"
 APP_EDIT_ROOT = "backend/app/"
 MAIN_BRANCH = "main"
+ACTIVE_PROMPT_PATH = BACKEND_ROOT / "agents" / "prompts" / "flight_booking_agent.md"
 
 
 def _now() -> str:
@@ -52,6 +53,21 @@ def _pipeline_task_key(task_slugs: list[str]) -> str:
     if len(task_slugs) == 1 and task_slugs[0]:
         return str(task_slugs[0]).strip()
     return "multi"
+
+
+def _format_task_label(task_slug: str | None) -> str:
+    if not task_slug:
+        return "Task"
+    return str(task_slug).replace("task_", "", 1).replace("_", " ").title()
+
+
+def _normalize_root_cause_category(category: str | None) -> str | None:
+    normalized = str(category or "").strip().lower()
+    if normalized == "prompt_based":
+        return "prompt"
+    if normalized == "script_based":
+        return "code"
+    return normalized or None
 
 
 def _pipeline_id(task_slugs: list[str]) -> str:
@@ -74,6 +90,26 @@ def _pipeline_dir(pipeline_id: str) -> Path:
 
 def _manifest_path(pipeline_id: str) -> Path:
     return _pipeline_dir(pipeline_id) / "manifest.json"
+
+
+def _deliverables_dir(pipeline_id: str) -> Path:
+    return _pipeline_dir(pipeline_id) / "deliverables"
+
+
+def _starting_prompt_path(pipeline_id: str) -> Path:
+    return _deliverables_dir(pipeline_id) / "starting_prompt.md"
+
+
+def _final_prompt_path(pipeline_id: str) -> Path:
+    return _deliverables_dir(pipeline_id) / "final_prompt.md"
+
+
+def _example_run_path(pipeline_id: str) -> Path:
+    return _deliverables_dir(pipeline_id) / "recorded_example_run.md"
+
+
+def _structured_log_path(pipeline_id: str) -> Path:
+    return _deliverables_dir(pipeline_id) / "pipeline_run_log.json"
 
 
 def _events_path(pipeline_id: str) -> Path:
@@ -99,6 +135,11 @@ def _load_json(path: Path) -> dict[str, Any]:
 def _save_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _save_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
 
 
 def _load_manifest(pipeline_id: str) -> dict[str, Any]:
@@ -281,7 +322,9 @@ def _mark_failed(
     manifest["stage"] = stage
     manifest["stop_reason"] = reason
     _append_event(pipeline_id, event_type, reason, stage=stage)
-    return _save_manifest(manifest)
+    saved = _save_manifest(manifest)
+    _write_pipeline_deliverables(pipeline_id, saved)
+    return saved
 
 
 def _mark_completed(pipeline_id: str, reason: str, *, manifest: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -290,7 +333,9 @@ def _mark_completed(pipeline_id: str, reason: str, *, manifest: dict[str, Any] |
     manifest["stage"] = "complete"
     manifest["stop_reason"] = reason
     _append_event(pipeline_id, "pipeline_complete", reason, stage="complete")
-    return _save_manifest(manifest)
+    saved = _save_manifest(manifest)
+    _write_pipeline_deliverables(pipeline_id, saved)
+    return saved
 
 
 def _mark_canceled(
@@ -304,7 +349,9 @@ def _mark_canceled(
     manifest["stage"] = "canceled"
     manifest["stop_reason"] = reason
     _append_event(pipeline_id, "pipeline_failed", reason, stage="canceled")
-    return _save_manifest(manifest)
+    saved = _save_manifest(manifest)
+    _write_pipeline_deliverables(pipeline_id, saved)
+    return saved
 
 
 def _subprocess_result(
@@ -766,6 +813,244 @@ def _iteration_result_from_artifact(artifact_path: Path) -> dict[str, Any]:
     }
 
 
+def _load_optional_json(path_str: str | None) -> dict[str, Any] | None:
+    if not path_str:
+        return None
+    path = Path(path_str)
+    if not path.exists():
+        return None
+    return _load_json(path)
+
+
+def _current_prompt_text() -> str:
+    if not ACTIVE_PROMPT_PATH.exists():
+        return ""
+    return ACTIVE_PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def _snapshot_starting_prompt_if_needed(pipeline_id: str) -> None:
+    snapshot_path = _starting_prompt_path(pipeline_id)
+    if snapshot_path.exists():
+        return
+    _save_text(snapshot_path, _current_prompt_text())
+
+
+def _criterion_score_lookup(criterion_scores: list[dict[str, Any]]) -> dict[str, int | None]:
+    lookup: dict[str, int | None] = {}
+    for item in criterion_scores or []:
+        criterion = str(item.get("criterion") or "").strip()
+        if not criterion:
+            continue
+        score = item.get("score")
+        lookup[criterion] = int(score) if score is not None else None
+    return lookup
+
+
+def _task_scenario(task_slug: str) -> dict[str, Any]:
+    task = get_task(task_slug)
+    return {
+        "task_slug": task.slug,
+        "task_label": _format_task_label(task.slug),
+        "description": task.description,
+        "goal": task.goal,
+        "initial_user_intent": task.initial_user_intent,
+        "evaluation_focus": task.evaluation_focus,
+    }
+
+
+def _iteration_deliverable_summary(iteration: dict[str, Any]) -> dict[str, Any]:
+    task_results = iteration.get("task_results") or []
+    selected_task_slug = iteration.get("selected_task_slug") or (task_results[0].get("task_slug") if task_results else None)
+    selected_result = next((item for item in task_results if item.get("task_slug") == selected_task_slug), task_results[0] if task_results else None)
+    report_payload = _load_optional_json(iteration.get("refinement_report_path"))
+    apply_payload = _load_optional_json(iteration.get("apply_result_path"))
+
+    root_cause_payload = ((report_payload or {}).get("root_cause") or {})
+    fix_plan_payload = ((report_payload or {}).get("fix_plan") or {})
+    section_edits = list(fix_plan_payload.get("section_edits") or [])
+    applied_changes = list((apply_payload or {}).get("applied_changes") or [])
+
+    changes: list[dict[str, Any]] = []
+    for index, edit in enumerate(section_edits):
+        applied = applied_changes[index] if index < len(applied_changes) else {}
+        changes.append(
+            {
+                "path": edit.get("path"),
+                "selector_type": edit.get("selector_type"),
+                "selector_value": edit.get("selector_value"),
+                "reason": edit.get("reason"),
+                "applied": applied.get("applied"),
+                "error": applied.get("error"),
+            }
+        )
+
+    return {
+        "iteration": iteration.get("iteration"),
+        "status": iteration.get("status"),
+        "selected_task_slug": selected_task_slug,
+        "selected_task_label": _format_task_label(selected_task_slug),
+        "overall_score": selected_result.get("overall_score") if selected_result else None,
+        "goal_achieved": selected_result.get("goal_achieved") if selected_result else None,
+        "min_criterion_score": selected_result.get("min_criterion_score") if selected_result else None,
+        "criterion_scores": selected_result.get("criterion_scores") if selected_result else [],
+        "root_cause_classification": _normalize_root_cause_category(root_cause_payload.get("root_cause_category")),
+        "root_cause_raw_category": root_cause_payload.get("root_cause_category"),
+        "root_cause_summary": root_cause_payload.get("primary_root_cause"),
+        "fix_summary": fix_plan_payload.get("summary"),
+        "fix_rationale": fix_plan_payload.get("rationale"),
+        "expected_improvement": fix_plan_payload.get("expected_improvement"),
+        "changes": changes,
+        "changed_paths": iteration.get("changed_paths") or [],
+        "git_commit_sha": iteration.get("git_commit_sha"),
+        "deploy_status": iteration.get("deploy_status"),
+        "task_results": task_results,
+    }
+
+
+def _performance_improvement_summary(iteration_summaries: list[dict[str, Any]], task_slugs: list[str]) -> dict[str, Any]:
+    by_task: list[dict[str, Any]] = []
+    for task_slug in task_slugs:
+        task_iterations = [item for item in iteration_summaries if item.get("selected_task_slug") == task_slug and item.get("overall_score") is not None]
+        if not task_iterations:
+            continue
+        first = task_iterations[0]
+        last = task_iterations[-1]
+        first_score = first.get("overall_score")
+        last_score = last.get("overall_score")
+        first_min = first.get("min_criterion_score")
+        last_min = last.get("min_criterion_score")
+        delta_score = (last_score - first_score) if isinstance(first_score, int) and isinstance(last_score, int) else None
+        delta_min = (last_min - first_min) if isinstance(first_min, int) and isinstance(last_min, int) else None
+        by_task.append(
+            {
+                "task_slug": task_slug,
+                "task_label": _format_task_label(task_slug),
+                "first_iteration": first.get("iteration"),
+                "final_iteration": last.get("iteration"),
+                "first_overall_score": first_score,
+                "final_overall_score": last_score,
+                "overall_score_delta": delta_score,
+                "first_min_criterion_score": first_min,
+                "final_min_criterion_score": last_min,
+                "min_criterion_score_delta": delta_min,
+                "goal_achieved_initially": first.get("goal_achieved"),
+                "goal_achieved_finally": last.get("goal_achieved"),
+            }
+        )
+
+    summary_text: str
+    if not by_task:
+        summary_text = "No scored iterations were available to summarize improvement."
+    elif len(by_task) == 1:
+        item = by_task[0]
+        summary_text = (
+            f"{item['task_label']} moved from {item['first_overall_score']}/10 to "
+            f"{item['final_overall_score']}/10."
+        )
+    else:
+        summary_text = "Improvement summary was generated for all tested scenarios."
+
+    return {"summary": summary_text, "by_task": by_task}
+
+
+def _write_pipeline_deliverables(pipeline_id: str, manifest: dict[str, Any] | None = None) -> None:
+    manifest = manifest or load_pipeline(pipeline_id)
+    _snapshot_starting_prompt_if_needed(pipeline_id)
+    deliverables_dir = _deliverables_dir(pipeline_id)
+    deliverables_dir.mkdir(parents=True, exist_ok=True)
+
+    starting_prompt = _starting_prompt_path(pipeline_id).read_text(encoding="utf-8") if _starting_prompt_path(pipeline_id).exists() else ""
+    final_prompt = _current_prompt_text()
+    _save_text(_final_prompt_path(pipeline_id), final_prompt)
+
+    task_scenarios = [_task_scenario(task_slug) for task_slug in manifest.get("task_slugs") or []]
+    iteration_summaries = [
+        _iteration_deliverable_summary(iteration)
+        for iteration in sorted(manifest.get("iterations") or [], key=lambda item: int(item.get("iteration") or 0))
+    ]
+    improvement = _performance_improvement_summary(iteration_summaries, list(manifest.get("task_slugs") or []))
+
+    structured_log = {
+        "pipeline_id": manifest.get("pipeline_id"),
+        "status": manifest.get("status"),
+        "stage": manifest.get("stage"),
+        "target_score": manifest.get("target_score"),
+        "max_iterations": manifest.get("max_iterations"),
+        "created_at": manifest.get("created_at"),
+        "updated_at": manifest.get("updated_at"),
+        "scenario_tested": task_scenarios,
+        "starting_prompt_path": str(_starting_prompt_path(pipeline_id)),
+        "final_prompt_path": str(_final_prompt_path(pipeline_id)),
+        "iterations": iteration_summaries,
+        "performance_improvement": improvement,
+    }
+    _save_json(_structured_log_path(pipeline_id), structured_log)
+
+    primary_task_slug = (manifest.get("task_slugs") or [None])[0]
+    primary_task_label = _format_task_label(primary_task_slug)
+    primary_scenario = task_scenarios[0] if task_scenarios else None
+    example_lines = [
+        f"# Recorded Example Run: {primary_task_label}",
+        "",
+        f"- Pipeline ID: `{manifest.get('pipeline_id')}`",
+        f"- Status: `{manifest.get('status')}`",
+        f"- Target score: `{manifest.get('target_score')}`",
+    ]
+    if primary_scenario:
+        example_lines.extend(
+            [
+                f"- Scenario: {primary_scenario['description']}",
+                f"- Starting user prompt: {primary_scenario['initial_user_intent']}",
+            ]
+        )
+    example_lines.extend(
+        [
+            "",
+            "## Scores Per Iteration",
+            "",
+            "| Iteration | Scenario | Overall | Lowest Criterion | Root Cause | Changed |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for item in iteration_summaries:
+        changed_count = len(item.get("changes") or [])
+        example_lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(item.get("iteration") or "—"),
+                    item.get("selected_task_label") or "—",
+                    f"{item.get('overall_score')}/10" if item.get("overall_score") is not None else "—",
+                    f"{item.get('min_criterion_score')}/10" if item.get("min_criterion_score") is not None else "—",
+                    item.get("root_cause_classification") or "—",
+                    str(changed_count),
+                ]
+            )
+            + " |"
+        )
+    example_lines.extend(
+        [
+            "",
+            "## Performance Improvement",
+            "",
+            improvement["summary"],
+            "",
+            "## Starting Prompt",
+            "",
+            "```md",
+            starting_prompt.strip(),
+            "```",
+            "",
+            "## Final Refined Prompt",
+            "",
+            "```md",
+            final_prompt.strip(),
+            "```",
+            "",
+        ]
+    )
+    _save_text(_example_run_path(pipeline_id), "\n".join(example_lines))
+
 def _all_tasks_meet_threshold(task_results: list[dict[str, Any]], target_score: int) -> bool:
     if not task_results:
         return False
@@ -893,6 +1178,7 @@ def start_pipeline(
     )
     _ensure_pipeline_dirs(pipeline_id)
     _save_manifest(manifest)
+    _write_pipeline_deliverables(pipeline_id, manifest)
     _append_event(
         pipeline_id,
         "pipeline_started",
@@ -1587,6 +1873,7 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
         iteration["status"] = "completed"
         iteration["finished_at"] = _now()
         _save_manifest(manifest)
+        _write_pipeline_deliverables(pipeline_id, manifest)
         _append_event(
             pipeline_id,
             "deploy_skipped",
@@ -1655,6 +1942,7 @@ def _apply_approved_iteration(pipeline_id: str, cancel_event: threading.Event) -
     iteration["status"] = "completed"
     iteration["finished_at"] = _now()
     _save_manifest(manifest)
+    _write_pipeline_deliverables(pipeline_id, manifest)
 
     _append_event(
         pipeline_id,

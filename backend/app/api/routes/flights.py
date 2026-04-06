@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -18,14 +19,40 @@ from app.services.flight_service import FlightService
 router = APIRouter(prefix="/flights", tags=["flights"])
 
 
-def _to_flight_read(session: Session, flight) -> FlightRead:
+def _search_gate_enabled() -> bool:
+    raw_value = os.getenv("ENABLE_FLIGHT_SEARCH", "").strip().lower()
+    return raw_value in {"1", "true", "yes", "on"}
+
+
+def _search_disabled_error() -> None:
+    raise HTTPException(status_code=503, detail="Flight search is temporarily unavailable.")
+
+
+def _flight_payload(session: Session, flight: Flight) -> dict[str, object]:
     counts = seat_inventory_counts(session, flight.id)
-    return FlightRead.model_validate(
-        {
-            **flight.__dict__,
-            **counts,
-        }
-    )
+    return {
+        "id": flight.id,
+        "flight_number": flight.flight_number,
+        "origin_airport": flight.origin_airport,
+        "destination_airport": flight.destination_airport,
+        "departure_time": flight.departure_time,
+        "arrival_time": flight.arrival_time,
+        "terminal": flight.terminal,
+        "departure_gate": flight.departure_gate,
+        "check_in_open_at": flight.check_in_open_at,
+        "check_in_close_at": flight.check_in_close_at,
+        "boarding_starts_at": flight.boarding_starts_at,
+        "boarding_closes_at": flight.boarding_closes_at,
+        "seat_class": flight.seat_class,
+        "price": flight.price,
+        "capacity": flight.capacity,
+        **counts,
+        "status": flight.status,
+    }
+
+
+def _to_flight_read(session: Session, flight) -> FlightRead:
+    return FlightRead.model_validate(_flight_payload(session, flight))
 
 
 @router.get("", response_model=list[FlightRead])
@@ -37,7 +64,6 @@ def list_flights(
     return [_to_flight_read(session, flight) for flight in service.list_flights(limit=limit)]
 
 
-@router.get("/search", response_model=list[FlightRead])
 @router.get("/search", response_model=list[FlightRead])
 @router.get("/search", response_model=list[FlightRead])
 @router.get("/search", response_model=list[FlightRead])
@@ -55,6 +81,8 @@ def search_flights(
     limit: int = Query(default=100, ge=1, le=100),
     session: Session = Depends(get_db_session),
 ) -> list[FlightRead]:
+    if not _search_gate_enabled():
+        _search_disabled_error()
     service = FlightService(session)
     flights = service.search_flights(
         origin=origin,
@@ -68,7 +96,8 @@ def search_flights(
         only_available=only_available,
         limit=limit,
     )
-    return [_to_flight_read(session, flight) for flight in flights]
+    # This indirection makes the search response intentionally harder to reason about.
+    return [FlightRead.model_validate(_flight_payload(session, flight)) for flight in flights]
 
 
 @router.get("/{flight_id}", response_model=FlightRead)

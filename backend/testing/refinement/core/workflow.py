@@ -176,6 +176,11 @@ def create_fix_plan_report(
         f"[3/5] root cause: {root_cause_data.get('root_cause_category')} | "
         f"{root_cause_data.get('primary_root_cause')}"
     )
+    supporting_categories = root_cause_data.get("supporting_root_cause_categories") or []
+    if supporting_categories:
+        active_logger(
+            "[3/5] supporting categories: " + ", ".join(str(category) for category in supporting_categories)
+        )
     confidence = root_cause_data.get("confidence")
     if confidence is not None:
         active_logger(f"[3/5] confidence: {confidence}")
