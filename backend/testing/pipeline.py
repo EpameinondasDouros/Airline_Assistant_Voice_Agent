@@ -281,15 +281,47 @@ def _list_manifest_paths() -> list[Path]:
     return sorted(PIPELINES_ROOT.glob("*/manifest.json"), key=lambda path: path.stat().st_mtime, reverse=True)
 
 
+def _required_deliverable_paths(pipeline_id: str) -> list[Path]:
+    return [
+        _starting_prompt_path(pipeline_id),
+        _final_prompt_path(pipeline_id),
+        _example_run_path(pipeline_id),
+        _structured_log_path(pipeline_id),
+    ]
+
+
+def _maybe_backfill_deliverables(manifest: dict[str, Any]) -> dict[str, Any]:
+    pipeline_id = str(manifest.get("pipeline_id") or "")
+    if not pipeline_id:
+        return manifest
+
+    status = str(manifest.get("status") or "")
+    has_iterations = bool(manifest.get("iterations"))
+    if not has_iterations and status not in TERMINAL_PIPELINE_STATUSES:
+        return manifest
+
+    deliverables_missing = any(not path.exists() for path in _required_deliverable_paths(pipeline_id))
+    if not deliverables_missing and status not in TERMINAL_PIPELINE_STATUSES:
+        return manifest
+
+    _write_pipeline_deliverables(pipeline_id, manifest)
+    return manifest
+
+
 def list_pipelines() -> list[dict[str, Any]]:
-    return [_load_json(path) for path in _list_manifest_paths()]
+    manifests: list[dict[str, Any]] = []
+    for path in _list_manifest_paths():
+        manifest = _load_json(path)
+        manifests.append(_maybe_backfill_deliverables(manifest))
+    return manifests
 
 
 def load_pipeline(pipeline_id: str) -> dict[str, Any]:
     path = _manifest_path(pipeline_id)
     if not path.exists():
         raise FileNotFoundError(f"Unknown pipeline '{pipeline_id}'.")
-    return _load_json(path)
+    manifest = _load_json(path)
+    return _maybe_backfill_deliverables(manifest)
 
 
 def load_pipeline_events(pipeline_id: str) -> list[dict[str, Any]]:

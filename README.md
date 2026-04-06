@@ -16,7 +16,7 @@ It includes:
 This is the simplest path.
 
 ```bash
-./start_frontend_local.sh
+./scripts/start_frontend_local.sh
 ```
 
 Open:
@@ -30,7 +30,7 @@ This uses the deployed airline backend by default.
 This is the one-file local path.
 
 ```bash
-./run_macos.sh
+./scripts/run_macos.sh
 ```
 
 That script:
@@ -51,9 +51,9 @@ Local URLs:
 
 - `backend/` FastAPI app, database, agent tools, testing pipeline
 - `frontend/` React/Vite UI
-- `run_macos.sh` one-command local setup and startup for macOS
-- `start_frontend_local.sh` frontend-only startup against the remote backend
-- `run_pipeline_local.sh` local pipeline runner
+- `scripts/run_macos.sh` one-command local setup and startup for macOS
+- `scripts/start_frontend_local.sh` frontend-only startup against the remote backend
+- `scripts/run_pipeline_local.sh` local pipeline runner
 
 ## Main Backend Endpoints
 
@@ -112,11 +112,11 @@ python -m testing.run_conversation_tests --task enquire_pet_policy
 Run the pipeline helper:
 
 ```bash
-./run_pipeline_local.sh --task book_flight
+./scripts/run_pipeline_local.sh --task book_flight
 ```
 
 ## Notes
 
 - The normal frontend path is remote-backed.
-- The full local path is `./run_macos.sh`.
+- The full local path is `./scripts/run_macos.sh`.
 - The repo also contains Docker/Compose files, but they are optional.

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 BACKEND_ENV_FILE="$BACKEND_DIR/.env"
@@ -70,7 +71,7 @@ echo
 echo "Next steps:"
 echo "1. If you want live ElevenLabs chat/testing, fill in backend/.env with ELEVENLABS_API_KEY and ELEVENLABS_AGENT_ID."
 echo "2. Start the full local stack with:"
-echo "   ./start_local_stack.sh"
+echo "   ./scripts/start_local_stack.sh"
 echo
 echo "App URLs:"
 echo "- Frontend: http://127.0.0.1:5173"

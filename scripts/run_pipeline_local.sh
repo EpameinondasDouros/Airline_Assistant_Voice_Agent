@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 PIPELINE_API_DEFAULT="${VITE_PIPELINE_API_BASE_URL:-http://127.0.0.1:8000}"
 PRODUCT_API_DEFAULT="${VITE_API_BASE_URL:-https://airlineassistantvoiceagent.up.railway.app}"
@@ -30,7 +31,7 @@ LAST_APPROVAL_MESSAGE=""
 
 usage() {
   cat <<EOF
-Usage: ./run_pipeline_local.sh --task <slug> [options]
+Usage: ./scripts/run_pipeline_local.sh --task <slug> [options]
 
 Options:
   --task <slug>             Task slug to run. Required.

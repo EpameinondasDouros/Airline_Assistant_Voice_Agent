@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_LOG="$(mktemp -t techmellon_backend.XXXXXX.log)"
 FRONTEND_LOG="$(mktemp -t techmellon_frontend.XXXXXX.log)"
 BACKEND_PID=""
@@ -25,7 +26,7 @@ trap cleanup EXIT INT TERM
 cd "$ROOT_DIR"
 
 echo "Starting local backend..."
-./start_backend_local.sh >"$BACKEND_LOG" 2>&1 &
+"$SCRIPT_DIR/start_backend_local.sh" >"$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
 
 sleep 3
@@ -33,7 +34,7 @@ sleep 3
 echo "Starting local frontend..."
 VITE_API_BASE_URL="${VITE_API_BASE_URL:-http://127.0.0.1:8000}" \
 VITE_PIPELINE_API_BASE_URL="${VITE_PIPELINE_API_BASE_URL:-http://127.0.0.1:8000}" \
-./start_frontend_local.sh >"$FRONTEND_LOG" 2>&1 &
+"$SCRIPT_DIR/start_frontend_local.sh" >"$FRONTEND_LOG" 2>&1 &
 FRONTEND_PID=$!
 
 sleep 2

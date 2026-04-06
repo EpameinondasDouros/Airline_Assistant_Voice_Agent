@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 BACKEND_ENV_FILE="$BACKEND_DIR/.env"
@@ -84,14 +85,14 @@ npm install
 echo
 echo "Step 5/5: starting backend and frontend"
 cd "$ROOT_DIR"
-./start_backend_local.sh >"$BACKEND_LOG" 2>&1 &
+"$SCRIPT_DIR/start_backend_local.sh" >"$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
 
 sleep 3
 
 VITE_API_BASE_URL="${VITE_API_BASE_URL:-http://127.0.0.1:8000}" \
 VITE_PIPELINE_API_BASE_URL="${VITE_PIPELINE_API_BASE_URL:-http://127.0.0.1:8000}" \
-./start_frontend_local.sh >"$FRONTEND_LOG" 2>&1 &
+"$SCRIPT_DIR/start_frontend_local.sh" >"$FRONTEND_LOG" 2>&1 &
 FRONTEND_PID=$!
 
 sleep 2
