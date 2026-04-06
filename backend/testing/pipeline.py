@@ -925,6 +925,7 @@ def _iteration_deliverable_summary(iteration: dict[str, Any]) -> dict[str, Any]:
         "goal_achieved": selected_result.get("goal_achieved") if selected_result else None,
         "min_criterion_score": selected_result.get("min_criterion_score") if selected_result else None,
         "criterion_scores": selected_result.get("criterion_scores") if selected_result else [],
+        "criterion_score_lookup": _criterion_score_lookup(selected_result.get("criterion_scores") if selected_result else []),
         "root_cause_classification": _normalize_root_cause_category(root_cause_payload.get("root_cause_category")),
         "root_cause_raw_category": root_cause_payload.get("root_cause_category"),
         "root_cause_summary": root_cause_payload.get("primary_root_cause"),
@@ -1060,6 +1061,37 @@ def _write_pipeline_deliverables(pipeline_id: str, manifest: dict[str, Any] | No
             )
             + " |"
         )
+    criterion_order: list[str] = []
+    for item in iteration_summaries:
+        for criterion in (item.get("criterion_score_lookup") or {}).keys():
+            if criterion and criterion not in criterion_order:
+                criterion_order.append(criterion)
+    if criterion_order:
+        example_lines.extend(
+            [
+                "",
+                "## Metric Scores Per Iteration",
+                "",
+                "| Iteration | Scenario | " + " | ".join(criterion.replace("_", " ").title() for criterion in criterion_order) + " |",
+                "| --- | --- | " + " | ".join("---" for _ in criterion_order) + " |",
+            ]
+        )
+        for item in iteration_summaries:
+            score_lookup = item.get("criterion_score_lookup") or {}
+            example_lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        str(item.get("iteration") or "—"),
+                        item.get("selected_task_label") or "—",
+                        *[
+                            f"{score_lookup.get(criterion)}/10" if score_lookup.get(criterion) is not None else "—"
+                            for criterion in criterion_order
+                        ],
+                    ]
+                )
+                + " |"
+            )
     example_lines.extend(
         [
             "",

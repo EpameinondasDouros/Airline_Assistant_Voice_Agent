@@ -14,6 +14,11 @@
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
+html, body, #root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
 body {
   margin: 0;
   min-width: 320px;
@@ -25,7 +30,12 @@ a { color: inherit; text-decoration: none; }
 button, input { font: inherit; }
 .material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24; }
 
-.app-shell { min-height: 100vh; }
+.app-shell {
+  min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
 
 .topbar {
   position: fixed; inset: 0 0 auto 0; z-index: 20;
@@ -1528,6 +1538,7 @@ button, input { font: inherit; }
 .pipeline-step-list {
   display: grid;
   gap: 0.75rem;
+  min-width: 0;
 }
 .pipeline-event-card,
 .pipeline-detail-event,
@@ -1540,6 +1551,7 @@ button, input { font: inherit; }
   border: 1px solid rgba(124, 138, 137, 0.14);
   text-align: left;
   color: var(--ink);
+  min-width: 0;
 }
 .pipeline-event-card {
   width: 100%;
@@ -1552,12 +1564,18 @@ button, input { font: inherit; }
 .pipeline-event-card__meta {
   display: flex;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 0.75rem;
   color: var(--muted);
   font-size: 0.74rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  min-width: 0;
+}
+.pipeline-event-card__meta span,
+.pipeline-event-card__meta time {
+  overflow-wrap: anywhere;
 }
 .pipeline-event-card p,
 .pipeline-detail-event p,
@@ -1565,6 +1583,7 @@ button, input { font: inherit; }
   margin: 0;
   white-space: pre-wrap;
   line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 .pipeline-metric-grid {
   display: grid;
@@ -1578,15 +1597,19 @@ button, input { font: inherit; }
   border-radius: 1rem;
   border: 1px solid rgba(124, 138, 137, 0.16);
   background: rgba(255, 255, 255, 0.9);
+  min-width: 0;
 }
 .pipeline-metric-card__head {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.75rem;
+  min-width: 0;
 }
 .pipeline-metric-card__head strong {
   font-size: 0.92rem;
+  overflow-wrap: anywhere;
 }
 .pipeline-metric-card__head span {
   display: inline-flex;
@@ -1601,6 +1624,7 @@ button, input { font: inherit; }
 .pipeline-metric-card p {
   margin: 0;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .pipeline-metric-card--success {
   background: rgba(223, 244, 230, 0.88);
@@ -1641,6 +1665,7 @@ button, input { font: inherit; }
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(173, 122, 23, 0.2);
+  min-width: 0;
 }
 .pipeline-evaluation-summary__head {
   display: flex;
@@ -1656,6 +1681,7 @@ button, input { font: inherit; }
 .pipeline-evaluation-summary p {
   margin: 0;
   line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 .pipeline-evaluation-details {
   display: grid;
@@ -1672,6 +1698,7 @@ button, input { font: inherit; }
   align-items: flex-start;
   gap: 1rem;
   padding: 0.95rem 1rem;
+  min-width: 0;
 }
 .pipeline-evaluation-details__summary::-webkit-details-marker {
   display: none;
@@ -1852,6 +1879,7 @@ button, input { font: inherit; }
   font-size: 0.78rem;
   font-weight: 700;
   color: var(--ink);
+  overflow-wrap: anywhere;
 }
 .pipeline-code-summary {
   display: flex;
