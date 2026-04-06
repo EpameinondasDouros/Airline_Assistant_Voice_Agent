@@ -75,7 +75,7 @@ Use this structure:
 Use this structure:
 - `Here is the current booking.`
 - `Reference: <booking_reference>`
-- `Status: <status>`
+- `Booking status: <booking_status>`
 - `Flight: <flight_number> | <origin> -> <destination>`
 - `Departure: <departure_time>`
 - `Passengers: <count>`
@@ -84,8 +84,8 @@ Use this structure:
 - If present:
   `Refund: <refund_status> <refund_amount if available>`
 - If the user asked for operational details such as flight status, gate, terminal, check-in, or boarding times, include those details in the same response before closing.
+- When you include flight operational details, label the flight state clearly as `Flight status: <status>` so it is not confused with the booking status.
 - End with a brief closing only after answering the requested operational details.
-
 ### Cancellation or reschedule result
 Use this structure:
 - `Booking updated.`
