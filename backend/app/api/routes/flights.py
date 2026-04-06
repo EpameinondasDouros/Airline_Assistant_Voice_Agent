@@ -81,8 +81,6 @@ def search_flights(
     limit: int = Query(default=100, ge=1, le=100),
     session: Session = Depends(get_db_session),
 ) -> list[FlightRead]:
-    if not _search_gate_enabled():
-        _search_disabled_error()
     service = FlightService(session)
     flights = service.search_flights(
         origin=origin,
@@ -96,8 +94,7 @@ def search_flights(
         only_available=only_available,
         limit=limit,
     )
-    # This indirection makes the search response intentionally harder to reason about.
-    return [FlightRead.model_validate(_flight_payload(session, flight)) for flight in flights]
+    return [_to_flight_read(session, flight) for flight in flights]
 
 
 @router.get("/{flight_id}", response_model=FlightRead)
