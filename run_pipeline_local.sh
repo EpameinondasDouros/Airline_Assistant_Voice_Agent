@@ -17,7 +17,7 @@ TARGET_SCORE=8
 MAX_ITERATIONS=5
 REVIEW_MODEL="openai:gpt-5.4"
 FIXER_MODEL="openai:gpt-5.4"
-AUTO_APPROVE=false
+AUTO_APPROVE=true
 SKIP_FIXTURE_RESET=true
 POLL_INTERVAL=2
 PIPELINE_API="$PIPELINE_API_DEFAULT"
@@ -694,7 +694,7 @@ print_step "product backend: reachable at $PRODUCT_API"
 
 print_stage "Start Pipeline"
 
-CREATE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"task_slugs":[sys.argv[1]],"target_score":int(sys.argv[2]),"max_iterations":int(sys.argv[3]),"review_model":sys.argv[4],"fixer_model":sys.argv[5],"require_manual_approval":True,"skip_fixture_reset":sys.argv[6].lower()=="true"}))' "$TASK_SLUG" "$TARGET_SCORE" "$MAX_ITERATIONS" "$REVIEW_MODEL" "$FIXER_MODEL" "$SKIP_FIXTURE_RESET")"
+CREATE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"task_slugs":[sys.argv[1]],"target_score":int(sys.argv[2]),"max_iterations":int(sys.argv[3]),"review_model":sys.argv[4],"fixer_model":sys.argv[5],"require_manual_approval":False,"skip_fixture_reset":sys.argv[6].lower()=="true"}))' "$TASK_SLUG" "$TARGET_SCORE" "$MAX_ITERATIONS" "$REVIEW_MODEL" "$FIXER_MODEL" "$SKIP_FIXTURE_RESET")"
 request_json "POST" "$PIPELINE_API/api/testing/pipelines" "$CREATE_BODY"
 PIPELINE_JSON="$RESPONSE_BODY"
 PIPELINE_ID="$(pipeline_summary_field "$PIPELINE_JSON" "pipeline_id")"

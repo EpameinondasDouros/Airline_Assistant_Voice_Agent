@@ -1159,7 +1159,7 @@ def start_pipeline(
     max_iterations: int = 5,
     review_model: str = "openai:gpt-4o-mini",
     fixer_model: str = "openai:gpt-4o-mini",
-    require_manual_approval: bool = True,
+    require_manual_approval: bool = False,
     skip_fixture_reset: bool = True,
 ) -> dict[str, Any]:
     for slug in task_slugs:
