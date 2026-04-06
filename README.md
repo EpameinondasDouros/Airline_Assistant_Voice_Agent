@@ -1,89 +1,81 @@
 # TechMellon Airline Assistant Voice Agent
 
-Airline customer-service assistant built for the TechMellon Forward Deployment Engineer assessment.
+## Repo Structure
 
-It includes:
+```text
+Airline_Assistant_Voice_Agent/
+├── backend/    FastAPI app, agent logic, testing pipeline
+├── frontend/   React app
+├── scripts/    local run and setup scripts
+└── README.md
+```
 
-- a FastAPI backend with flights, bookings, extras, and knowledge-base endpoints
-- an ElevenLabs-backed airline assistant
-- a React frontend for search, chat, bookings, and testing
-- a testing/refinement loop with evaluator and root-cause analysis
+## Quick Start
 
-## Fastest Ways To Run
+### Frontend Only
 
-### Normal Usage: Remote Backend
-
-This is the simplest path.
+Use this when you just want to open the UI against the deployed backend:
 
 ```bash
 ./scripts/start_frontend_local.sh
 ```
 
-Open:
+Open `http://127.0.0.1:5173`
 
-- `http://127.0.0.1:5173`
+### Full Local Run on macOS
 
-This uses the deployed airline backend by default.
-
-### Full Local Setup + Run On macOS
-
-This is the one-file local path.
+Use this when you want backend + frontend locally:
 
 ```bash
 ./scripts/run_macos.sh
 ```
 
-That script:
-
-- installs backend dependencies
-- creates `backend/.env` if needed
-- runs migrations
-- seeds flights, bookings, and knowledge data
-- installs frontend dependencies
-- starts backend and frontend
+This sets up dependencies, prepares the backend, and starts both apps.
 
 Local URLs:
 
-- frontend: `http://127.0.0.1:5173`
-- backend: `http://127.0.0.1:8000`
+- Frontend: `http://127.0.0.1:5173`
+- Backend: `http://127.0.0.1:8000`
 
-## Main Files
+## APIs And Tools Used
 
-- `backend/` FastAPI app, database, agent tools, testing pipeline
-- `frontend/` React/Vite UI
-- `scripts/run_macos.sh` one-command local setup and startup for macOS
-- `scripts/start_frontend_local.sh` frontend-only startup against the remote backend
-- `scripts/run_pipeline_local.sh` local pipeline runner
+- `FastAPI` for backend APIs
+- `React + Vite` for the frontend
+- `ElevenLabs` for voice agent orchestration and live conversational flows
+- `OpenAI` models in the evaluation and refinement loop
+- `SQLite + Alembic` for local persistence and migrations
+- local shell scripts in `scripts/` for setup, startup, and pipeline runs
 
-## Main Backend Endpoints
+## Multi-Agent Layering
 
-- `GET /health`
-- `GET /api/flights`
-- `GET /api/flights/search`
-- `POST /api/bookings`
-- `GET /api/bookings/{booking_reference}`
-- `POST /api/bookings/{booking_reference}/cancel`
-- `POST /api/bookings/{booking_reference}/reschedule`
-- `POST /api/bookings/{booking_reference}/extras`
-- `GET /api/knowledge/{topic}`
-- `POST /api/chat`
-- `GET /api/testing/tasks`
-- `GET /api/testing/runs`
-- `GET /api/testing/pipelines`
+The system is split into clear layers instead of using one single agent:
 
-## Refinement Loop
+- product/API layer: flights, bookings, extras, knowledge, and chat endpoints
+- conversation layer: the airline assistant, with ElevenLabs voice/chat integration
+- evaluation layer: test conversations, scoring, and failure detection
+- refinement layer: critic/root-cause/fixer style agents that review bad runs and propose updates
 
-Flow:
+This layering was chosen to keep runtime behavior, evaluation, and improvement workflows separate.
 
-`Chatting -> Evaluating -> Root Cause -> Fixer -> Refinement -> Update -> Repeat/Stop`
+## How To Check The App
 
-FigJam diagram:
+- Pages `Search` and `All Flights` are mainly for checking reasons and verifying the actual agent outputs and their correctness.
+- To test all chats, go to the `Test` page and press `Test All`.
+- To run the pipeline, go to the `Refinement` page, select a scenario, and press `Run Pipeline`.
+- To inspect an older pipeline run, select it from the dropdown on the `Refinement` page.
 
-- [Refinement Loop Pipeline](https://www.figma.com/online-whiteboard/create-diagram/83e505bc-13ae-4a0e-a661-53a6156d7d61?utm_source=other&utm_content=edit_in_figjam&oai_id=&request_id=7c52cf39-da34-4cae-9a7a-698ac3678af7)
+## Main Scripts
 
-## ElevenLabs Notes
+- `./scripts/start_frontend_local.sh` starts the frontend against the deployed backend
+- `./scripts/run_macos.sh` runs the full local setup and starts both apps
+- `./scripts/start_local_stack.sh` starts local backend + frontend if setup is already done
+- `./scripts/run_pipeline_local.sh --task book_flight` runs a pipeline task locally
 
-If you want live ElevenLabs chat or testing, fill in `backend/.env` with:
+## ElevenLabs
+
+ElevenLabs is used as the live voice/chat interface layer. The backend provides the domain data and tools, while ElevenLabs handles the conversational surface.
+
+If you want live ElevenLabs chat/testing, add these values to `backend/.env`:
 
 ```text
 ELEVENLABS_API_KEY=...
@@ -91,32 +83,24 @@ ELEVENLABS_AGENT_ID=...
 ELEVENLABS_REQUIRES_AUTH=false
 ```
 
-If ElevenLabs needs to call your local backend, set:
+If ElevenLabs needs to call your local backend, also set:
 
 ```text
 BACKEND_PUBLIC_URL=http://127.0.0.1:8000
 ```
 
-or replace it with a public tunnel URL.
+## Tradeoffs Made
 
-## Testing
+- kept local scripts simple instead of introducing a full container/orchestration setup first
+- separated product chat from refinement/testing logic so iteration is easier, at the cost of more moving parts
+- used a practical evaluation loop with task scenarios and scores, not a full generalized agent platform yet
+- optimized for demo speed and debugging clarity over production hardening
 
-Run a local testing task:
+## What I Would Improve Next
 
-```bash
-cd backend
-source .venv/bin/activate
-python -m testing.run_conversation_tests --task enquire_pet_policy
-```
-
-Run the pipeline helper:
-
-```bash
-./scripts/run_pipeline_local.sh --task book_flight
-```
-
-## Notes
-
-- The normal frontend path is remote-backed.
-- The full local path is `./scripts/run_macos.sh`.
-- The repo also contains Docker/Compose files, but they are optional.
+- add `Docker` and `docker-compose` for a cleaner one-command local setup
+- move deployment and infrastructure toward `AWS` for more production-like hosting and scaling
+- add large-scale automated testing across more scenarios, longer conversations, and regression suites
+- track more metrics: tool success rate, hallucination rate, recovery rate, latency, task completion quality, and per-step agent scores
+- introduce more specialized agents with clearer responsibilities and stronger coordination rules
+- evolve the refinement pipeline into a more general reusable framework for agent evaluation, failure analysis, and iterative improvement across domains
