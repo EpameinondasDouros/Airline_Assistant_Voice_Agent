@@ -31,7 +31,7 @@ htmlcov/
 *.sqlite3
 backend/testing/outputs/*.json
 backend/testing/refinement/reports/*.json
-backend/testing/pipelines/
+
 
 # Build / packaging
 build/
@@ -53,5 +53,3 @@ vite.svg
 # IDEs
 .vscode/
 .idea/
-
-test_git_push.sh

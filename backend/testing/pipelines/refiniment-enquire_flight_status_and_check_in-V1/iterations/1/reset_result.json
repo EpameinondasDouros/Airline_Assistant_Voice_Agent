@@ -1,0 +1,6 @@
+{
+  "mode": "skipped",
+  "success": true,
+  "reset_mode": "never",
+  "reason": "Fixture reset is permanently disabled. Pipeline runs preserve existing staging data."
+}
