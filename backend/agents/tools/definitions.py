@@ -70,7 +70,8 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
                 "Use this tool when the caller wants the next available flight between two airports. "
                 "Ask for both origin and destination airport codes before calling. "
                 "If the caller asks for a seat class or a seat preference like window, aisle, or extra_legroom, include it. "
-                "It returns up to 3 available flights sorted by earliest departure."
+                "Set limit to 3 unless the caller explicitly asks for more or fewer options. "
+                "It returns available flights sorted by earliest departure."
             ),
             url=f"{api_base}/api/flights/search",
             method="GET",
@@ -92,9 +93,11 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
                     ),
                     "sort_by": _constant_string("departure_time"),
                     "only_available": _constant_string("true"),
-                    "limit": _constant_string("3"),
+                    "limit": _llm_integer(
+                        "How many flight options to return. Use 3 unless the caller asks for more or fewer. Keep it between 1 and 100."
+                    ),
                 },
-                required=["origin", "destination"],
+                required=["origin", "destination", "limit"],
             ),
         ),
         _tool(
@@ -103,7 +106,8 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
                 "Use this tool when the caller asks for the cheapest available tickets between two airports in the currently "
                 "available week of inventory. Ask for both origin and destination airport codes before calling. "
                 "If the caller asks for a seat class or a seat preference like window, aisle, or extra_legroom, include it. "
-                "It returns up to 3 available flights sorted by lowest price."
+                "Set limit to 3 unless the caller explicitly asks for more or fewer options. "
+                "It returns available flights sorted by lowest price."
             ),
             url=f"{api_base}/api/flights/search",
             method="GET",
@@ -121,9 +125,11 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
                     ),
                     "sort_by": _constant_string("price"),
                     "only_available": _constant_string("true"),
-                    "limit": _constant_string("3"),
+                    "limit": _llm_integer(
+                        "How many flight options to return. Use 3 unless the caller asks for more or fewer. Keep it between 1 and 100."
+                    ),
                 },
-                required=["origin", "destination"],
+                required=["origin", "destination", "limit"],
             ),
         ),
         _tool(
@@ -132,7 +138,8 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
                 "Use this tool when the caller explicitly wants flights that support a specific seat preference such as "
                 "window, aisle, or extra_legroom. Ask for origin, destination, and the requested seat preference before calling. "
                 "Include seat_class if the caller specifies economy, premium_economy, or business. "
-                "It returns up to 3 available flights sorted by earliest departure."
+                "Set limit to 3 unless the caller explicitly asks for more or fewer options. "
+                "It returns available flights sorted by earliest departure."
             ),
             url=f"{api_base}/api/flights/search",
             method="GET",
@@ -150,9 +157,11 @@ def build_tool_definitions(base_url: str) -> list[dict[str, Any]]:
                     ),
                     "sort_by": _constant_string("departure_time"),
                     "only_available": _constant_string("true"),
-                    "limit": _constant_string("3"),
+                    "limit": _llm_integer(
+                        "How many flight options to return. Use 3 unless the caller asks for more or fewer. Keep it between 1 and 100."
+                    ),
                 },
-                required=["origin", "destination", "seat_preference"],
+                required=["origin", "destination", "seat_preference", "limit"],
             ),
         ),
         _tool(
