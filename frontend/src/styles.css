@@ -1273,6 +1273,83 @@ button, input { font: inherit; }
   display: grid;
   gap: 1rem;
 }
+.pipeline-reports-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.2rem;
+}
+.pipeline-reports-menu {
+  position: relative;
+}
+.pipeline-reports-menu__summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+  padding: 0.78rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 101, 101, 0.16);
+  background: rgba(0, 101, 101, 0.08);
+  color: var(--primary);
+  font-weight: 800;
+}
+.pipeline-reports-menu__summary::-webkit-details-marker {
+  display: none;
+}
+.pipeline-reports-menu__body {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.6rem);
+  z-index: 3;
+  width: min(24rem, 85vw);
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(124, 138, 137, 0.16);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: var(--shadow);
+}
+.pipeline-reports-menu__intro {
+  display: grid;
+  gap: 0.18rem;
+}
+.pipeline-reports-menu__intro strong {
+  font-size: 0.94rem;
+}
+.pipeline-reports-menu__intro small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+.pipeline-reports-links {
+  display: grid;
+  gap: 0.65rem;
+}
+.pipeline-report-link {
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.82rem 0.92rem;
+  border-radius: 0.95rem;
+  border: 1px solid rgba(124, 138, 137, 0.14);
+  background: rgba(248, 250, 249, 0.92);
+  color: var(--ink);
+  text-decoration: none;
+}
+.pipeline-report-link span {
+  font-weight: 800;
+}
+.pipeline-report-link small {
+  color: var(--muted);
+}
+.pipeline-report-link:hover {
+  border-color: rgba(0, 101, 101, 0.26);
+  background: rgba(0, 101, 101, 0.06);
+}
+.pipeline-report-link--disabled {
+  opacity: 0.58;
+  pointer-events: none;
+}
 .pipeline-accordion {
   display: grid;
   gap: 0;
@@ -2281,6 +2358,17 @@ button, input { font: inherit; }
   .pipeline-composite-card__head {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .pipeline-reports-footer {
+    justify-content: stretch;
+  }
+  .pipeline-reports-menu,
+  .pipeline-reports-menu__summary {
+    width: 100%;
+  }
+  .pipeline-reports-menu__body {
+    position: static;
+    width: 100%;
   }
   .pipeline-composite-grid,
   .testing-workspace,

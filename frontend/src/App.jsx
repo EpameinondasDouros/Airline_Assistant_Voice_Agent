@@ -5,6 +5,8 @@ import {
   createBooking,
   getTestingPipeline,
   getTestingPipelineApplyResult,
+  getTestingPipelineDeliverables,
+  getTestingPipelineDeliverableUrl,
   getTestingPipelineEvents,
   listAllTripsBooked,
   listFlights,
@@ -835,6 +837,8 @@ function App() {
   const [expandedPipelineIterations, setExpandedPipelineIterations] = useState([]);
   const [expandedPipelineSections, setExpandedPipelineSections] = useState({});
   const [pipelineApplyResults, setPipelineApplyResults] = useState({});
+  const [pipelineDeliverables, setPipelineDeliverables] = useState(null);
+  const [pipelineDeliverablesError, setPipelineDeliverablesError] = useState("");
   const [testingConversation, setTestingConversation] = useState([]);
   const [testingLiveEvents, setTestingLiveEvents] = useState([]);
   const [testingLogLines, setTestingLogLines] = useState([]);
@@ -1370,10 +1374,14 @@ function App() {
       setSelectedPipeline(null);
       setSelectedPipelineEvents([]);
       setPipelineApplyResults({});
+      setPipelineDeliverables(null);
+      setPipelineDeliverablesError("");
       setExpandedPipelineSections({});
       return;
     }
     setPipelineApplyResults({});
+    setPipelineDeliverables(null);
+    setPipelineDeliverablesError("");
     setExpandedPipelineSections({});
     refreshPipelineDetails(selectedPipelineId).catch((error) => {
       setPipelineStatus(error.message);
@@ -1465,6 +1473,29 @@ function App() {
     }, 2000);
     return () => window.clearInterval(interval);
   }, [screen, selectedPipelineId, selectedPipeline?.status]);
+
+  useEffect(() => {
+    if (!selectedPipelineId || String(effectivePipelineSummary.status || "") !== "completed") {
+      setPipelineDeliverables(null);
+      setPipelineDeliverablesError("");
+      return;
+    }
+    let canceled = false;
+    setPipelineDeliverablesError("");
+    getTestingPipelineDeliverables(selectedPipelineId)
+      .then((payload) => {
+        if (canceled) return;
+        setPipelineDeliverables(payload);
+      })
+      .catch((error) => {
+        if (canceled) return;
+        setPipelineDeliverables(null);
+        setPipelineDeliverablesError(error.message);
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [selectedPipelineId, effectivePipelineSummary.status]);
 
   function loadBookedTrips({ silent = false } = {}) {
     if (!silent) {
@@ -3078,6 +3109,57 @@ function App() {
                     <p className="testing-muted">No pipeline iterations yet.</p>
                   )}
                 </div>
+
+                {selectedPipelineId && String(effectivePipelineSummary.status || "") === "completed" ? (
+                  <div className="pipeline-reports-footer">
+                    <details className="pipeline-reports-menu">
+                      <summary className="pipeline-reports-menu__summary">
+                        <span className="material-symbols-outlined">description</span>
+                        <span>Reports</span>
+                      </summary>
+                      <div className="pipeline-reports-menu__body">
+                        <div className="pipeline-reports-menu__intro">
+                          <strong>Pipeline deliverables</strong>
+                          <small>Download the recorded run, structured log, and prompt snapshots.</small>
+                        </div>
+                        {pipelineDeliverablesError ? (
+                          <p className="testing-muted">{pipelineDeliverablesError}</p>
+                        ) : !pipelineDeliverables ? (
+                          <p className="testing-muted">Loading report links...</p>
+                        ) : (
+                          <div className="pipeline-reports-links">
+                            {[
+                              ["recorded_example_run", "Recorded example run"],
+                              ["pipeline_run_log", "Structured log"],
+                              ["starting_prompt", "Starting prompt"],
+                              ["final_prompt", "Final prompt"],
+                            ].map(([key, label]) => {
+                              const file = pipelineDeliverables?.files?.[key];
+                              const href = file?.exists ? getTestingPipelineDeliverableUrl(selectedPipelineId, key) : null;
+                              return href ? (
+                                <a
+                                  className="pipeline-report-link"
+                                  key={key}
+                                  href={href}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <span>{label}</span>
+                                  <small>{file.filename}</small>
+                                </a>
+                              ) : (
+                                <span className="pipeline-report-link pipeline-report-link--disabled" key={key}>
+                                  <span>{label}</span>
+                                  <small>Not available</small>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  </div>
+                ) : null}
               </section>
 
             </section>
