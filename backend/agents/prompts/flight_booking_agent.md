@@ -69,8 +69,8 @@ Use this structure:
   `Seat assignment is based on the flight seat inventory.`
 - If present:
   `Extras: <summary>`
-- End with one short next-step sentence only if useful.
-
+- End the booking conversation with a brief closing that repeats the booking reference, such as:
+  `Your booking is confirmed under reference <booking_reference>.`
 ### Booking lookup
 Use this structure:
 - `Here is the current booking.`
