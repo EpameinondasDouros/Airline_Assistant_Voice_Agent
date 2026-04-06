@@ -2753,32 +2753,19 @@ function App() {
                           {expanded ? (
                             <div className="pipeline-accordion__content">
                               {iteration.sections.map((section) => {
-                                const codeChanges = section.key === "code_change" ? iteration.applyResult : null;
-                                const hasCodeChanges = Boolean(
-                                  codeChanges &&
-                                    (codeChanges.error ||
-                                      (Array.isArray(codeChanges.applied_changes) && codeChanges.applied_changes.length))
-                                );
                                 const sectionId = `${iteration.iterationNumber}:${section.key}`;
-                                const defaultSectionExpanded = ["testing", "evaluation", "artifacts"].includes(section.key);
+                                const defaultSectionExpanded = ["testing", "analysis_planning", "implementation", "changed_snippets"].includes(section.key);
                                 const sectionExpanded = expandedPipelineSections[sectionId] ?? defaultSectionExpanded;
-                                const artifactCodeChanges = iteration.codeChangeEntries || [];
-                                const codeChangeCount = artifactCodeChanges.filter((change) => change.applied).length;
-                                const agentSyncStatus = iteration.agentSyncStatus || { label: "Not needed", tone: "neutral" };
-                                const agentSyncLog = stripAnsi(
-                                  [iteration.agentSyncLogEvent?.stdout, iteration.agentSyncLogEvent?.stderr].filter(Boolean).join("\n")
-                                ).trim();
-                                const railwayStatus = iteration.railwayStatus || { label: "Not needed", tone: "neutral" };
-                                const latestRailwayEvent = iteration.latestRailwayEvent || null;
-                                const latestRailwayElapsed = latestRailwayEvent?.elapsed_seconds;
-                                const latestRailwayCommit =
-                                  latestRailwayEvent?.deployed_commit_sha || latestRailwayEvent?.commit_sha || null;
+                                const changedSnippets = iteration.codeChangeEntries || [];
+                                const changedSnippetCount = changedSnippets.filter((change) => change.applied).length;
                                 const evaluationSummary = iteration.evaluationCompletePayload || {};
                                 const sectionEventCount =
                                   section.key === "testing"
                                     ? (section.transcriptTurns?.length || 0) + (section.events?.length || 0)
-                                    : section.key === "artifacts"
-                                      ? artifactCodeChanges.length + iteration.agentSyncEvents.length + iteration.railwayWaitEvents.length
+                                    : section.key === "changed_snippets"
+                                      ? changedSnippets.length
+                                      : section.key === "analysis_planning"
+                                        ? (section.analysisEvents?.length || 0) + (section.planningEvents?.length || 0)
                                       : section.events.length;
                                 return (
                                 <section className={`pipeline-phase-section pipeline-phase-section--${section.key}`} key={`${iteration.iterationNumber}-${section.key}`}>
@@ -2830,213 +2817,34 @@ function App() {
                                     ) : (
                                       <p className="testing-muted">{section.emptyText}</p>
                                     )
-                                  ) : section.key === "artifacts" ? (
-                                    <div className="pipeline-artifact-groups">
-                                      <details className="pipeline-artifact-card pipeline-artifact-card--code">
-                                        <summary className="pipeline-artifact-card__summary">
-                                          <div className="pipeline-artifact-card__summary-copy">
-                                            <span className="eyebrow">Changed code</span>
-                                            <strong>
-                                              {artifactCodeChanges.length
-                                                ? `${codeChangeCount} changed snippet${codeChangeCount === 1 ? "" : "s"}`
-                                                : "No changed snippets"}
-                                            </strong>
-                                            <small>
-                                              {artifactCodeChanges.length
-                                                ? `${artifactCodeChanges.map((change) => change.path).filter(Boolean).slice(0, 3).join(" · ")}${artifactCodeChanges.length > 3 ? " · ..." : ""}`
-                                                : "Only the changed section snippets appear here."}
-                                            </small>
-                                          </div>
-                                          <span className={`pipeline-artifact-badge pipeline-artifact-badge--${artifactCodeChanges.length ? "success" : "neutral"}`}>
-                                            {artifactCodeChanges.length ? `${codeChangeCount} applied` : "empty"}
-                                          </span>
-                                        </summary>
-                                        {artifactCodeChanges.length ? (
-                                          <div className="pipeline-code-changes">
-                                            <div className="pipeline-code-summary">
-                                              <span>{codeChangeCount} applied change{codeChangeCount === 1 ? "" : "s"}</span>
-                                              {iteration.record?.git_commit_sha ? <span>Commit {formatCommitShort(iteration.record.git_commit_sha)}</span> : null}
-                                              {typeof iteration.applyResult?.compile_result?.success === "boolean" ? (
-                                                <span>Validation {iteration.applyResult.compile_result.success ? "passed" : "failed"}</span>
-                                              ) : null}
-                                            </div>
-                                            {artifactCodeChanges.map((change, index) => (
-                                              <details className="pipeline-change-card" key={`${change.path}-${change.selector_value}-${index}`} open={artifactCodeChanges.length === 1 || index === 0}>
-                                                <summary className="pipeline-change-card__summary">
-                                                  <div className="pipeline-change-card__summary-copy">
-                                                    <strong>{change.path}</strong>
-                                                    <span>{change.selector_type}:{change.selector_value}</span>
-                                                  </div>
-                                                  <span>{change.applied ? "Applied" : "Not applied"}</span>
-                                                </summary>
-                                                {(() => {
-                                                  const diffRows = buildSnippetDiffRows(change.before_content, change.after_content);
-                                                  const diffSummary = summarizeSnippetDiff(diffRows);
-                                                  return (
-                                                    <>
-                                                      <div className="pipeline-change-meta">
-                                                        <span className={`pipeline-change-pill pipeline-change-pill--${change.applied ? "success" : "neutral"}`}>
-                                                          {change.applied ? "Applied" : "Preview only"}
-                                                        </span>
-                                                        {diffSummary.added ? (
-                                                          <span className="pipeline-change-pill pipeline-change-pill--add">+{diffSummary.added} added</span>
-                                                        ) : null}
-                                                        {diffSummary.removed ? (
-                                                          <span className="pipeline-change-pill pipeline-change-pill--remove">-{diffSummary.removed} removed</span>
-                                                        ) : null}
-                                                      </div>
-                                                      {change.error ? <p className="testing-muted">{change.error}</p> : null}
-                                                      <div className="pipeline-change-diff pipeline-change-diff--unified">
-                                                        <div className="pipeline-change-diff__header">
-                                                          <span>Changed lines</span>
-                                                          <small>Showing the edited snippet only</small>
-                                                        </div>
-                                                        <div className="pipeline-diff-view">
-                                                          {diffRows.length ? diffRows.map((row, rowIndex) => (
-                                                            row.type === "skipped" ? (
-                                                              <div className="pipeline-diff-row pipeline-diff-row--skipped" key={`${change.path}-skipped-${rowIndex}`}>
-                                                                <span>{row.text}</span>
-                                                              </div>
-                                                            ) : (
-                                                              <div className={`pipeline-diff-row pipeline-diff-row--${row.type}`} key={`${change.path}-${row.type}-${rowIndex}`}>
-                                                                <span className="pipeline-diff-row__line">{row.oldNumber ?? " "}</span>
-                                                                <span className="pipeline-diff-row__line">{row.newNumber ?? " "}</span>
-                                                                <pre className="pipeline-diff-row__code">{row.text || " "}</pre>
-                                                              </div>
-                                                            )
-                                                          )) : (
-                                                            <div className="pipeline-diff-row pipeline-diff-row--context">
-                                                              <span className="pipeline-diff-row__line"> </span>
-                                                              <span className="pipeline-diff-row__line"> </span>
-                                                              <pre className="pipeline-diff-row__code">{change.after_content || change.before_content || "—"}</pre>
-                                                            </div>
-                                                          )}
-                                                        </div>
-                                                      </div>
-                                                    </>
-                                                  );
-                                                })()}
-                                              </details>
-                                            ))}
-                                          </div>
-                                        ) : (
-                                          <p className="testing-muted">No changed code or prompt snippet was captured for this iteration.</p>
-                                        )}
-                                      </details>
-
-                                      <details className="pipeline-artifact-card pipeline-artifact-card--sync">
-                                        <summary className="pipeline-artifact-card__summary">
-                                          <div className="pipeline-artifact-card__summary-copy">
-                                            <span className="eyebrow">Agent sync</span>
-                                            <strong>`update_agent.sh`</strong>
-                                            <small>
-                                              {iteration.agentSyncEvents.length
-                                                ? `${iteration.agentSyncEvents.length} sync event${iteration.agentSyncEvents.length === 1 ? "" : "s"} captured`
-                                                : "No agent sync was needed for this iteration."}
-                                            </small>
-                                          </div>
-                                          <span className={`pipeline-artifact-badge pipeline-artifact-badge--${agentSyncStatus.tone}`}>{agentSyncStatus.label}</span>
-                                        </summary>
-                                        {iteration.agentSyncEvents.length ? (
-                                          <div className="pipeline-artifact-stack">
-                                            <div className="pipeline-artifact-meta">
-                                              {iteration.agentSyncEvents[0]?.changed_paths?.length ? (
-                                                <span>{iteration.agentSyncEvents[0].changed_paths.join(", ")}</span>
-                                              ) : null}
-                                              {iteration.agentSyncLogEvent?.elapsed_seconds ? (
-                                                <span>Elapsed {formatElapsedSecondsCompact(iteration.agentSyncLogEvent.elapsed_seconds)}</span>
-                                              ) : null}
-                                            </div>
-                                            <div className="pipeline-section-card__list">
-                                              {iteration.agentSyncEvents.map((event, index) => (
-                                                <article className="pipeline-detail-event" key={`${event.timestamp}-${event.type}-${index}`}>
-                                                  <div className="pipeline-event-card__meta">
-                                                    <span>{formatPipelineEventTitle(event.type)}</span>
-                                                    <time>{formatTimestamp(event.timestamp)}</time>
-                                                  </div>
-                                                  <p>{formatPipelineEventBody(event)}</p>
-                                                </article>
-                                              ))}
-                                            </div>
-                                            {agentSyncLog ? (
-                                              <details className="pipeline-log-card">
-                                                <summary className="pipeline-log-card__summary">
-                                                  <strong>update_agent.sh output</strong>
-                                                  <span>{agentSyncLog.split("\n").length} lines</span>
-                                                </summary>
-                                                <pre>{agentSyncLog}</pre>
-                                              </details>
-                                            ) : null}
-                                          </div>
-                                        ) : (
-                                          <p className="testing-muted">This iteration did not need an `update_agent.sh` run.</p>
-                                        )}
-                                      </details>
-
-                                      <details className="pipeline-artifact-card pipeline-artifact-card--railway">
-                                        <summary className="pipeline-artifact-card__summary">
-                                          <div className="pipeline-artifact-card__summary-copy">
-                                            <span className="eyebrow">Railway wait</span>
-                                            <strong>
-                                              {iteration.railwayWaitEvents.length ? "Deploy health and commit checks" : "No Railway wait needed"}
-                                            </strong>
-                                            <small>
-                                              {iteration.railwayWaitEvents.length
-                                                ? `${iteration.railwayHealthChecks.length} health check${iteration.railwayHealthChecks.length === 1 ? "" : "s"} · ${latestRailwayElapsed !== undefined ? formatElapsedSecondsCompact(latestRailwayElapsed) : "pending"}`
-                                                : "Prompt-only iterations skip Railway redeploy."}
-                                            </small>
-                                          </div>
-                                          <span className={`pipeline-artifact-badge pipeline-artifact-badge--${railwayStatus.tone}`}>{railwayStatus.label}</span>
-                                        </summary>
-                                        {iteration.railwayWaitEvents.length ? (
-                                          <div className="pipeline-artifact-stack">
-                                            <div className="pipeline-artifact-meta">
-                                              {latestRailwayEvent?.commit_sha ? <span>Target commit {formatCommitShort(latestRailwayEvent.commit_sha)}</span> : null}
-                                              {latestRailwayCommit ? <span>Observed commit {formatCommitShort(latestRailwayCommit)}</span> : null}
-                                              {iteration.railwayHealthChecks.length ? <span>{iteration.railwayHealthChecks.length} health polls</span> : null}
-                                            </div>
-                                            <div className="pipeline-section-card__list">
-                                              {iteration.railwayWaitEvents.map((event, index) => (
-                                                <article className="pipeline-detail-event" key={`${event.timestamp}-${event.type}-${index}`}>
-                                                  <div className="pipeline-event-card__meta">
-                                                    <span>{formatPipelineEventTitle(event.type)}</span>
-                                                    <time>{formatTimestamp(event.timestamp)}</time>
-                                                  </div>
-                                                  <p>{formatPipelineEventBody(event)}</p>
-                                                </article>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        ) : (
-                                          <p className="testing-muted">Railway wait data will appear here when a backend code change requires redeploy verification.</p>
-                                        )}
-                                      </details>
-                                    </div>
                                   ) : section.key === "evaluation" ? (
                                     <div className="pipeline-section-card__list">
                                       {(typeof evaluationSummary.overall_score !== "undefined" || evaluationSummary.headline || evaluationSummary.primary_issue) ? (
-                                        <article className="pipeline-evaluation-summary">
-                                          <div className="pipeline-evaluation-summary__head">
-                                            <div>
+                                        <details className="pipeline-evaluation-details">
+                                          <summary className="pipeline-evaluation-details__summary">
+                                            <div className="pipeline-artifact-card__summary-copy">
                                               <span className="eyebrow">Evaluation summary</span>
                                               <strong>{evaluationSummary.goal_achieved ? "Goal achieved" : "Needs refinement"}</strong>
+                                              <small>{evaluationSummary.headline || "Open for the full evaluation summary."}</small>
                                             </div>
                                             {typeof evaluationSummary.overall_score !== "undefined" ? (
                                               <span className={`pipeline-artifact-badge pipeline-artifact-badge--${getScoreTone(evaluationSummary.overall_score)}`}>
                                                 {evaluationSummary.overall_score}/10
                                               </span>
                                             ) : null}
-                                          </div>
-                                          {evaluationSummary.headline ? <p>{evaluationSummary.headline}</p> : null}
-                                          {evaluationSummary.primary_issue ? (
-                                            <div className="pipeline-artifact-meta">
-                                              <span>{evaluationSummary.primary_issue}</span>
-                                              {typeof evaluationSummary.min_criterion_score !== "undefined" && evaluationSummary.min_criterion_score !== null ? (
-                                                <span>Lowest metric {evaluationSummary.min_criterion_score}/10</span>
-                                              ) : null}
-                                            </div>
-                                          ) : null}
-                                        </article>
+                                          </summary>
+                                          <article className="pipeline-evaluation-summary">
+                                            {evaluationSummary.headline ? <p>{evaluationSummary.headline}</p> : null}
+                                            {evaluationSummary.primary_issue ? (
+                                              <div className="pipeline-artifact-meta">
+                                                <span>{evaluationSummary.primary_issue}</span>
+                                                {typeof evaluationSummary.min_criterion_score !== "undefined" && evaluationSummary.min_criterion_score !== null ? (
+                                                  <span>Lowest metric {evaluationSummary.min_criterion_score}/10</span>
+                                                ) : null}
+                                              </div>
+                                            ) : null}
+                                          </article>
+                                        </details>
                                       ) : null}
                                       {iteration.evaluationCriteria.length ? (
                                         <div className="pipeline-metric-grid">
@@ -3060,23 +2868,190 @@ function App() {
                                           <p>{formatPipelineEventBody(iteration.evaluationCompleteEvent)}</p>
                                         </article>
                                       ) : null}
-                                      {section.events.length ? (
-                                        section.events
-                                          .filter((event) => !["evaluation_complete", "evaluation_criterion"].includes(String(event.type || "")))
-                                          .map((event, index) => (
-                                            <article className="pipeline-detail-event" key={`${event.timestamp}-${event.type}-${index}`}>
-                                              <div className="pipeline-event-card__meta">
-                                                <span>{formatPipelineEventTitle(event.type)}</span>
-                                                <time>{formatTimestamp(event.timestamp)}</time>
-                                              </div>
-                                              <p>{formatPipelineEventBody(event)}</p>
-                                            </article>
-                                          ))
-                                      ) : (
+                                      {section.events
+                                        .filter((event) => !["evaluation_complete", "evaluation_criterion"].includes(String(event.type || "")))
+                                        .map((event, index) => (
+                                          <article className="pipeline-detail-event" key={`${event.timestamp}-${event.type}-${index}`}>
+                                            <div className="pipeline-event-card__meta">
+                                              <span>{formatPipelineEventTitle(event.type)}</span>
+                                              <time>{formatTimestamp(event.timestamp)}</time>
+                                            </div>
+                                            <p>{formatPipelineEventBody(event)}</p>
+                                          </article>
+                                        ))}
+                                      {!iteration.evaluationCriteria.length &&
+                                      !iteration.evaluationCompleteEvent &&
+                                      !section.events.filter((event) => !["evaluation_complete", "evaluation_criterion"].includes(String(event.type || ""))).length ? (
                                         <p className="testing-muted">{section.emptyText}</p>
-                                      )}
+                                      ) : null}
                                     </div>
-                                  ) : section.events.length || hasCodeChanges ? (
+                                  ) : section.key === "analysis_planning" ? (
+                                    <div className="pipeline-composite-stack">
+                                      <article className="pipeline-composite-card pipeline-composite-card--files">
+                                        <div className="pipeline-composite-card__head">
+                                          <div>
+                                            <span className="eyebrow">Files to change</span>
+                                            <strong>
+                                              {section.plannedChangedPaths?.length
+                                                ? `${section.plannedChangedPaths.length} file${section.plannedChangedPaths.length === 1 ? "" : "s"} planned`
+                                                : "No files planned yet"}
+                                            </strong>
+                                          </div>
+                                        </div>
+                                        {section.plannedChangedPaths?.length ? (
+                                          <div className="pipeline-file-chip-list">
+                                            {section.plannedChangedPaths.map((path) => (
+                                              <span className="pipeline-file-chip" key={`${sectionId}-${path}`}>{path}</span>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <p className="testing-muted">The fixer has not listed any file targets for this iteration yet.</p>
+                                        )}
+                                      </article>
+                                      <div className="pipeline-composite-grid">
+                                        <article className="pipeline-composite-card">
+                                          <div className="pipeline-composite-card__head">
+                                            <div>
+                                              <span className="eyebrow">Analysis</span>
+                                              <strong>Root cause</strong>
+                                            </div>
+                                            <small>{section.analysisEvents?.length || 0} item{(section.analysisEvents?.length || 0) === 1 ? "" : "s"}</small>
+                                          </div>
+                                          {section.analysisEvents?.length ? (
+                                            <div className="pipeline-section-card__list">
+                                              {section.analysisEvents.map((event, index) => (
+                                                <article className="pipeline-detail-event" key={`${event.timestamp}-${event.type}-${index}`}>
+                                                  <div className="pipeline-event-card__meta">
+                                                    <span>{formatPipelineEventTitle(event.type)}</span>
+                                                    <time>{formatTimestamp(event.timestamp)}</time>
+                                                  </div>
+                                                  <p>{formatPipelineEventBody(event)}</p>
+                                                </article>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <p className="testing-muted">No analysis output yet.</p>
+                                          )}
+                                        </article>
+                                        <article className="pipeline-composite-card">
+                                          <div className="pipeline-composite-card__head">
+                                            <div>
+                                              <span className="eyebrow">Planning</span>
+                                              <strong>Fix plan</strong>
+                                            </div>
+                                            <small>{section.planningEvents?.length || 0} item{(section.planningEvents?.length || 0) === 1 ? "" : "s"}</small>
+                                          </div>
+                                          {section.planningEvents?.length ? (
+                                            <div className="pipeline-section-card__list">
+                                              {section.planningEvents.map((event, index) => (
+                                                <article className="pipeline-detail-event" key={`${event.timestamp}-${event.type}-${index}`}>
+                                                  <div className="pipeline-event-card__meta">
+                                                    <span>{formatPipelineEventTitle(event.type)}</span>
+                                                    <time>{formatTimestamp(event.timestamp)}</time>
+                                                  </div>
+                                                  <p>{formatPipelineEventBody(event)}</p>
+                                                </article>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <p className="testing-muted">No planning output yet.</p>
+                                          )}
+                                        </article>
+                                      </div>
+                                    </div>
+                                  ) : section.key === "changed_snippets" ? (
+                                    <article className="pipeline-artifact-card pipeline-artifact-card--code pipeline-artifact-card--static">
+                                      <div className="pipeline-artifact-card__summary">
+                                        <div className="pipeline-artifact-card__summary-copy">
+                                          <span className="eyebrow">Changed snippets</span>
+                                          <strong>
+                                            {changedSnippets.length
+                                              ? `${changedSnippetCount} applied snippet${changedSnippetCount === 1 ? "" : "s"}`
+                                              : "No changed snippets"}
+                                          </strong>
+                                          <small>
+                                            {changedSnippets.length
+                                              ? `${changedSnippets.map((change) => change.path).filter(Boolean).slice(0, 3).join(" · ")}${changedSnippets.length > 3 ? " · ..." : ""}`
+                                              : "Only edited prompt/code snippets will appear here."}
+                                          </small>
+                                        </div>
+                                        <span className={`pipeline-artifact-badge pipeline-artifact-badge--${changedSnippets.length ? "success" : "neutral"}`}>
+                                          {changedSnippets.length ? `${changedSnippetCount} applied` : "empty"}
+                                        </span>
+                                      </div>
+                                      {changedSnippets.length ? (
+                                        <div className="pipeline-code-changes">
+                                          <div className="pipeline-code-summary">
+                                            <span>{changedSnippetCount} applied change{changedSnippetCount === 1 ? "" : "s"}</span>
+                                            {iteration.record?.git_commit_sha ? <span>Commit {formatCommitShort(iteration.record.git_commit_sha)}</span> : null}
+                                            {typeof iteration.applyResult?.compile_result?.success === "boolean" ? (
+                                              <span>Validation {iteration.applyResult.compile_result.success ? "passed" : "failed"}</span>
+                                            ) : null}
+                                          </div>
+                                          {changedSnippets.map((change, index) => (
+                                            <details className="pipeline-change-card" key={`${change.path}-${change.selector_value}-${index}`} open={changedSnippets.length === 1 || index === 0}>
+                                              <summary className="pipeline-change-card__summary">
+                                                <div className="pipeline-change-card__summary-copy">
+                                                  <strong>{change.path}</strong>
+                                                  <span>{change.selector_type}:{change.selector_value}</span>
+                                                </div>
+                                                <span>{change.applied ? "Applied" : "Not applied"}</span>
+                                              </summary>
+                                              {(() => {
+                                                const diffRows = buildSnippetDiffRows(change.before_content, change.after_content);
+                                                const diffSummary = summarizeSnippetDiff(diffRows);
+                                                return (
+                                                  <>
+                                                    <div className="pipeline-change-meta">
+                                                      <span className={`pipeline-change-pill pipeline-change-pill--${change.applied ? "success" : "neutral"}`}>
+                                                        {change.applied ? "Applied" : "Preview only"}
+                                                      </span>
+                                                      {diffSummary.added ? (
+                                                        <span className="pipeline-change-pill pipeline-change-pill--add">+{diffSummary.added} added</span>
+                                                      ) : null}
+                                                      {diffSummary.removed ? (
+                                                        <span className="pipeline-change-pill pipeline-change-pill--remove">-{diffSummary.removed} removed</span>
+                                                      ) : null}
+                                                    </div>
+                                                    {change.error ? <p className="testing-muted">{change.error}</p> : null}
+                                                    <div className="pipeline-change-diff pipeline-change-diff--unified">
+                                                      <div className="pipeline-change-diff__header">
+                                                        <span>Changed lines</span>
+                                                        <small>Showing the edited snippet only</small>
+                                                      </div>
+                                                      <div className="pipeline-diff-view">
+                                                        {diffRows.length ? diffRows.map((row, rowIndex) => (
+                                                          row.type === "skipped" ? (
+                                                            <div className="pipeline-diff-row pipeline-diff-row--skipped" key={`${change.path}-skipped-${rowIndex}`}>
+                                                              <span>{row.text}</span>
+                                                            </div>
+                                                          ) : (
+                                                            <div className={`pipeline-diff-row pipeline-diff-row--${row.type}`} key={`${change.path}-${row.type}-${rowIndex}`}>
+                                                              <span className="pipeline-diff-row__line">{row.oldNumber ?? " "}</span>
+                                                              <span className="pipeline-diff-row__line">{row.newNumber ?? " "}</span>
+                                                              <pre className="pipeline-diff-row__code">{row.text || " "}</pre>
+                                                            </div>
+                                                          )
+                                                        )) : (
+                                                          <div className="pipeline-diff-row pipeline-diff-row--context">
+                                                            <span className="pipeline-diff-row__line"> </span>
+                                                            <span className="pipeline-diff-row__line"> </span>
+                                                            <pre className="pipeline-diff-row__code">{change.after_content || change.before_content || "—"}</pre>
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  </>
+                                                );
+                                              })()}
+                                            </details>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <p className="testing-muted">No changed code or prompt snippet was captured for this iteration.</p>
+                                      )}
+                                    </article>
+                                  ) : section.events.length ? (
                                     <div className="pipeline-section-card__list">
                                       {section.events.map((event, index) => (
                                         <article className="pipeline-detail-event" key={`${event.timestamp}-${event.type}-${index}`}>
@@ -3084,65 +3059,12 @@ function App() {
                                             <span>{formatPipelineEventTitle(event.type)}</span>
                                             <time>{formatTimestamp(event.timestamp)}</time>
                                           </div>
-                                            <p>{formatPipelineEventBody(event)}</p>
-                                          </article>
-                                      ))}
-                                      {section.key === "code_change" && codeChanges?.error ? (
-                                        <article className="pipeline-detail-event pipeline-detail-event--error">
-                                          <p>{codeChanges.error}</p>
+                                          <p>{formatPipelineEventBody(event)}</p>
                                         </article>
-                                      ) : null}
-                                      {section.key === "approval" &&
-                                      Number(selectedPipeline?.approval_pending_iteration || 0) === Number(iteration.iterationNumber) ? (
-                                        <div className="pipeline-inline-actions">
-                                          <button
-                                            type="button"
-                                            className="button button--primary"
-                                            onClick={approveSelectedPipeline}
-                                            disabled={pipelineBusy || !selectedPipelineId}
-                                          >
-                                            <span className="material-symbols-outlined">task_alt</span>
-                                            Approve iteration
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="button button--secondary"
-                                            onClick={cancelSelectedPipeline}
-                                            disabled={pipelineBusy || !selectedPipelineId}
-                                          >
-                                            <span className="material-symbols-outlined">cancel</span>
-                                            Cancel pipeline
-                                          </button>
-                                        </div>
-                                      ) : null}
+                                      ))}
                                     </div>
                                   ) : (
-                                    <>
-                                      <p className="testing-muted">{section.emptyText}</p>
-                                      {section.key === "approval" &&
-                                      Number(selectedPipeline?.approval_pending_iteration || 0) === Number(iteration.iterationNumber) ? (
-                                        <div className="pipeline-inline-actions">
-                                          <button
-                                            type="button"
-                                            className="button button--primary"
-                                            onClick={approveSelectedPipeline}
-                                            disabled={pipelineBusy || !selectedPipelineId}
-                                          >
-                                            <span className="material-symbols-outlined">task_alt</span>
-                                            Approve iteration
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="button button--secondary"
-                                            onClick={cancelSelectedPipeline}
-                                            disabled={pipelineBusy || !selectedPipelineId}
-                                          >
-                                            <span className="material-symbols-outlined">cancel</span>
-                                            Cancel pipeline
-                                          </button>
-                                        </div>
-                                      ) : null}
-                                    </>
+                                    <p className="testing-muted">{section.emptyText}</p>
                                   )) : null}
                                 </section>
                                 );
