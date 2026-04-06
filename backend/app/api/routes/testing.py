@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from agents.config import get_agent_settings
 from app.config import get_settings
@@ -32,6 +32,7 @@ from testing.pipeline import (
     reset_local_fixtures,
     start_pipeline,
 )
+from testing.export_pipeline_reports import build_pipeline_deliverables_manifest, resolve_pipeline_deliverable
 from testing.tasks import TASKS, get_task
 
 
@@ -312,6 +313,28 @@ def get_testing_pipeline_events(pipeline_id: str) -> list[TestingPipelineEventRe
         )
         for event in events
     ]
+
+
+@router.get("/pipelines/{pipeline_id}/deliverables")
+def get_testing_pipeline_deliverables(pipeline_id: str) -> dict[str, Any]:
+    try:
+        return build_pipeline_deliverables_manifest(
+            pipeline_id,
+            base_download_url=f"/api/testing/pipelines/{pipeline_id}/deliverables",
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/pipelines/{pipeline_id}/deliverables/{name}")
+def download_testing_pipeline_deliverable(pipeline_id: str, name: str) -> FileResponse:
+    try:
+        path, spec = resolve_pipeline_deliverable(pipeline_id, name)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(path, media_type=spec["content_type"], filename=spec["filename"])
 
 
 @router.get("/pipelines/{pipeline_id}/iterations/{iteration_number}/apply-result")
